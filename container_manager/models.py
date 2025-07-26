@@ -126,6 +126,13 @@ class ContainerTemplate(models.Model):
         default=3600, help_text="Maximum execution time in seconds"
     )
 
+    # Environment variables (simple key=value format)
+    environment_variables_text = models.TextField(
+        blank=True,
+        help_text="Environment variables, one per line in KEY=value format. Example:\nDEBUG=true\nAPI_KEY=secret123\nTIMEOUT=300",
+        verbose_name="Environment Variables"
+    )
+
     # Auto cleanup (deprecated - use cleanup process instead)
     auto_remove = models.BooleanField(
         default=False,
@@ -142,6 +149,47 @@ class ContainerTemplate(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.docker_image})"
+    
+    def get_environment_variables_dict(self):
+        """
+        Parse environment_variables_text into a dictionary.
+        
+        Returns:
+            dict: Environment variables as key-value pairs
+        """
+        env_vars = {}
+        if not self.environment_variables_text:
+            return env_vars
+            
+        for line in self.environment_variables_text.strip().split('\n'):
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue  # Skip empty lines and comments
+                
+            if '=' in line:
+                key, value = line.split('=', 1)  # Split only on first =
+                env_vars[key.strip()] = value.strip()
+                
+        return env_vars
+    
+    def get_all_environment_variables(self):
+        """
+        Get environment variables from both the new text field and legacy EnvironmentVariable objects.
+        The text field takes precedence over individual objects for the same key.
+        
+        Returns:
+            dict: Combined environment variables
+        """
+        # Start with legacy environment variables
+        env_vars = {}
+        if hasattr(self, 'environment_variables'):
+            for env_var in self.environment_variables.all():
+                env_vars[env_var.key] = env_var.value
+        
+        # Override with text field variables (takes precedence)
+        env_vars.update(self.get_environment_variables_dict())
+        
+        return env_vars
 
 
 class EnvironmentVariable(models.Model):

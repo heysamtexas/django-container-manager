@@ -89,7 +89,12 @@ template = ContainerTemplate.objects.create(
     docker_image="hello-world",
     timeout_seconds=60,
     memory_limit=128,  # MB
-    cpu_limit=0.5      # cores
+    cpu_limit=0.5,     # cores
+    environment_variables_text="""
+DEBUG=true
+LOG_LEVEL=info
+TIMEOUT=300
+"""
 )
 ```
 
@@ -106,6 +111,32 @@ job = ContainerJob.objects.create(
 ```
 
 The job will be automatically picked up by the job processor and executed!
+
+### Environment Variables
+
+Environment variables can be easily added to templates using a simple text format:
+
+```python
+template.environment_variables_text = """
+# Database configuration
+DATABASE_URL=postgresql://user:pass@host:5432/db
+DB_POOL_SIZE=10
+
+# API settings  
+API_KEY=your-secret-key
+API_TIMEOUT=30
+
+# Feature flags
+DEBUG=false
+ENABLE_CACHE=true
+"""
+```
+
+**Format rules:**
+- One variable per line: `KEY=value`
+- Comments start with `#` and are ignored
+- Values can contain spaces and `=` characters
+- Empty lines are ignored
 
 ### Advanced Configuration
 
@@ -279,4 +310,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Made with ❤️ for the Django community**
+**For the Django community**

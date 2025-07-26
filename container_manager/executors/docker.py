@@ -318,8 +318,7 @@ class DockerExecutor(ContainerExecutor):
         environment = {}
 
         # Add template environment variables
-        for env_var in template.environment_variables.all():
-            environment[env_var.key] = env_var.value
+        environment.update(template.get_all_environment_variables())
 
         # Add job override environment variables
         if job.override_environment:

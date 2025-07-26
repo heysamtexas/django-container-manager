@@ -475,8 +475,8 @@ class CloudRunExecutor(ContainerExecutor):
         env_vars = []
 
         # Add template environment variables
-        for env_var in job.template.environment_variables.all():
-            env_vars.append(run_v2.EnvVar(name=env_var.key, value=env_var.value))
+        for key, value in job.template.get_all_environment_variables().items():
+            env_vars.append(run_v2.EnvVar(name=key, value=value))
 
         # Add override environment variables
         if job.override_environment:

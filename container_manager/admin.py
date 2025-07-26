@@ -104,6 +104,11 @@ class DockerHostAdmin(admin.ModelAdmin):
 
 @admin.register(ContainerTemplate)
 class ContainerTemplateAdmin(admin.ModelAdmin):
+    formfield_overrides = {
+        models.TextField: {
+            'widget': admin.widgets.AdminTextareaWidget(attrs={'rows': 8, 'cols': 80})
+        },
+    }
     list_display = (
         "name",
         "docker_image",
@@ -138,6 +143,13 @@ class ContainerTemplateAdmin(admin.ModelAdmin):
                 "fields": ("memory_limit", "cpu_limit", "timeout_seconds"),
                 "classes": ("collapse",),
             },
+        ),
+        (
+            "Environment Variables", 
+            {
+                "fields": ("environment_variables_text",),
+                "description": "Enter environment variables one per line in KEY=value format. Comments starting with # are ignored."
+            }
         ),
         ("Execution Settings", {"fields": ("auto_remove",)}),
         (
