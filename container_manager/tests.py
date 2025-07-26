@@ -7,6 +7,7 @@ from django.core.management import call_command
 from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
+from docker.errors import NotFound
 
 from .docker_service import (
     DockerConnectionError,
@@ -268,14 +269,15 @@ class DockerServiceTest(TestCase):
         with self.assertRaises(DockerConnectionError):
             self.docker_service.get_client(self.docker_host)
 
-    @patch.object(DockerService, "get_client")
+    @patch("container_manager.executors.docker.DockerExecutor._get_client")
     def test_create_container(self, mock_get_client):
         """Test container creation"""
         mock_client = Mock()
         mock_container = Mock()
         mock_container.id = "test-container-id"
         mock_client.containers.create.return_value = mock_container
-        mock_client.api.create_host_config.return_value = {}
+        mock_client.images.get.side_effect = NotFound("Image not found")
+        mock_client.images.pull.return_value = None
         mock_get_client.return_value = mock_client
 
         # Add environment variable to template
@@ -293,7 +295,7 @@ class DockerServiceTest(TestCase):
         self.assertIn("environment", call_args)
         self.assertEqual(call_args["environment"]["TEST_VAR"], "test_value")
 
-    @patch.object(DockerService, "get_client")
+    @patch("container_manager.executors.docker.DockerExecutor._get_client")
     def test_start_container(self, mock_get_client):
         """Test container start"""
         mock_client = Mock()

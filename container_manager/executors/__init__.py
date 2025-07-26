@@ -12,6 +12,7 @@ from .exceptions import (
     ExecutorConnectionError,
     ExecutorError,
     ExecutorResourceError,
+    ExecutorTimeoutError,
 )
 
 __all__ = [
@@ -21,6 +22,7 @@ __all__ = [
     "ExecutorConfigurationError",
     "ExecutorResourceError",
     "ExecutorAuthenticationError",
+    "ExecutorTimeoutError",
     "get_executor",
 ]
 

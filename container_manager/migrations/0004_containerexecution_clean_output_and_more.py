@@ -4,20 +4,24 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('container_manager', '0003_dockerhost_auto_pull_images'),
+        ("container_manager", "0003_dockerhost_auto_pull_images"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='containerexecution',
-            name='clean_output',
-            field=models.TextField(blank=True, help_text='Stdout with timestamps and metadata stripped'),
+            model_name="containerexecution",
+            name="clean_output",
+            field=models.TextField(
+                blank=True, help_text="Stdout with timestamps and metadata stripped"
+            ),
         ),
         migrations.AlterField(
-            model_name='containertemplate',
-            name='auto_remove',
-            field=models.BooleanField(default=False, help_text='[DEPRECATED] Use cleanup process instead of auto-remove'),
+            model_name="containertemplate",
+            name="auto_remove",
+            field=models.BooleanField(
+                default=False,
+                help_text="[DEPRECATED] Use cleanup process instead of auto-remove",
+            ),
         ),
     ]
