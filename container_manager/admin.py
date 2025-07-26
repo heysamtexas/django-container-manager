@@ -31,22 +31,43 @@ class NetworkAssignmentInline(admin.TabularInline):
 class DockerHostAdmin(admin.ModelAdmin):
     list_display = (
         "name",
+        "executor_type",
         "host_type",
         "connection_string",
+        "capacity_display",
         "is_active",
         "connection_status",
         "created_at",
     )
-    list_filter = ("host_type", "is_active", "tls_enabled")
+    list_filter = ("executor_type", "host_type", "is_active", "tls_enabled")
     search_fields = ("name", "connection_string")
-    readonly_fields = ("created_at", "updated_at")
+    readonly_fields = ("created_at", "updated_at", "capacity_display")
 
     fieldsets = (
         (
             "Basic Information",
-            {"fields": ("name", "host_type", "connection_string", "is_active")},
+            {
+                "fields": (
+                    "name", "executor_type", "host_type",
+                    "connection_string", "is_active"
+                )
+            },
+        ),
+        (
+            "Executor Configuration",
+            {"fields": ("executor_config", "max_concurrent_jobs", "current_job_count")},
         ),
         ("Docker Configuration", {"fields": ("auto_pull_images",)}),
+        (
+            "Cost and Performance",
+            {
+                "fields": (
+                    "cost_per_hour", "cost_per_job",
+                    "average_startup_time", "last_health_check", "health_check_failures"
+                ),
+                "classes": ("collapse",)
+            },
+        ),
         (
             "TLS Configuration",
             {"fields": ("tls_enabled", "tls_verify"), "classes": ("collapse",)},
@@ -71,6 +92,15 @@ class DockerHostAdmin(admin.ModelAdmin):
             return format_html('<span style="color: red;">●</span> Connection Failed')
 
     connection_status.short_description = "Status"
+
+    def capacity_display(self, obj):
+        """Show current capacity utilization"""
+        info = obj.get_capacity_info()
+        return (
+            f"{info['current_jobs']}/{info['max_jobs']} "
+            f"({info['utilization_percent']:.1f}%)"
+        )
+    capacity_display.short_description = "Capacity"
 
     def test_connection(self, request, queryset):
         """Test connection to selected Docker hosts"""
@@ -144,11 +174,12 @@ class ContainerJobAdmin(admin.ModelAdmin):
         "job_name",
         "template",
         "docker_host",
+        "executor_type",
         "status",
         "duration_display",
         "created_at",
     )
-    list_filter = ("status", "docker_host", "template", "created_at")
+    list_filter = ("status", "executor_type", "docker_host", "template", "created_at")
     search_fields = ("id", "name", "template__name", "docker_host__name")
     readonly_fields = (
         "id",
@@ -164,6 +195,16 @@ class ContainerJobAdmin(admin.ModelAdmin):
         (
             "Job Information",
             {"fields": ("id", "template", "docker_host", "name", "status")},
+        ),
+        (
+            "Executor Configuration",
+            {
+                "fields": (
+                    "executor_type", "preferred_executor", "routing_reason",
+                    "external_execution_id", "executor_metadata"
+                ),
+                "classes": ("collapse",)
+            }
         ),
         (
             "Execution Overrides",
@@ -184,6 +225,13 @@ class ContainerJobAdmin(admin.ModelAdmin):
                 ),
                 "classes": ("collapse",),
             },
+        ),
+        (
+            "Cost Tracking",
+            {
+                "fields": ("estimated_cost", "actual_cost"),
+                "classes": ("collapse",)
+            }
         ),
         (
             "Metadata",

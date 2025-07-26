@@ -467,6 +467,19 @@ class AdminInterfaceTest(TestCase):
             "is_active": True,
             "tls_enabled": False,
             "tls_verify": False,
+            "auto_pull_images": True,
+            # Multi-executor fields
+            "executor_type": "docker",
+            "executor_config": "{}",
+            "max_concurrent_jobs": 10,
+            "current_job_count": 0,
+            # Cost fields (optional)
+            "cost_per_hour": "",
+            "cost_per_job": "",
+            # Performance fields (optional)
+            "average_startup_time": "",
+            "last_health_check": "",
+            "health_check_failures": 0,
         }
 
         response = self.client.post(url, data)
@@ -478,6 +491,7 @@ class AdminInterfaceTest(TestCase):
         host = DockerHost.objects.get(name="new-host")
         self.assertEqual(host.host_type, "tcp")
         self.assertEqual(host.connection_string, "tcp://localhost:2376")
+        self.assertEqual(host.executor_type, "docker")
 
     def test_create_container_template_via_admin(self):
         """Test creating container template via admin interface"""
