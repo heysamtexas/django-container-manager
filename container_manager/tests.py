@@ -22,6 +22,8 @@ from .models import (
     NetworkAssignment,
 )
 
+# Additional test modules are in the tests/ package directory
+
 
 class DockerHostModelTest(TestCase):
     """Test cases for DockerHost model"""
