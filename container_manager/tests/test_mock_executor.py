@@ -370,26 +370,32 @@ class MockExecutorTest(TestCase):
 
     def test_realistic_status_progression(self):
         """Test realistic status progression over time"""
-        config = {"execution_delay": 1.0}  # 1 second execution
-        executor = MockExecutor(config)
+        config = {
+            "execution_delay": 1.0,  # 1 second execution
+            "exit_code_distribution": {0: 1.0}  # Ensure success
+        }
+        
+        # Mock the random execution time calculation to be deterministic
+        with patch('random.uniform', return_value=1.0):  # No randomness
+            executor = MockExecutor(config)
 
-        job = ContainerJob.objects.create(
-            template=self.template, docker_host=self.docker_host, created_by=self.user
-        )
+            job = ContainerJob.objects.create(
+                template=self.template, docker_host=self.docker_host, created_by=self.user
+            )
 
-        success, execution_id = executor.launch_job(job)
-        self.assertTrue(success)
+            success, execution_id = executor.launch_job(job)
+            self.assertTrue(success)
 
-        # Should be running initially
-        status = executor.check_status(execution_id)
-        self.assertEqual(status, "running")
+            # Should be running initially for longer executions
+            status = executor.check_status(execution_id)
+            self.assertEqual(status, "running")
 
-        # Wait for completion (in real scenario, would be longer)
-        time.sleep(1.1)
+            # Wait for completion
+            time.sleep(1.1)
 
-        # Should be completed now
-        status = executor.check_status(execution_id)
-        self.assertEqual(status, "completed")
+            # Should be completed now
+            status = executor.check_status(execution_id)
+            self.assertEqual(status, "completed")
 
     def test_execution_record_creation(self):
         """Test that execution records are properly created"""
