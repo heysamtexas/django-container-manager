@@ -1,6 +1,6 @@
 # Python API Reference
 
-This guide documents the Python API for programmatically interacting with Django Docker Container Manager.
+This guide documents the Python API for programmatically interacting with Django Multi-Executor Container Manager, including multi-cloud execution, routing, cost tracking, performance monitoring, and migration capabilities.
 
 ## Overview
 
@@ -10,20 +10,40 @@ The system provides a Django-based Python API through models, managers, and serv
 
 ### DockerHost
 
-Represents Docker daemon endpoints for container execution.
+Represents executor endpoints for container execution across multiple cloud providers.
 
 ```python
 from container_manager.models import DockerHost
 
 # Create a Docker host
-host = DockerHost.objects.create(
+docker_host = DockerHost.objects.create(
     name="production-docker",
     host_type="tcp",
     connection_string="tcp://docker.example.com:2376",
+    executor_type="docker",
     is_active=True,
     tls_enabled=True,
     tls_verify=True,
+    max_concurrent_jobs=50,
     description="Production Docker server"
+)
+
+# Create a Cloud Run executor
+cloudrun_host = DockerHost.objects.create(
+    name="gcp-cloudrun-us-central1",
+    host_type="tcp",
+    connection_string="https://run.googleapis.com",
+    executor_type="cloudrun",
+    executor_config={
+        "project_id": "your-project-id",
+        "region": "us-central1",
+        "service_account": "container-manager@your-project.iam.gserviceaccount.com",
+        "memory_limit": 2048,
+        "cpu_limit": 2.0,
+        "timeout_seconds": 3600
+    },
+    is_active=True,
+    max_concurrent_jobs=1000
 )
 ```
 
@@ -33,8 +53,11 @@ host = DockerHost.objects.create(
 |-------|------|-------------|
 | `name` | CharField(100) | Unique host identifier |
 | `host_type` | CharField(10) | "unix" or "tcp" |
-| `connection_string` | CharField(500) | Docker daemon URL |
+| `connection_string` | CharField(500) | Executor endpoint URL |
+| `executor_type` | CharField(50) | "docker", "cloudrun", "fargate", "azure" |
+| `executor_config` | JSONField | Executor-specific configuration |
 | `is_active` | BooleanField | Enable/disable host |
+| `max_concurrent_jobs` | IntegerField | Maximum concurrent jobs |
 | `tls_enabled` | BooleanField | Use TLS encryption |
 | `tls_verify` | BooleanField | Verify TLS certificates |
 | `description` | TextField | Host description |
@@ -708,4 +731,515 @@ class ContainerJobViewSet(viewsets.ModelViewSet):
         return Response({'success': success, 'status': job.status})
 ```
 
-For more usage examples, see the specific guides for [Job Management](jobs.md), [Templates](templates.md), and [Docker Hosts](docker-hosts.md).
+## Multi-Cloud APIs
+
+### ExecutorFactory
+
+Central factory for managing different executor types.
+
+```python
+from container_manager.executors.factory import ExecutorFactory
+
+# Create factory instance
+factory = ExecutorFactory()
+
+# Get available executors
+available_executors = factory.get_available_executors()
+print(f"Available executors: {available_executors}")
+
+# Route job to best executor
+best_executor = factory.route_job(job)
+print(f"Routed to: {best_executor.name}")
+
+# Get executor instance
+executor = factory.get_executor(job)
+success, execution_id = executor.launch_job(job)
+```
+
+### Cloud Run Executor
+
+```python
+from container_manager.executors.cloudrun import CloudRunExecutor
+
+# Create Cloud Run executor
+executor = CloudRunExecutor(cloudrun_host)
+
+# Launch job on Cloud Run
+success, execution_id = executor.launch_job(job)
+
+# Check status
+status = executor.check_status(execution_id)
+
+# Get logs
+logs = executor.get_logs(execution_id)
+
+# Cleanup
+executor.cleanup(execution_id)
+```
+
+## Routing APIs
+
+### RoutingRuleSet
+
+```python
+from container_manager.models import RoutingRuleSet, RoutingRule
+
+# Create routing ruleset
+ruleset = RoutingRuleSet.objects.create(
+    name="production-routing",
+    description="Production routing rules",
+    is_active=True
+)
+
+# Add routing rules
+RoutingRule.objects.create(
+    ruleset=ruleset,
+    name="small-jobs-docker",
+    condition="memory_mb <= 512 and timeout_seconds <= 300",
+    target_executor="docker",
+    priority=10
+)
+
+RoutingRule.objects.create(
+    ruleset=ruleset,
+    name="large-jobs-cloudrun",
+    condition="memory_mb > 512 or timeout_seconds > 300",
+    target_executor="cloudrun",
+    priority=20
+)
+```
+
+### Routing Engine
+
+```python
+from container_manager.routing.engine import RoutingEngine
+
+# Create routing engine
+engine = RoutingEngine()
+
+# Evaluate routing for a job
+best_executor = engine.route_job(job)
+
+# Get routing explanation
+explanation = engine.explain_routing(job)
+print(f"Routing decision: {explanation}")
+
+# Test routing rules
+test_results = engine.test_routing_rules(template, show_evaluation=True)
+```
+
+## Cost Tracking APIs
+
+### CostProfile
+
+```python
+from container_manager.cost.models import CostProfile
+from decimal import Decimal
+
+# Create cost profile
+profile = CostProfile.objects.create(
+    name="cloudrun-us-central1",
+    executor_type="cloudrun",
+    region="us-central1",
+    cpu_cost_per_core_hour=Decimal("0.000024"),
+    memory_cost_per_gb_hour=Decimal("0.0000025"),
+    request_cost=Decimal("0.0000004"),
+    currency="USD"
+)
+
+# Calculate cost for resource usage
+cost_breakdown = profile.calculate_cost(
+    cpu_hours=1.5,
+    memory_gb_hours=2.0,
+    requests=1
+)
+print(f"Total cost: ${cost_breakdown['total_cost']}")
+```
+
+### CostTracker
+
+```python
+from container_manager.cost.tracker import CostTracker
+
+# Create cost tracker
+tracker = CostTracker()
+
+# Track job cost
+cost_record = tracker.track_job_cost(job, cost_profile)
+
+# Get cost analysis
+analysis = tracker.get_cost_analysis(
+    start_date=datetime.now() - timedelta(days=30),
+    end_date=datetime.now(),
+    group_by=['executor_type']
+)
+
+# Check budget status
+budget_status = tracker.check_budget_status(budget_id)
+```
+
+### CostBudget
+
+```python
+from container_manager.cost.models import CostBudget
+
+# Create budget
+budget = CostBudget.objects.create(
+    name="Monthly Production Budget",
+    budget_amount=Decimal("1000.00"),
+    currency="USD",
+    period="monthly",
+    warning_threshold=80.0,
+    critical_threshold=95.0
+)
+
+# Check budget status
+current_spending = budget.get_current_spending()
+percentage = budget.get_spending_percentage()
+thresholds = budget.check_thresholds()
+
+if thresholds['warning_exceeded']:
+    print(f"Warning: {percentage:.1f}% of budget used")
+```
+
+## Performance Monitoring APIs
+
+### PerformanceTracker
+
+```python
+from container_manager.performance.tracker import performance_tracker
+
+# Track operation performance
+with performance_tracker.track_operation(
+    job_id=job.id,
+    executor_type="cloudrun",
+    host_name="gcp-cloudrun-us-central1",
+    operation_type="launch"
+) as context:
+    # Perform operation
+    success, execution_id = executor.launch_job(job)
+    
+    # Add custom metrics
+    context.add_metric("custom_metric", 42.0)
+
+# Get performance metrics
+metrics = performance_tracker.get_metrics(
+    executor_type="cloudrun",
+    start_date=datetime.now() - timedelta(days=7)
+)
+
+# Generate performance report
+report = performance_tracker.generate_report(
+    executor_types=["docker", "cloudrun"],
+    include_recommendations=True
+)
+```
+
+### ExecutorPerformanceMetric
+
+```python
+from container_manager.performance.models import ExecutorPerformanceMetric
+
+# Query performance metrics
+metrics = ExecutorPerformanceMetric.objects.filter(
+    executor_type="cloudrun",
+    timestamp__gte=datetime.now() - timedelta(days=1)
+)
+
+# Calculate averages
+avg_launch_time = metrics.aggregate(
+    avg_launch=models.Avg('launch_time_ms')
+)['avg_launch']
+
+# Get performance summary
+summary = ExecutorPerformanceMetric.get_performance_summary(
+    executor_type="cloudrun",
+    days=30
+)
+```
+
+## Migration APIs
+
+### MigrationPlan
+
+```python
+from container_manager.migration.models import MigrationPlan, JobMigration
+
+# Create migration plan
+plan = MigrationPlan.objects.create(
+    name="docker-to-cloudrun-migration",
+    description="Migrate jobs from Docker to Cloud Run",
+    source_executor_type="docker",
+    target_executor_type="cloudrun",
+    job_filter_criteria={"status": "pending"},
+    migration_strategy="gradual",
+    batch_size=10,
+    batch_interval_seconds=60
+)
+
+# Get migration status
+status = plan.get_migration_status()
+print(f"Migration progress: {status['progress_percentage']:.1f}%")
+```
+
+### LiveJobMigrator
+
+```python
+from container_manager.migration.engine import live_migrator
+
+# Create migration plan
+plan = live_migrator.create_migration_plan(
+    name="emergency-migration",
+    source_executor_type="docker",
+    target_executor_type="cloudrun",
+    job_filter_criteria={"status": "running"},
+    migration_strategy="immediate"
+)
+
+# Validate migration plan
+is_valid, issues = live_migrator.validate_migration_plan(plan)
+if not is_valid:
+    print(f"Migration issues: {issues}")
+
+# Execute migration
+success = live_migrator.execute_migration_plan(plan)
+if success:
+    print("Migration completed successfully")
+```
+
+### Migration Monitoring
+
+```python
+# Monitor active migrations
+active_migrations = live_migrator.get_active_migrations()
+
+for migration in active_migrations:
+    status = migration.get_migration_status()
+    print(f"Migration {migration.name}: {status['jobs_migrated']}/{status['total_jobs']}")
+
+# Get migration metrics
+metrics = live_migrator.get_migration_metrics(plan)
+print(f"Success rate: {metrics['success_rate']:.1f}%")
+print(f"Average migration time: {metrics['avg_migration_time_seconds']:.1f}s")
+```
+
+## Advanced Usage Patterns
+
+### Multi-Cloud Job Distribution
+
+```python
+def distribute_jobs_across_clouds(template_name, job_count=100):
+    """Distribute jobs across multiple cloud providers for optimal performance."""
+    
+    template = ContainerTemplate.objects.get(name=template_name)
+    factory = ExecutorFactory()
+    
+    # Get available executors
+    executors = factory.get_available_executors()
+    print(f"Available executors: {list(executors.keys())}")
+    
+    jobs_created = []
+    for i in range(job_count):
+        # Create job
+        job = ContainerJob.objects.create(
+            template=template,
+            name=f"{template_name}-job-{i}",
+            priority=random.randint(1, 5)
+        )
+        
+        # Route to best executor
+        best_executor = factory.route_job(job)
+        job.docker_host = best_executor
+        job.executor_type = best_executor.executor_type
+        job.save()
+        
+        jobs_created.append(job)
+    
+    return jobs_created
+
+# Usage
+jobs = distribute_jobs_across_clouds("data-processing", 50)
+print(f"Created {len(jobs)} jobs across multiple executors")
+```
+
+### Cost-Aware Job Scheduling
+
+```python
+def schedule_cost_aware_jobs(max_budget=100.0):
+    """Schedule jobs based on cost constraints."""
+    
+    from container_manager.cost.tracker import CostTracker
+    
+    tracker = CostTracker()
+    pending_jobs = ContainerJob.objects.filter(status='pending')
+    
+    scheduled_jobs = []
+    total_estimated_cost = 0.0
+    
+    for job in pending_jobs:
+        # Estimate job cost
+        estimated_cost = tracker.estimate_job_cost(job)
+        
+        if total_estimated_cost + estimated_cost <= max_budget:
+            # Execute job
+            executor = ExecutorFactory().get_executor(job)
+            success, execution_id = executor.launch_job(job)
+            
+            if success:
+                scheduled_jobs.append(job)
+                total_estimated_cost += estimated_cost
+                print(f"Scheduled job {job.id}, estimated cost: ${estimated_cost:.4f}")
+        else:
+            print(f"Skipping job {job.id} - would exceed budget")
+    
+    print(f"Total estimated cost: ${total_estimated_cost:.2f}")
+    return scheduled_jobs
+```
+
+### Performance-Based Routing
+
+```python
+def route_based_on_performance(job):
+    """Route job based on historical performance data."""
+    
+    from container_manager.performance.tracker import performance_tracker
+    
+    # Get performance metrics for each executor type
+    executor_types = ["docker", "cloudrun"]
+    performance_scores = {}
+    
+    for executor_type in executor_types:
+        metrics = performance_tracker.get_recent_metrics(
+            executor_type=executor_type,
+            hours=24
+        )
+        
+        if metrics:
+            # Calculate performance score (lower is better)
+            avg_launch_time = sum(m.launch_time_ms for m in metrics) / len(metrics)
+            failure_rate = sum(1 for m in metrics if m.success_rate < 95) / len(metrics)
+            
+            performance_scores[executor_type] = avg_launch_time + (failure_rate * 10000)
+    
+    # Choose best performing executor
+    if performance_scores:
+        best_executor_type = min(performance_scores.keys(), 
+                               key=lambda x: performance_scores[x])
+        
+        # Get host for best executor type
+        host = DockerHost.objects.filter(
+            executor_type=best_executor_type,
+            is_active=True
+        ).first()
+        
+        return host
+    
+    # Fallback to default routing
+    return ExecutorFactory().route_job(job)
+```
+
+### Migration with Rollback
+
+```python
+def safe_migration_with_rollback(source_type, target_type):
+    """Perform migration with automatic rollback on failure."""
+    
+    # Create migration plan
+    plan = live_migrator.create_migration_plan(
+        name=f"{source_type}-to-{target_type}-safe",
+        source_executor_type=source_type,
+        target_executor_type=target_type,
+        job_filter_criteria={"status": "pending"},
+        migration_strategy="gradual",
+        rollback_enabled=True,
+        max_failure_rate=10.0  # Roll back if >10% failures
+    )
+    
+    try:
+        # Execute migration
+        success = live_migrator.execute_migration_plan(plan)
+        
+        if success:
+            print("Migration completed successfully")
+            return True
+        else:
+            print("Migration failed, initiating rollback")
+            rollback_success = live_migrator.rollback_migration(plan)
+            if rollback_success:
+                print("Rollback completed successfully")
+            else:
+                print("Rollback failed - manual intervention required")
+            return False
+            
+    except Exception as e:
+        print(f"Migration error: {e}")
+        print("Initiating emergency rollback")
+        live_migrator.rollback_migration(plan)
+        return False
+```
+
+### Real-time Monitoring Dashboard
+
+```python
+def get_realtime_dashboard_data():
+    """Get real-time data for monitoring dashboard."""
+    
+    from django.db.models import Count, Avg
+    from datetime import datetime, timedelta
+    
+    # Job statistics
+    job_stats = ContainerJob.objects.aggregate(
+        total=Count('id'),
+        running=Count('id', filter=Q(status='running')),
+        completed_today=Count('id', filter=Q(
+            status='completed',
+            finished_at__date=datetime.now().date()
+        )),
+        failed_today=Count('id', filter=Q(
+            status='failed',
+            finished_at__date=datetime.now().date()
+        ))
+    )
+    
+    # Executor utilization
+    executor_utilization = {}
+    for host in DockerHost.objects.filter(is_active=True):
+        running_jobs = ContainerJob.objects.filter(
+            docker_host=host,
+            status='running'
+        ).count()
+        
+        utilization = (running_jobs / host.max_concurrent_jobs) * 100
+        executor_utilization[host.name] = {
+            'running_jobs': running_jobs,
+            'max_jobs': host.max_concurrent_jobs,
+            'utilization_percent': utilization
+        }
+    
+    # Recent performance metrics
+    recent_metrics = ExecutorPerformanceMetric.objects.filter(
+        timestamp__gte=datetime.now() - timedelta(hours=1)
+    ).values('executor_type').annotate(
+        avg_launch_time=Avg('launch_time_ms'),
+        avg_success_rate=Avg('success_rate')
+    )
+    
+    # Cost tracking
+    cost_tracker = CostTracker()
+    daily_cost = cost_tracker.get_daily_cost(datetime.now().date())
+    
+    return {
+        'job_stats': job_stats,
+        'executor_utilization': executor_utilization,
+        'performance_metrics': list(recent_metrics),
+        'daily_cost': float(daily_cost),
+        'timestamp': datetime.now().isoformat()
+    }
+
+# Usage in Django view
+def dashboard_api(request):
+    data = get_realtime_dashboard_data()
+    return JsonResponse(data)
+```
+
+For more usage examples, see the specific guides for [Job Management](jobs.md), [Templates](templates.md), [Docker Hosts](docker-hosts.md), [Multi-Cloud Setup](multi-cloud-setup.md), and [Migration Guide](migration-guide.md).

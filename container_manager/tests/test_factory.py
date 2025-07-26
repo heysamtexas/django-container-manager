@@ -102,10 +102,19 @@ class ExecutorFactoryTest(TestCase):
                 "reason": "High memory requirement (>8GB)",
                 "priority": 1,
             }
-        ]
+        ],
+        CONTAINER_EXECUTORS={
+            "docker": {"enabled": True, "default": True},
+            "cloudrun": {"enabled": False},
+            "fargate": {"enabled": False},
+            "mock": {"enabled": True},
+        },
     )
     def test_route_job_high_memory_rule(self):
         """Test routing based on memory requirement rule"""
+        # Create factory with overridden settings
+        factory = ExecutorFactory()
+
         job = ContainerJob.objects.create(
             template=self.high_memory_template,
             docker_host=self.docker_host,
@@ -113,7 +122,7 @@ class ExecutorFactoryTest(TestCase):
         )
 
         # Since fargate is not available, should fall back to docker
-        executor_type = self.factory.route_job(job)
+        executor_type = factory.route_job(job)
 
         self.assertEqual(executor_type, "docker")
         self.assertEqual(job.routing_reason, "Default fallback to docker")
@@ -126,10 +135,19 @@ class ExecutorFactoryTest(TestCase):
                 "reason": "Batch processing template",
                 "priority": 1,
             }
-        ]
+        ],
+        CONTAINER_EXECUTORS={
+            "docker": {"enabled": True, "default": True},
+            "cloudrun": {"enabled": False},
+            "fargate": {"enabled": False},
+            "mock": {"enabled": True},
+        },
     )
     def test_route_job_template_name_rule(self):
         """Test routing based on template name rule"""
+        # Create factory with overridden settings
+        factory = ExecutorFactory()
+
         job = ContainerJob.objects.create(
             template=self.batch_template,
             docker_host=self.docker_host,
@@ -137,7 +155,7 @@ class ExecutorFactoryTest(TestCase):
         )
 
         # Since cloudrun is not available, should fall back to docker
-        executor_type = self.factory.route_job(job)
+        executor_type = factory.route_job(job)
 
         self.assertEqual(executor_type, "docker")
         self.assertEqual(job.routing_reason, "Default fallback to docker")
@@ -173,10 +191,19 @@ class ExecutorFactoryTest(TestCase):
                 "reason": "Premium user priority",
                 "priority": 1,
             }
-        ]
+        ],
+        CONTAINER_EXECUTORS={
+            "docker": {"enabled": True, "default": True},
+            "cloudrun": {"enabled": False},
+            "fargate": {"enabled": False},
+            "mock": {"enabled": True},
+        },
     )
     def test_route_job_premium_user(self):
         """Test routing for premium users"""
+        # Create factory with overridden settings
+        factory = ExecutorFactory()
+
         # Add user to premium group
         self.user.groups.add(self.premium_group)
 
@@ -187,7 +214,7 @@ class ExecutorFactoryTest(TestCase):
         )
 
         # Since cloudrun is not available, should fall back to docker
-        executor_type = self.factory.route_job(job)
+        executor_type = factory.route_job(job)
 
         self.assertEqual(executor_type, "docker")
         self.assertEqual(job.routing_reason, "Default fallback to docker")
@@ -235,6 +262,70 @@ class ExecutorFactoryTest(TestCase):
         self.assertIsNotNone(executor)
         self.assertEqual(executor.__class__.__name__, "MockExecutor")
 
+    def test_get_executor_cloudrun(self):
+        """Test getting CloudRun executor instance"""
+        # Create CloudRun host
+        cloudrun_host = DockerHost.objects.create(
+            name="test-cloudrun",
+            executor_type="cloudrun",
+            connection_string="cloudrun://demo-project/us-central1",
+            is_active=True,
+        )
+
+        job = ContainerJob.objects.create(
+            template=self.regular_template,
+            docker_host=cloudrun_host,
+            executor_type="cloudrun",
+            created_by=self.user,
+        )
+
+        executor = self.factory.get_executor(job)
+
+        self.assertIsNotNone(executor)
+        self.assertEqual(executor.__class__.__name__, "CloudRunExecutor")
+
+        # Test that configuration was properly loaded
+        self.assertEqual(executor.project_id, "demo-project")
+        self.assertEqual(executor.region, "us-central1")
+
+    def test_cloudrun_cost_estimation(self):
+        """Test CloudRun cost estimation through factory"""
+        cloudrun_host = DockerHost.objects.create(
+            name="cost-test-cloudrun",
+            executor_type="cloudrun",
+            connection_string="cloudrun://demo-project/us-central1",
+            is_active=True,
+        )
+
+        job = ContainerJob.objects.create(
+            template=self.high_memory_template,
+            docker_host=cloudrun_host,
+            executor_type="cloudrun",
+            created_by=self.user,
+        )
+
+        executor = self.factory.get_executor(job)
+        cost = executor.get_cost_estimate(job)
+
+        self.assertIn("cpu_cost", cost)
+        self.assertIn("memory_cost", cost)
+        self.assertIn("request_cost", cost)
+        self.assertIn("total_cost", cost)
+        self.assertEqual(cost["currency"], "USD")
+        self.assertGreater(cost["total_cost"], 0)
+
+    def test_cloudrun_availability_through_factory(self):
+        """Test that CloudRun executor is available through factory"""
+        available = self.factory.get_available_executors()
+
+        # Should include cloudrun since it's enabled in settings
+        self.assertIn("cloudrun", available)
+
+        # Test capacity reporting
+        capacity = self.factory.get_executor_capacity("cloudrun")
+        self.assertEqual(capacity["total_capacity"], 1000)  # Cloud default
+        self.assertGreaterEqual(capacity["available_slots"], 0)
+
     def test_get_executor_unknown_type(self):
         """Test error for unknown executor type"""
         job = ContainerJob.objects.create(
@@ -266,11 +357,11 @@ class ExecutorFactoryTest(TestCase):
         """Test getting list of available executors"""
         available = self.factory.get_available_executors()
 
-        # Should include docker (enabled) and mock (enabled)
+        # Should include docker (enabled), mock (enabled), and cloudrun (enabled)
         self.assertIn("docker", available)
         self.assertIn("mock", available)
-        # Should not include cloudrun or fargate (disabled)
-        self.assertNotIn("cloudrun", available)
+        self.assertIn("cloudrun", available)
+        # Should not include fargate (disabled)
         self.assertNotIn("fargate", available)
 
     def test_get_executor_capacity_docker(self):

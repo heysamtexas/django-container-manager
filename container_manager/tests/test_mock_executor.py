@@ -372,15 +372,17 @@ class MockExecutorTest(TestCase):
         """Test realistic status progression over time"""
         config = {
             "execution_delay": 1.0,  # 1 second execution
-            "exit_code_distribution": {0: 1.0}  # Ensure success
+            "exit_code_distribution": {0: 1.0},  # Ensure success
         }
-        
+
         # Mock the random execution time calculation to be deterministic
-        with patch('random.uniform', return_value=1.0):  # No randomness
+        with patch("random.uniform", return_value=1.0):  # No randomness
             executor = MockExecutor(config)
 
             job = ContainerJob.objects.create(
-                template=self.template, docker_host=self.docker_host, created_by=self.user
+                template=self.template,
+                docker_host=self.docker_host,
+                created_by=self.user,
             )
 
             success, execution_id = executor.launch_job(job)

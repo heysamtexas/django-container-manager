@@ -17,7 +17,7 @@ from django.utils import timezone
 
 from container_manager.docker_service import DockerConnectionError, docker_service
 from container_manager.executors.exceptions import ExecutorResourceError
-from container_manager.executors.factory import executor_factory
+from container_manager.executors.factory import ExecutorFactory
 from container_manager.models import ContainerJob, DockerHost
 
 logger = logging.getLogger(__name__)
@@ -29,6 +29,7 @@ class Command(BaseCommand):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.should_stop = False
+        self.executor_factory = ExecutorFactory()
         self.setup_signal_handlers()
 
     def setup_signal_handlers(self):
@@ -115,7 +116,8 @@ class Command(BaseCommand):
         )
 
         if factory_enabled:
-            available_executors = executor_factory.get_available_executors()
+            available_hosts = DockerHost.objects.filter(is_active=True)
+            available_executors = list(available_hosts.values_list('executor_type', flat=True).distinct())
             self.stdout.write(f"Available executors: {', '.join(available_executors)}")
 
             if executor_type:
@@ -254,20 +256,25 @@ class Command(BaseCommand):
                 job.executor_type = force_executor_type
                 job.routing_reason = f"Forced to {force_executor_type} via command line"
             else:
-                job.executor_type = executor_factory.route_job(job)
+                selected_host = self.executor_factory.route_job(job)
+                if selected_host:
+                    job.docker_host = selected_host
+                    job.executor_type = selected_host.executor_type
+                else:
+                    # No available hosts
+                    self.mark_job_failed(job, "No available executor hosts")
+                    return False
 
             job.save()
 
             # Display routing information
             self.stdout.write(
                 f"Launching job {job.id} ({job.template.name}) "
-                f"using {job.executor_type} executor"
+                f"using {job.executor_type} executor on {job.docker_host.name}"
             )
-            if job.routing_reason:
-                self.stdout.write(f"  Routing reason: {job.routing_reason}")
 
             # Get executor instance and launch job
-            executor = executor_factory.get_executor(job)
+            executor = self.executor_factory.get_executor(job.docker_host)
             success, execution_id = executor.launch_job(job)
 
             if success:
@@ -363,7 +370,7 @@ class Command(BaseCommand):
                 # Check execution status (works for all executor types)
                 status = self.check_job_status(job)
 
-                if status == "completed":
+                if status in ["completed", "exited"]:
                     # Job finished, harvest results
                     success = self.harvest_completed_job(job)
                     if success:
@@ -394,7 +401,7 @@ class Command(BaseCommand):
         else:
             # Use executor factory for non-docker executors
             try:
-                executor = executor_factory.get_executor(job)
+                executor = self.executor_factory.get_executor(job.docker_host)
                 execution_id = job.get_execution_identifier()
                 return executor.check_status(execution_id)
             except Exception as e:
@@ -409,7 +416,7 @@ class Command(BaseCommand):
         else:
             # Use executor factory for non-docker executors
             try:
-                executor = executor_factory.get_executor(job)
+                executor = self.executor_factory.get_executor(job.docker_host)
                 return executor.harvest_job(job)
             except Exception as e:
                 logger.error(f"Error harvesting job {job.id}: {e}")
@@ -438,7 +445,7 @@ class Command(BaseCommand):
             else:
                 # Use executor factory for non-docker executors
                 try:
-                    executor = executor_factory.get_executor(job)
+                    executor = self.executor_factory.get_executor(job.docker_host)
                     execution_id = job.get_execution_identifier()
                     executor.cleanup(execution_id)
                 except Exception as e:

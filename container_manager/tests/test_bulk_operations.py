@@ -1,0 +1,476 @@
+"""
+Tests for bulk operations.
+"""
+
+from unittest.mock import Mock, patch
+
+from django.contrib.auth.models import User
+from django.test import TestCase
+
+from ..bulk_operations import BulkJobManager
+from ..models import ContainerJob, ContainerTemplate, DockerHost
+
+
+class BulkJobManagerTest(TestCase):
+    """Test cases for BulkJobManager."""
+
+    def setUp(self):
+        self.manager = BulkJobManager()
+
+        # Create test user
+        self.user = User.objects.create_user(
+            username="testuser", email="test@example.com", password="testpass"
+        )
+
+        # Create test template
+        self.template = ContainerTemplate.objects.create(
+            name="test-template",
+            docker_image="test:latest",
+            memory_limit=512,
+            cpu_limit=1.0,
+            timeout_seconds=300,
+        )
+
+        # Create test hosts
+        self.docker_host = DockerHost.objects.create(
+            name="docker-host",
+            executor_type="docker",
+            connection_string="unix:///var/run/docker.sock",
+            is_active=True,
+        )
+
+        self.mock_host = DockerHost.objects.create(
+            name="mock-host",
+            executor_type="mock",
+            connection_string="mock://test",
+            is_active=True,
+        )
+
+    def test_create_jobs_bulk_success(self):
+        """Test successful bulk job creation."""
+        with patch.object(
+            self.manager.executor_factory, "route_job_dry_run"
+        ) as mock_route:
+            mock_route.return_value = "docker"
+
+            jobs, errors = self.manager.create_jobs_bulk(
+                template=self.template,
+                count=5,
+                user=self.user,
+                host=self.docker_host,
+                name_pattern="batch-job-{index}",
+            )
+
+        self.assertEqual(len(jobs), 5)
+        self.assertEqual(len(errors), 0)
+
+        # Check job properties
+        for i, job in enumerate(jobs):
+            self.assertEqual(job.template, self.template)
+            self.assertEqual(job.docker_host, self.docker_host)
+            self.assertEqual(job.name, f"batch-job-{i}")
+            self.assertEqual(job.created_by, self.user)
+            self.assertEqual(job.status, "pending")
+
+    def test_create_jobs_bulk_with_overrides(self):
+        """Test bulk job creation with environment and command overrides."""
+        env_overrides = [
+            {"ENV_VAR": "value1"},
+            {"ENV_VAR": "value2"},
+            {"ENV_VAR": "value3"},
+        ]
+        cmd_overrides = ["echo test1", "echo test2", "echo test3"]
+
+        with patch.object(
+            self.manager.executor_factory, "route_job_dry_run"
+        ) as mock_route:
+            mock_route.return_value = "docker"
+
+            jobs, errors = self.manager.create_jobs_bulk(
+                template=self.template,
+                count=3,
+                user=self.user,
+                host=self.docker_host,
+                environment_overrides=env_overrides,
+                command_overrides=cmd_overrides,
+            )
+
+        self.assertEqual(len(jobs), 3)
+        self.assertEqual(len(errors), 0)
+
+        # Check overrides
+        for i, job in enumerate(jobs):
+            self.assertEqual(job.override_environment, env_overrides[i])
+            self.assertEqual(job.override_command, cmd_overrides[i])
+
+    def test_create_jobs_bulk_auto_routing(self):
+        """Test bulk job creation with automatic routing."""
+        with patch.object(
+            self.manager.executor_factory, "route_job_dry_run"
+        ) as mock_route:
+            mock_route.return_value = "mock"
+
+            jobs, errors = self.manager.create_jobs_bulk(
+                template=self.template,
+                count=3,
+                user=self.user,
+                # No host specified - should auto-route
+            )
+
+        self.assertEqual(len(jobs), 3)
+        self.assertEqual(len(errors), 0)
+
+        # Should have been routed to mock host
+        for job in jobs:
+            self.assertEqual(job.docker_host.executor_type, "mock")
+
+    def test_create_jobs_bulk_invalid_count(self):
+        """Test bulk job creation with invalid count."""
+        jobs, errors = self.manager.create_jobs_bulk(
+            template=self.template,
+            count=0,
+            user=self.user,
+        )
+
+        self.assertEqual(len(jobs), 0)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("Count must be positive", errors[0])
+
+    def test_create_jobs_bulk_large_count(self):
+        """Test bulk job creation with too large count."""
+        jobs, errors = self.manager.create_jobs_bulk(
+            template=self.template,
+            count=15000,
+            user=self.user,
+        )
+
+        self.assertEqual(len(jobs), 0)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("Maximum bulk creation limit", errors[0])
+
+    def test_migrate_jobs_cross_executor(self):
+        """Test cross-executor job migration."""
+        # Create jobs on docker host
+        jobs = []
+        for i in range(3):
+            job = ContainerJob.objects.create(
+                template=self.template,
+                docker_host=self.docker_host,
+                name=f"test-job-{i}",
+                status="pending",
+                created_by=self.user,
+            )
+            jobs.append(job)
+
+        # Migrate to mock executor
+        migrated_jobs, errors = self.manager.migrate_jobs_cross_executor(
+            jobs=jobs,
+            target_executor_type="mock",
+        )
+
+        self.assertEqual(len(migrated_jobs), 3)
+        self.assertEqual(len(errors), 0)
+
+        # Check migration results
+        for job in migrated_jobs:
+            job.refresh_from_db()
+            self.assertEqual(job.docker_host.executor_type, "mock")
+            self.assertEqual(job.executor_type, "mock")
+            self.assertIn("Bulk migration", job.routing_reason)
+
+    def test_migrate_jobs_dry_run(self):
+        """Test dry-run job migration."""
+        # Create job
+        job = ContainerJob.objects.create(
+            template=self.template,
+            docker_host=self.docker_host,
+            name="test-job",
+            status="pending",
+            created_by=self.user,
+        )
+
+        # Dry run migration
+        migrated_jobs, errors = self.manager.migrate_jobs_cross_executor(
+            jobs=[job],
+            target_executor_type="mock",
+            dry_run=True,
+        )
+
+        self.assertEqual(len(migrated_jobs), 1)
+        self.assertEqual(len(errors), 0)
+
+        # Job should not actually be migrated
+        job.refresh_from_db()
+        self.assertEqual(job.docker_host.executor_type, "docker")
+
+    def test_migrate_running_job_without_force(self):
+        """Test migration of running job without force flag."""
+        job = ContainerJob.objects.create(
+            template=self.template,
+            docker_host=self.docker_host,
+            name="running-job",
+            status="running",
+            created_by=self.user,
+        )
+
+        migrated_jobs, errors = self.manager.migrate_jobs_cross_executor(
+            jobs=[job],
+            target_executor_type="mock",
+            force_migration=False,
+        )
+
+        self.assertEqual(len(migrated_jobs), 0)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("is running", errors[0])
+
+    def test_migrate_running_job_with_force(self):
+        """Test migration of running job with force flag."""
+        job = ContainerJob.objects.create(
+            template=self.template,
+            docker_host=self.docker_host,
+            name="running-job",
+            status="running",
+            container_id="running_container_123",  # Set execution ID
+            created_by=self.user,
+        )
+
+        with patch.object(
+            self.manager.executor_factory, "get_executor"
+        ) as mock_get_executor:
+            mock_executor = Mock()
+            mock_get_executor.return_value = mock_executor
+
+            migrated_jobs, errors = self.manager.migrate_jobs_cross_executor(
+                jobs=[job],
+                target_executor_type="mock",
+                force_migration=True,
+            )
+
+        self.assertEqual(len(migrated_jobs), 1)
+        self.assertEqual(len(errors), 0)
+
+        # Should have called cleanup on original executor
+        mock_executor.cleanup.assert_called_once()
+
+        # Job should be migrated and reset to pending
+        job.refresh_from_db()
+        self.assertEqual(job.docker_host.executor_type, "mock")
+        self.assertEqual(job.status, "pending")
+
+    def test_bulk_start_jobs(self):
+        """Test bulk job starting."""
+        # Create pending jobs
+        jobs = []
+        for i in range(3):
+            job = ContainerJob.objects.create(
+                template=self.template,
+                docker_host=self.mock_host,
+                name=f"test-job-{i}",
+                status="pending",
+                created_by=self.user,
+            )
+            jobs.append(job)
+
+        with patch.object(
+            self.manager.executor_factory, "get_executor"
+        ) as mock_get_executor:
+            mock_executor = Mock()
+            mock_executor.launch_job.return_value = (True, "exec_123")
+            mock_get_executor.return_value = mock_executor
+
+            started_jobs, errors = self.manager.bulk_start_jobs(jobs)
+
+        self.assertEqual(len(started_jobs), 3)
+        self.assertEqual(len(errors), 0)
+
+        # Check job status
+        for job in started_jobs:
+            job.refresh_from_db()
+            self.assertEqual(job.status, "running")
+            self.assertIsNotNone(job.started_at)
+
+    def test_bulk_stop_jobs(self):
+        """Test bulk job stopping."""
+        # Create running jobs
+        jobs = []
+        for i in range(3):
+            job = ContainerJob.objects.create(
+                template=self.template,
+                docker_host=self.mock_host,
+                name=f"test-job-{i}",
+                status="running",
+                container_id=f"container_{i}",
+                created_by=self.user,
+            )
+            jobs.append(job)
+
+        with patch.object(
+            self.manager.executor_factory, "get_executor"
+        ) as mock_get_executor:
+            mock_executor = Mock()
+            mock_get_executor.return_value = mock_executor
+
+            stopped_jobs, errors = self.manager.bulk_stop_jobs(jobs)
+
+        self.assertEqual(len(stopped_jobs), 3)
+        self.assertEqual(len(errors), 0)
+
+        # Check job status
+        for job in stopped_jobs:
+            job.refresh_from_db()
+            self.assertEqual(job.status, "cancelled")
+            self.assertIsNotNone(job.completed_at)
+
+    def test_bulk_cancel_jobs(self):
+        """Test bulk job cancellation."""
+        # Create jobs in various states
+        pending_job = ContainerJob.objects.create(
+            template=self.template,
+            docker_host=self.mock_host,
+            name="pending-job",
+            status="pending",
+            created_by=self.user,
+        )
+
+        running_job = ContainerJob.objects.create(
+            template=self.template,
+            docker_host=self.mock_host,
+            name="running-job",
+            status="running",
+            container_id="container_1",
+            created_by=self.user,
+        )
+
+        completed_job = ContainerJob.objects.create(
+            template=self.template,
+            docker_host=self.mock_host,
+            name="completed-job",
+            status="completed",
+            created_by=self.user,
+        )
+
+        jobs = [pending_job, running_job, completed_job]
+
+        with patch.object(
+            self.manager.executor_factory, "get_executor"
+        ) as mock_get_executor:
+            mock_executor = Mock()
+            mock_get_executor.return_value = mock_executor
+
+            cancelled_jobs, errors = self.manager.bulk_cancel_jobs(jobs)
+
+        # Should cancel pending and running jobs, but not completed
+        self.assertEqual(len(cancelled_jobs), 2)
+        self.assertEqual(len(errors), 0)
+
+        # Check results
+        pending_job.refresh_from_db()
+        self.assertEqual(pending_job.status, "cancelled")
+
+        running_job.refresh_from_db()
+        self.assertEqual(running_job.status, "cancelled")
+
+        completed_job.refresh_from_db()
+        self.assertEqual(completed_job.status, "completed")  # Unchanged
+
+    def test_bulk_restart_jobs(self):
+        """Test bulk job restarting."""
+        # Create completed job
+        job = ContainerJob.objects.create(
+            template=self.template,
+            docker_host=self.mock_host,
+            name="completed-job",
+            status="completed",
+            executor_type="mock",  # Match host type
+            container_id="old_container",
+            exit_code=0,
+            created_by=self.user,
+        )
+
+        with patch.object(
+            self.manager.executor_factory, "get_executor"
+        ) as mock_get_executor:
+            mock_executor = Mock()
+            mock_executor.launch_job.return_value = (True, "new_exec_123")
+            mock_get_executor.return_value = mock_executor
+
+            restarted_jobs, errors = self.manager.bulk_restart_jobs([job])
+
+        self.assertEqual(len(restarted_jobs), 1)
+        self.assertEqual(len(errors), 0)
+
+        # Check job was reset and restarted
+        job.refresh_from_db()
+        self.assertEqual(job.status, "running")
+        self.assertIsNone(job.exit_code)
+
+        # Job is on mock host, so execution_id should go to external_execution_id
+        self.assertEqual(job.docker_host.executor_type, "mock")
+        self.assertEqual(job.executor_type, "mock")  # Should match host type
+        self.assertEqual(job.container_id, "")  # Should be cleared
+        self.assertEqual(job.external_execution_id, "new_exec_123")  # Should be set
+        self.assertIsNotNone(job.started_at)
+
+    def test_get_bulk_status(self):
+        """Test bulk status reporting."""
+        # Create jobs with different statuses
+        jobs = []
+        statuses = ["pending", "running", "completed", "failed", "completed"]
+
+        for i, status in enumerate(statuses):
+            job = ContainerJob.objects.create(
+                template=self.template,
+                docker_host=self.docker_host if i % 2 == 0 else self.mock_host,
+                name=f"test-job-{i}",
+                status=status,
+                created_by=self.user,
+            )
+            jobs.append(job)
+
+        status_report = self.manager.get_bulk_status(jobs)
+
+        # Check report structure
+        self.assertEqual(status_report["total_jobs"], 5)
+        self.assertEqual(status_report["status_counts"]["completed"], 2)
+        self.assertEqual(status_report["status_counts"]["pending"], 1)
+        self.assertEqual(status_report["status_counts"]["running"], 1)
+        self.assertEqual(status_report["status_counts"]["failed"], 1)
+
+        # Check executor counts
+        self.assertEqual(status_report["executor_counts"]["docker"], 3)
+        self.assertEqual(status_report["executor_counts"]["mock"], 2)
+
+        # Check success rate
+        expected_success_rate = (2 / 5) * 100  # 2 completed out of 5 total
+        self.assertEqual(status_report["success_rate"], expected_success_rate)
+
+    def test_select_best_host(self):
+        """Test host selection logic."""
+        # Create hosts with different job counts
+        host1 = DockerHost.objects.create(
+            name="host1",
+            executor_type="docker",
+            connection_string="host1:2376",
+            is_active=True,
+            current_job_count=5,
+        )
+
+        host2 = DockerHost.objects.create(
+            name="host2",
+            executor_type="docker",
+            connection_string="host2:2376",
+            is_active=True,
+            current_job_count=2,
+        )
+
+        job = ContainerJob.objects.create(
+            template=self.template,
+            docker_host=host1,
+            name="test-job",
+            status="pending",
+            created_by=self.user,
+        )
+
+        # Should select host with lowest job count
+        best_host = self.manager._select_best_host([host1, host2], job)
+        self.assertEqual(best_host, host2)

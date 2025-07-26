@@ -147,3 +147,28 @@ CONTAINER_MANAGER = {
     "IMMEDIATE_CLEANUP": True,  # Remove containers immediately after data collection
     "CLEANUP_ENABLED": True,  # Enable periodic cleanup for orphaned containers
 }
+
+# Container Executor Configuration
+CONTAINER_EXECUTORS = {
+    "docker": {
+        "enabled": True,
+        "default": True,
+    },
+    "cloudrun": {
+        "enabled": True,  # Enable for testing/demo
+        "project_id": "demo-project",  # Demo project ID
+        "region": "us-central1",
+        "service_account": "executor@demo-project.iam.gserviceaccount.com",
+        "memory_limit": 512,
+        "cpu_limit": 1.0,
+        "timeout_seconds": 600,
+    },
+    "fargate": {
+        "enabled": False,
+        "cluster": "default",
+    },
+    "mock": {
+        "enabled": True,
+        "execution_delay": 0.1,
+    },
+}

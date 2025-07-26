@@ -9,7 +9,7 @@ from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand, CommandError
 
 from container_manager.docker_service import docker_service
-from container_manager.executors.factory import executor_factory
+from container_manager.executors.factory import ExecutorFactory
 from container_manager.models import (
     ContainerExecution,
     ContainerJob,
@@ -20,6 +20,10 @@ from container_manager.models import (
 
 class Command(BaseCommand):
     help = "Manage individual container jobs"
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.executor_factory = ExecutorFactory()
 
     def add_arguments(self, parser):
         subparsers = parser.add_subparsers(
@@ -126,7 +130,6 @@ class Command(BaseCommand):
             name=job_name,
             override_command=override_command or "",
             override_environment=override_environment,
-            preferred_executor=executor_type or "",
             created_by=self.get_default_user(),
         )
 
@@ -157,15 +160,19 @@ class Command(BaseCommand):
 
         try:
             # Use executor factory for routing and execution
-            if not job.executor_type:
-                job.executor_type = executor_factory.route_job(job)
-                job.save()
+            if not job.docker_host:
+                selected_host = self.executor_factory.route_job(job)
+                if selected_host:
+                    job.docker_host = selected_host
+                    job.executor_type = selected_host.executor_type
+                    job.save()
+                else:
+                    raise CommandError("No available executor hosts")
 
-            executor = executor_factory.get_executor(job)
+            executor = self.executor_factory.get_executor(job.docker_host)
 
             self.stdout.write(f"Using {job.executor_type} executor")
-            if job.routing_reason:
-                self.stdout.write(f"Routing reason: {job.routing_reason}")
+            self.stdout.write(f"Selected host: {job.docker_host.name}")
 
             # Launch and wait for completion
             success, execution_id = executor.launch_job(job)
@@ -318,8 +325,7 @@ class Command(BaseCommand):
         self.stdout.write(f"  Status: {job.status}")
         if job.duration:
             self.stdout.write(f"  Duration: {job.duration}")
-        if job.routing_reason:
-            self.stdout.write(f"  Routing reason: {job.routing_reason}")
+        # Routing reason removed in simplified system
 
     def show_job_details(self, job, show_logs=False):
         """Show detailed job information"""
@@ -346,8 +352,7 @@ class Command(BaseCommand):
             f"Exit Code: {job.exit_code if job.exit_code is not None else 'N/A'}"
         )
 
-        if job.routing_reason:
-            self.stdout.write(f"Routing Reason: {job.routing_reason}")
+        # Routing reason removed in simplified system
 
         # Timestamps
         self.stdout.write(f"Created: {job.created_at}")
@@ -435,7 +440,8 @@ class Command(BaseCommand):
         self.stdout.write("=" * 50)
 
         # Get available executors
-        available_executors = executor_factory.get_available_executors()
+        available_hosts = DockerHost.objects.filter(is_active=True)
+        available_executors = list(available_hosts.values_list('executor_type', flat=True).distinct())
 
         if not available_executors:
             self.stdout.write(self.style.ERROR("No executors available"))
@@ -448,16 +454,19 @@ class Command(BaseCommand):
             self.stdout.write("-" * 30)
 
             for executor_type in available_executors:
-                capacity = executor_factory.get_executor_capacity(executor_type)
+                hosts_of_type = available_hosts.filter(executor_type=executor_type)
+                capacity = {
+                    'total_hosts': hosts_of_type.count(),
+                    'active_hosts': hosts_of_type.filter(is_active=True).count()
+                }
 
                 self.stdout.write(f"\n{executor_type.upper()} Executor:")
-                self.stdout.write(f"  Total Capacity: {capacity['total_capacity']}")
-                self.stdout.write(f"  Current Usage: {capacity['current_usage']}")
-                self.stdout.write(f"  Available Slots: {capacity['available_slots']}")
+                self.stdout.write(f"  Total Hosts: {capacity['total_hosts']}")
+                self.stdout.write(f"  Active Hosts: {capacity['active_hosts']}")
 
-                if capacity["total_capacity"] > 0:
+                if capacity["total_hosts"] > 0:
                     utilization = (
-                        capacity["current_usage"] / capacity["total_capacity"]
+                        capacity["active_hosts"] / capacity["total_hosts"]
                     ) * 100
                     self.stdout.write(f"  Utilization: {utilization:.1f}%")
 

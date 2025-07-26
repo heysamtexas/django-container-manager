@@ -61,12 +61,12 @@ class DockerExecutor(ContainerExecutor):
         if not execution_id:
             return "not-found"
 
-        try:
-            # Find the job associated with this execution_id (container_id)
-            job = ContainerJob.objects.filter(container_id=execution_id).first()
-            if not job:
-                return "not-found"
+        # Find the job
+        job = ContainerJob.objects.filter(container_id=execution_id).first()
+        if not job:
+            return "not-found"
 
+        try:
             client = self._get_client(job.docker_host)
             container = client.containers.get(execution_id)
 
@@ -332,7 +332,7 @@ class DockerExecutor(ContainerExecutor):
             "environment": environment,
             "labels": self._build_labels(job),
             "detach": True,
-            "remove": False,  # We handle cleanup manually
+            # Note: 'remove' parameter is only for containers.run(), not containers.create()
         }
 
         # Add resource limits if specified

@@ -504,7 +504,7 @@ class MockExecutor(ContainerExecutor):
             )
 
         # Add job-specific information
-        timestamp = timezone.now().strftime('%Y-%m-%d %H:%M:%S')
+        timestamp = timezone.now().strftime("%Y-%m-%d %H:%M:%S")
         stdout_lines.extend(
             [
                 f"[{timestamp}] Processing template: {template_name}",

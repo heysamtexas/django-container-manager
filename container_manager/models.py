@@ -2,7 +2,6 @@ import json
 import re
 import uuid
 from functools import cached_property
-from typing import Any, Dict
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
@@ -50,7 +49,13 @@ class DockerHost(models.Model):
     executor_config = models.JSONField(
         default=dict,
         blank=True,
-        help_text="Executor-specific configuration (credentials, regions, etc.)",
+        help_text=(
+            "Executor-specific configuration for this host. Examples:\n"
+            "• Docker: {'base_url': 'tcp://host:2376', 'tls_verify': true}\n"
+            "• Cloud Run: {'project': 'my-project', 'region': 'us-central1', 'service_account': 'sa@project.iam'}\n"
+            "• AWS Fargate: {'cluster': 'my-cluster', 'subnets': ['subnet-123'], 'security_groups': ['sg-456']}\n"
+            "• General: Any JSON config your custom executor implementation needs"
+        ),
     )
 
     # Resource and capacity management
@@ -58,38 +63,11 @@ class DockerHost(models.Model):
         default=10, help_text="Maximum number of concurrent jobs for this executor"
     )
 
-    current_job_count = models.PositiveIntegerField(
-        default=0, help_text="Currently running job count (updated by worker process)"
-    )
-
-    # Cost tracking
-    cost_per_hour = models.DecimalField(
-        max_digits=10,
-        decimal_places=4,
-        null=True,
-        blank=True,
-        help_text="Estimated cost per hour for this executor",
-    )
-
-    cost_per_job = models.DecimalField(
-        max_digits=10,
-        decimal_places=4,
-        null=True,
-        blank=True,
-        help_text="Estimated cost per job execution",
-    )
-
-    # Health and performance
-    average_startup_time = models.PositiveIntegerField(
-        null=True, blank=True, help_text="Average container startup time in seconds"
-    )
-
-    last_health_check = models.DateTimeField(
-        null=True, blank=True, help_text="Last successful health check timestamp"
-    )
-
-    health_check_failures = models.PositiveIntegerField(
-        default=0, help_text="Consecutive health check failures"
+    # Weight-based routing
+    weight = models.PositiveIntegerField(
+        default=100,
+        validators=[MinValueValidator(1), MaxValueValidator(1000)],
+        help_text="Routing weight (higher = more preferred, 1-1000)"
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -107,49 +85,18 @@ class DockerHost(models.Model):
 
     def is_available(self) -> bool:
         """Check if this executor is available for new jobs"""
-        if not self.is_active:
-            return False
+        return self.is_active
 
-        if self.current_job_count >= self.max_concurrent_jobs:
-            return False
-
-        # Check health status
-        if self.health_check_failures >= 3:
-            return False
-
-        return True
-
-    def get_capacity_info(self) -> Dict[str, Any]:
-        """Get current capacity information"""
-        return {
-            "current_jobs": self.current_job_count,
-            "max_jobs": self.max_concurrent_jobs,
-            "available_slots": max(
-                0, self.max_concurrent_jobs - self.current_job_count
-            ),
-            "utilization_percent": (self.current_job_count / self.max_concurrent_jobs)
-            * 100,
-        }
-
-    def increment_job_count(self) -> None:
-        """Thread-safe increment of current job count"""
-        from django.db import transaction
-
-        with transaction.atomic():
-            self.refresh_from_db()
-            if self.current_job_count < self.max_concurrent_jobs:
-                self.current_job_count += 1
-                self.save(update_fields=["current_job_count"])
-
-    def decrement_job_count(self) -> None:
-        """Thread-safe decrement of current job count"""
-        from django.db import transaction
-
-        with transaction.atomic():
-            self.refresh_from_db()
-            if self.current_job_count > 0:
-                self.current_job_count -= 1
-                self.save(update_fields=["current_job_count"])
+    def get_display_name(self) -> str:
+        """Get display name for the host"""
+        if self.executor_type == "docker":
+            return f"{self.name} (Docker)"
+        elif self.executor_type == "cloudrun":
+            config = self.executor_config
+            region = config.get("region", "unknown")
+            return f"{self.name} (Cloud Run - {region})"
+        else:
+            return f"{self.name} ({self.executor_type.title()})"
 
 
 class ContainerTemplate(models.Model):
@@ -266,11 +213,30 @@ class ContainerJob(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
 
     # Override template settings if needed
-    override_command = models.TextField(blank=True)
+    override_command = models.TextField(
+        blank=True,
+        help_text=(
+            "Override the template's default command. Examples:\n"
+            "• Single command: python main.py --config=prod\n"
+            "• Shell command: bash -c \"echo Starting...; python app.py; echo Done\"\n"
+            "• Multi-step: bash -c \"pip install -r requirements.txt && python manage.py migrate && python manage.py runserver\"\n"
+            "• Script execution: /bin/sh /scripts/deploy.sh --environment=staging\n"
+            "• Data processing: python process_data.py --input=/data/input.csv --output=/data/results.json\n"
+            "Leave blank to use the template's default command."
+        )
+    )
     override_environment = models.JSONField(
         default=dict,
         blank=True,
-        help_text="Additional or override environment variables",
+        help_text=(
+            "Additional or override environment variables for this specific job. Examples:\n"
+            "• Simple config: {\"DEBUG\": \"true\", \"LOG_LEVEL\": \"info\"}\n"
+            "• Database: {\"DB_HOST\": \"prod-db.company.com\", \"DB_NAME\": \"prod_db\"}\n"
+            "• API keys: {\"API_KEY\": \"sk-1234567890\", \"WEBHOOK_URL\": \"https://api.company.com/webhook\"}\n"
+            "• File paths: {\"INPUT_FILE\": \"/data/batch_2024.csv\", \"OUTPUT_DIR\": \"/results/batch_001\"}\n"
+            "• Feature flags: {\"ENABLE_FEATURE_X\": \"true\", \"USE_NEW_ALGORITHM\": \"false\"}\n"
+            "These merge with template environment variables, with job values taking precedence."
+        ),
     )
 
     # Execution tracking
@@ -306,43 +272,19 @@ class ContainerJob(models.Model):
     executor_metadata = models.JSONField(
         default=dict,
         blank=True,
-        help_text="Provider-specific data like regions, URLs, resource identifiers",
+        help_text=(
+            "Executor-specific runtime data and identifiers. Examples:\n"
+            "• Docker: {'container_name': 'my-job-123', 'network': 'bridge'}\n"
+            "• Cloud Run: {'job_name': 'job-abc123', 'region': 'us-central1', 'project': 'my-project'}\n"
+            "• AWS Fargate: {'task_arn': 'arn:aws:ecs:...', 'cluster': 'my-cluster', 'task_definition': 'my-task:1'}\n"
+            "• Custom: Any JSON data your executor needs to track or reference the job"
+        ),
     )
 
-    # Routing and preferences
-    preferred_executor = models.CharField(
-        max_length=50,
-        blank=True,
-        default="",
-        help_text="Preferred executor type for this job (overrides routing rules)",
-    )
-
-    routing_reason = models.CharField(
-        max_length=200,
-        blank=True,
-        default="",
-        help_text="Reason why this executor was chosen (for debugging/analytics)",
-    )
-
-    # Cost and resource tracking
-    estimated_cost = models.DecimalField(
-        max_digits=10,
-        decimal_places=4,
-        null=True,
-        blank=True,
-        help_text="Estimated execution cost in USD",
-    )
-
-    actual_cost = models.DecimalField(
-        max_digits=10,
-        decimal_places=4,
-        null=True,
-        blank=True,
-        help_text="Actual execution cost in USD (if available)",
-    )
-
+    # Basic metadata
     created_at = models.DateTimeField(auto_now_add=True)
-    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
 
     class Meta:
         verbose_name = "Container Job"
@@ -378,23 +320,8 @@ class ContainerJob(models.Model):
 
     def can_use_executor(self, executor_type: str) -> bool:
         """Check if this job can run on the specified executor type"""
-        if self.preferred_executor:
-            return self.preferred_executor == executor_type
-
-        # Check template compatibility
-        if hasattr(self.template, "supported_executors"):
-            return executor_type in self.template.supported_executors
-
-        return True  # Default: all jobs can run anywhere
-
-    def estimate_resources(self) -> Dict[str, Any]:
-        """Estimate resource requirements for routing decisions"""
-        return {
-            "memory_mb": self.template.memory_limit or 512,
-            "cpu_cores": self.template.cpu_limit or 1.0,
-            "timeout_seconds": self.template.timeout_seconds,
-            "storage_required": bool(self.template.working_directory),
-        }
+        # All jobs can run on any executor type
+        return True
 
     def clean(self):
         """Model validation for ContainerJob"""
@@ -490,3 +417,231 @@ class ContainerExecution(models.Model):
                 clean_lines.append(clean_line)
 
         return "\n".join(clean_lines)
+
+
+# Routing Rules Models
+class RoutingRuleSet(models.Model):
+    """
+    Collection of routing rules with metadata.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    # A/B testing support
+    ab_test_enabled = models.BooleanField(default=False)
+    ab_test_percentage = models.FloatField(
+        default=0.0, help_text="Percentage of jobs to apply this ruleset to (0-100)"
+    )
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name = "Routing Rule Set"
+        verbose_name_plural = "Routing Rule Sets"
+
+    def __str__(self):
+        return self.name
+
+    def clean(self):
+        """Validate the ruleset"""
+        from django.core.exceptions import ValidationError
+
+        if self.ab_test_enabled:
+            if not (0 <= self.ab_test_percentage <= 100):
+                raise ValidationError("A/B test percentage must be between 0 and 100")
+
+
+class RoutingRule(models.Model):
+    """
+    Individual routing rule with condition and target executor.
+    """
+
+    EXECUTOR_CHOICES = [
+        ("docker", "Docker"),
+        ("cloudrun", "Cloud Run"),
+        ("fargate", "AWS Fargate"),
+        ("mock", "Mock (Testing)"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    ruleset = models.ForeignKey(
+        RoutingRuleSet, on_delete=models.CASCADE, related_name="rules"
+    )
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+
+    # Rule definition
+    condition = models.TextField(
+        help_text="Python expression that evaluates to True/False"
+    )
+    target_executor = models.CharField(max_length=50, choices=EXECUTOR_CHOICES)
+    priority = models.IntegerField(
+        default=100, help_text="Lower numbers = higher priority"
+    )
+
+    # Rule metadata
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    # Statistics
+    execution_count = models.PositiveIntegerField(default=0)
+    success_count = models.PositiveIntegerField(default=0)
+    last_executed = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["priority", "created_at"]
+        unique_together = ["ruleset", "name"]
+        verbose_name = "Routing Rule"
+        verbose_name_plural = "Routing Rules"
+
+    def __str__(self):
+        return f"{self.ruleset.name}: {self.name}"
+
+    def clean(self):
+        """Validate the rule condition"""
+        from django.core.exceptions import ValidationError
+
+        if self.condition:
+            try:
+                from .routing.evaluator import (
+                    SafeExpressionError,
+                    SafeExpressionEvaluator,
+                )
+
+                evaluator = SafeExpressionEvaluator()
+                # Test with dummy context
+                dummy_context = {
+                    "memory_mb": 512,
+                    "cpu_cores": 1.0,
+                    "timeout_seconds": 600,
+                    "job_name": "test-job",
+                    "image": "test:latest",
+                }
+                evaluator.evaluate(self.condition, dummy_context)
+            except SafeExpressionError as e:
+                raise ValidationError(f"Invalid condition: {e}")
+
+    def evaluate(self, job) -> bool:
+        """
+        Evaluate this rule against a job.
+
+        Args:
+            job: ContainerJob to evaluate
+
+        Returns:
+            True if rule matches, False otherwise
+        """
+        if not self.is_active:
+            return False
+
+        try:
+            from django.utils import timezone as django_timezone
+
+            from .routing.evaluator import (
+                SafeExpressionError,
+                SafeExpressionEvaluator,
+                create_evaluation_context,
+            )
+
+            evaluator = SafeExpressionEvaluator()
+            context = create_evaluation_context(job)
+            result = evaluator.evaluate(self.condition, context)
+
+            # Update statistics
+            self.execution_count += 1
+            if result:
+                self.success_count += 1
+            self.last_executed = django_timezone.now()
+            self.save(
+                update_fields=["execution_count", "success_count", "last_executed"]
+            )
+
+            return result
+
+        except SafeExpressionError:
+            return False
+
+    @property
+    def success_rate(self) -> float:
+        """Calculate rule success rate"""
+        if self.execution_count == 0:
+            return 0.0
+        return (self.success_count / self.execution_count) * 100
+
+
+class RoutingDecision(models.Model):
+    """
+    Log of routing decisions for analysis and debugging.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    job_id = models.UUIDField()  # Reference to ContainerJob
+
+    # Decision details
+    selected_executor = models.CharField(max_length=50)
+    rule_used = models.ForeignKey(
+        RoutingRule, on_delete=models.SET_NULL, null=True, blank=True
+    )
+    ruleset_used = models.ForeignKey(
+        RoutingRuleSet, on_delete=models.SET_NULL, null=True, blank=True
+    )
+
+    # Context at decision time
+    decision_reason = models.TextField()
+    evaluated_rules = models.JSONField(default=list)  # List of rule IDs evaluated
+    job_context = models.JSONField(default=dict)  # Job context at decision time
+
+    # Metadata
+    timestamp = models.DateTimeField(auto_now_add=True)
+    execution_time_ms = models.FloatField(null=True, blank=True)
+
+    # A/B testing
+    is_ab_test = models.BooleanField(default=False)
+    ab_test_group = models.CharField(max_length=50, blank=True)
+
+    class Meta:
+        ordering = ["-timestamp"]
+        verbose_name = "Routing Decision"
+        verbose_name_plural = "Routing Decisions"
+        indexes = [
+            models.Index(fields=["job_id"]),
+            models.Index(fields=["selected_executor"]),
+            models.Index(fields=["timestamp"]),
+        ]
+
+    def __str__(self):
+        return f"Decision for job {self.job_id}: {self.selected_executor}"
+
+
+class RuleValidationResult(models.Model):
+    """
+    Results of rule validation tests.
+    """
+
+    rule = models.ForeignKey(RoutingRule, on_delete=models.CASCADE)
+    test_case = models.CharField(max_length=100)
+    expected_result = models.BooleanField()
+    actual_result = models.BooleanField()
+    passed = models.BooleanField()
+    error_message = models.TextField(blank=True)
+    tested_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-tested_at"]
+        verbose_name = "Rule Validation Result"
+        verbose_name_plural = "Rule Validation Results"
+
+    def __str__(self):
+        status = "PASS" if self.passed else "FAIL"
+        return f"{self.rule.name} - {self.test_case}: {status}"
+
+
+# Import cost tracking models
+# Import performance monitoring models
+
+# Import migration models to include them in migrations

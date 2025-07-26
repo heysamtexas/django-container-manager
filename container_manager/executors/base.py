@@ -6,7 +6,10 @@ enabling a pluggable architecture for different execution environments.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, Optional, Tuple
+
+if TYPE_CHECKING:
+    from ..models import ContainerJob
 
 
 class ContainerExecutor(ABC):
@@ -191,6 +194,94 @@ class ContainerExecutor(ABC):
                 job.estimated_cost = cost
         """
         return None
+
+    def start_cost_tracking(self, job: "ContainerJob") -> None:
+        """
+        Start cost tracking for a job.
+
+        Args:
+            job: ContainerJob to start tracking for
+        """
+        try:
+            from ..cost.tracker import CostTracker
+
+            tracker = CostTracker()
+            tracker.start_job_tracking(job)
+        except Exception as e:
+            # Cost tracking is optional - don't fail job execution
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to start cost tracking for job {job.id}: {e}")
+
+    def update_resource_usage(
+        self,
+        job: "ContainerJob",
+        cpu_cores: float = 0.0,
+        memory_mb: float = 0.0,
+        storage_mb: float = 0.0,
+        network_in_mb: float = 0.0,
+        network_out_mb: float = 0.0,
+        collection_method: str = "estimated",
+    ) -> None:
+        """
+        Update resource usage for a running job.
+
+        Args:
+            job: ContainerJob being tracked
+            cpu_cores: Current CPU cores used
+            memory_mb: Current memory MB used
+            storage_mb: Current storage MB used
+            network_in_mb: Network MB received
+            network_out_mb: Network MB sent
+            collection_method: How metrics were collected
+        """
+        try:
+            from ..cost.tracker import CostTracker
+
+            tracker = CostTracker()
+            tracker.update_resource_usage(
+                job,
+                cpu_cores,
+                memory_mb,
+                storage_mb,
+                network_in_mb,
+                network_out_mb,
+                collection_method,
+            )
+        except Exception as e:
+            # Cost tracking is optional - don't fail job execution
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to update resource usage for job {job.id}: {e}")
+
+    def finalize_cost_tracking(self, job: "ContainerJob") -> None:
+        """
+        Finalize cost tracking for a completed job.
+
+        Args:
+            job: Completed ContainerJob
+        """
+        try:
+            from ..cost.tracker import CostTracker
+
+            tracker = CostTracker()
+            cost_record = tracker.finalize_job_cost(job)
+            if cost_record:
+                import logging
+
+                logger = logging.getLogger(__name__)
+                logger.info(
+                    f"Finalized cost tracking for job {job.id}: "
+                    f"{cost_record.total_cost} {cost_record.currency}"
+                )
+        except Exception as e:
+            # Cost tracking is optional - don't fail job execution
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to finalize cost tracking for job {job.id}: {e}")
 
     def get_health_status(self) -> Dict[str, any]:
         """

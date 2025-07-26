@@ -1,6 +1,124 @@
 # Configuration Reference
 
-This document covers all configuration options for Django Docker Container Manager.
+Complete configuration reference for Django Multi-Executor Container Manager, covering all configuration options for multi-cloud deployment, routing, cost tracking, and performance monitoring.
+
+## Table of Contents
+
+- [Environment Variables](#environment-variables)
+- [Django Settings](#django-settings)
+- [Docker Host Configuration](#docker-host-configuration)
+- [Cloud Provider Configuration](#cloud-provider-configuration)
+- [Routing Rules](#routing-rules)
+- [Cost Profiles](#cost-profiles)
+- [Performance Settings](#performance-settings)
+- [Security Configuration](#security-configuration)
+
+## Environment Variables
+
+### Core Django Settings
+
+```bash
+# Required
+DJANGO_SETTINGS_MODULE=django_docker_manager.settings
+SECRET_KEY=your-super-secret-key-here
+
+# Database
+DATABASE_URL=postgresql://user:password@host:port/dbname
+# Alternative SQLite for development
+# DATABASE_URL=sqlite:///db.sqlite3
+
+# Debug and Environment
+DEBUG=False  # Never True in production
+ALLOWED_HOSTS=localhost,127.0.0.1,your-domain.com
+
+# Time Zone
+TIME_ZONE=UTC
+USE_TZ=True
+```
+
+### Multi-Cloud Provider Configuration
+
+#### Google Cloud Platform
+
+```bash
+# Required for Cloud Run executor
+GOOGLE_CLOUD_PROJECT=your-project-id
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account-key.json
+
+# Optional: Custom Cloud Run settings
+GCP_DEFAULT_REGION=us-central1
+GCP_MAX_INSTANCES=1000
+GCP_MIN_INSTANCES=0
+GCP_CONCURRENCY=80
+GCP_TIMEOUT=3600
+```
+
+#### AWS (Future Support)
+
+```bash
+# AWS Fargate configuration
+AWS_ACCESS_KEY_ID=your-access-key
+AWS_SECRET_ACCESS_KEY=your-secret-key
+AWS_DEFAULT_REGION=us-east-1
+AWS_SESSION_TOKEN=optional-session-token
+
+# ECS/Fargate specific
+AWS_ECS_CLUSTER_NAME=container-manager
+AWS_ECS_TASK_DEFINITION_FAMILY=container-jobs
+AWS_VPC_SUBNET_IDS=subnet-12345,subnet-67890
+AWS_SECURITY_GROUP_IDS=sg-abcdef
+```
+
+#### Microsoft Azure (Future Support)
+
+```bash
+# Azure Container Instances configuration
+AZURE_SUBSCRIPTION_ID=your-subscription-id
+AZURE_CLIENT_ID=your-client-id
+AZURE_CLIENT_SECRET=your-client-secret
+AZURE_TENANT_ID=your-tenant-id
+
+# ACI specific
+AZURE_RESOURCE_GROUP=container-manager-rg
+AZURE_LOCATION=eastus
+AZURE_DNS_NAME_LABEL=container-manager
+```
+
+### Feature Toggles
+
+```bash
+# Performance tracking
+PERFORMANCE_TRACKING_ENABLED=True
+PERFORMANCE_METRICS_RETENTION_DAYS=90
+
+# Cost tracking
+COST_TRACKING_ENABLED=True
+COST_CALCULATION_METHOD=profile_based  # profile_based, api_metered, estimated
+
+# Migration tools
+MIGRATION_ENABLED=True
+MIGRATION_MAX_CONCURRENT=5
+MIGRATION_DEFAULT_STRATEGY=gradual
+
+# Security features
+AUDIT_LOGGING_ENABLED=True
+AUDIT_LOG_LEVEL=INFO
+EXECUTOR_HEALTH_CHECK_ENABLED=True
+HEALTH_CHECK_INTERVAL_SECONDS=30
+```
+
+### Redis Configuration
+
+```bash
+# For real-time features and channels
+REDIS_URL=redis://localhost:6379/0
+REDIS_SSL_CERT_REQS=none  # For SSL connections
+
+# Channel layer settings
+CHANNEL_LAYER_HOST=localhost
+CHANNEL_LAYER_PORT=6379
+CHANNEL_LAYER_PREFIX=container_manager
+```
 
 ## Django Settings
 
@@ -19,7 +137,51 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'channels',                # WebSocket support
     'container_manager',       # Core application
+    'container_manager.cost',
+    'container_manager.performance',
+    'container_manager.migration',
 ]
+
+# Container Manager specific settings
+CONTAINER_MANAGER = {
+    # Executor settings
+    'EXECUTOR_TIMEOUT_SECONDS': 3600,
+    'MAX_CONCURRENT_JOBS_PER_HOST': 50,
+    'DEFAULT_MEMORY_LIMIT_MB': 512,
+    'DEFAULT_CPU_LIMIT': 1.0,
+    
+    # Job processing
+    'JOB_POLL_INTERVAL_SECONDS': 5,
+    'JOB_CLEANUP_RETENTION_HOURS': 72,
+    'MAX_LOG_SIZE_MB': 100,
+    
+    # Routing
+    'ROUTING_ENABLED': True,
+    'ROUTING_FALLBACK_EXECUTOR': 'docker',
+    'ROUTING_CACHE_TTL_SECONDS': 300,
+    
+    # Performance
+    'PERFORMANCE_TRACKING_ENABLED': True,
+    'PERFORMANCE_METRICS_BATCH_SIZE': 100,
+    'PERFORMANCE_ALERT_THRESHOLDS': {
+        'slow_launch_threshold_ms': 10000,
+        'high_cpu_threshold_percent': 80,
+        'high_memory_threshold_mb': 1024,
+        'high_failure_rate_percent': 10,
+    },
+    
+    # Cost tracking
+    'COST_TRACKING_ENABLED': True,
+    'COST_UPDATE_INTERVAL_SECONDS': 60,
+    'COST_RETENTION_DAYS': 90,
+    'DEFAULT_CURRENCY': 'USD',
+    
+    # Migration
+    'MIGRATION_BATCH_SIZE': 10,
+    'MIGRATION_BATCH_INTERVAL_SECONDS': 60,
+    'MIGRATION_MAX_FAILURE_RATE': 5.0,
+    'MIGRATION_ROLLBACK_ENABLED': True,
+}
 
 # ASGI application for WebSocket support
 ASGI_APPLICATION = 'django_docker_manager.asgi.application'
@@ -114,6 +276,417 @@ For secure remote connections:
 ├── ca.pem          # Certificate Authority
 ├── cert.pem        # Client certificate
 └── key.pem         # Client private key
+```
+
+## Cloud Provider Configuration
+
+### Google Cloud Run
+
+```python
+{
+    "name": "gcp-cloudrun-us-central1",
+    "host_type": "tcp",
+    "connection_string": "https://run.googleapis.com",
+    "executor_type": "cloudrun",
+    "is_active": True,
+    "max_concurrent_jobs": 1000,
+    "executor_config": {
+        "project_id": "your-project-id",
+        "region": "us-central1",
+        "service_account": "container-manager@your-project.iam.gserviceaccount.com",
+        
+        # Resource limits
+        "memory_limit": 2048,  # MB
+        "cpu_limit": 2.0,      # cores
+        "timeout_seconds": 3600,
+        
+        # Scaling
+        "min_instances": 0,
+        "max_instances": 100,
+        "concurrency": 80,
+        
+        # Networking
+        "vpc_connector": "projects/your-project/locations/us-central1/connectors/default",
+        "ingress": "internal",
+        
+        # Environment
+        "env_vars": {
+            "ENVIRONMENT": "production",
+            "LOG_LEVEL": "INFO"
+        },
+        
+        # Security
+        "allow_unauthenticated": False,
+        "execution_environment": "gen2"
+    }
+}
+```
+
+### AWS Fargate (Future)
+
+```python
+{
+    "name": "aws-fargate-us-east-1",
+    "host_type": "tcp", 
+    "connection_string": "https://ecs.us-east-1.amazonaws.com",
+    "executor_type": "fargate",
+    "is_active": True,
+    "max_concurrent_jobs": 500,
+    "executor_config": {
+        "region": "us-east-1",
+        "cluster_name": "container-manager",
+        "task_definition_family": "container-jobs",
+        
+        # Network configuration
+        "subnet_ids": ["subnet-12345", "subnet-67890"],
+        "security_group_ids": ["sg-abcdef"],
+        "assign_public_ip": "ENABLED",
+        
+        # Resources
+        "cpu": 256,        # CPU units (256 = 0.25 vCPU)
+        "memory": 512,     # MB
+        "platform_version": "LATEST",
+        
+        # IAM
+        "task_role_arn": "arn:aws:iam::123456789012:role/TaskRole",
+        "execution_role_arn": "arn:aws:iam::123456789012:role/ExecutionRole",
+        
+        # Logging
+        "log_driver": "awslogs",
+        "log_options": {
+            "awslogs-group": "/ecs/container-jobs",
+            "awslogs-region": "us-east-1",
+            "awslogs-stream-prefix": "ecs"
+        }
+    }
+}
+```
+
+### Azure Container Instances (Future)
+
+```python
+{
+    "name": "azure-aci-east-us",
+    "host_type": "tcp",
+    "connection_string": "https://management.azure.com",
+    "executor_type": "azure",
+    "is_active": True,
+    "max_concurrent_jobs": 200,
+    "executor_config": {
+        "subscription_id": "your-subscription-id",
+        "resource_group": "container-manager-rg",
+        "location": "eastus",
+        
+        # Resources
+        "cpu": 1.0,
+        "memory": 1.5,  # GB
+        "os_type": "Linux",
+        "restart_policy": "Never",
+        
+        # Networking
+        "dns_name_label": "container-manager",
+        "ip_address_type": "Public",
+        "ports": [{"port": 80, "protocol": "TCP"}],
+        
+        # Environment
+        "environment_variables": {
+            "ENVIRONMENT": "production"
+        },
+        
+        # Security
+        "identity": {
+            "type": "SystemAssigned"
+        }
+    }
+}
+```
+
+## Routing Rules
+
+### Basic Routing Configuration
+
+```python
+# Create routing ruleset
+{
+    "name": "production-routing",
+    "description": "Production routing rules for optimal performance and cost",
+    "is_active": True,
+    "rules": [
+        {
+            "name": "small-jobs-docker",
+            "condition": "memory_mb <= 512 and timeout_seconds <= 300",
+            "target_executor": "docker",
+            "priority": 10,
+            "description": "Route small, quick jobs to Docker for cost efficiency"
+        },
+        {
+            "name": "large-jobs-cloudrun",
+            "condition": "memory_mb > 512 or timeout_seconds > 300",
+            "target_executor": "cloudrun", 
+            "priority": 20,
+            "description": "Route large or long-running jobs to Cloud Run for auto-scaling"
+        },
+        {
+            "name": "urgent-jobs-fastest",
+            "condition": "job_name.startswith('urgent_') or job_name.startswith('priority_')",
+            "target_executor": "cloudrun",
+            "priority": 5,
+            "description": "Route urgent jobs to fastest available executor"
+        }
+    ]
+}
+```
+
+### Advanced Routing Rules
+
+#### Cost-Aware Routing
+
+```python
+{
+    "name": "cost-optimization",
+    "condition": "estimated_cost < 0.05 and not job_name.startswith('urgent_')",
+    "target_executor": "docker",
+    "priority": 15,
+    "description": "Use Docker for jobs under 5 cents"
+}
+```
+
+#### Geographic Routing
+
+```python
+{
+    "name": "us-traffic",
+    "condition": "'region=us' in override_environment or 'datacenter=us' in job_name",
+    "target_executor": "gcp-cloudrun-us-central1",
+    "priority": 8
+}
+```
+
+### Routing Condition Syntax
+
+Available variables in routing conditions:
+
+```python
+# Job properties
+memory_mb          # Memory limit in MB
+cpu_cores          # CPU core limit
+timeout_seconds    # Timeout in seconds
+estimated_cost     # Estimated job cost
+job_name          # Job name
+template_name     # Template name
+
+# Environment variables
+override_environment  # JSON string of environment overrides
+
+# Time-based
+hour_of_day       # 0-23
+day_of_week       # 0-6 (Monday=0)
+is_weekend        # Boolean
+
+# Host properties  
+available_hosts   # List of available host names
+host_load         # Current load percentage
+
+# String operations
+startswith(), endswith(), contains(), in
+
+# Comparison operators
+==, !=, <, <=, >, >=, and, or, not, in
+
+# Examples
+"memory_mb > 1024 and timeout_seconds < 3600"
+"'gpu=true' in override_environment"
+"hour_of_day >= 9 and hour_of_day <= 17"  # Business hours
+"estimated_cost < 0.10 and not is_weekend"
+```
+
+## Cost Profiles
+
+### Docker Cost Profile
+
+```python
+{
+    "name": "docker-local-free",
+    "executor_type": "docker",
+    "region": "local",
+    "cpu_cost_per_core_hour": 0.000000,
+    "memory_cost_per_gb_hour": 0.000000,
+    "storage_cost_per_gb_hour": 0.000000,
+    "network_cost_per_gb": 0.000000,
+    "request_cost": 0.000000,
+    "startup_cost": 0.000000,
+    "currency": "USD",
+    "is_active": True
+}
+```
+
+### Cloud Run Cost Profile
+
+```python
+{
+    "name": "cloudrun-us-central1-standard",
+    "executor_type": "cloudrun",
+    "region": "us-central1", 
+    "cpu_cost_per_core_hour": 0.000024,   # $0.000024 per vCPU/hour
+    "memory_cost_per_gb_hour": 0.0000025, # $0.0000025 per GB/hour
+    "storage_cost_per_gb_hour": 0.000000, # No persistent storage cost
+    "network_cost_per_gb": 0.12,          # $0.12 per GB egress
+    "request_cost": 0.0000004,             # $0.0000004 per request
+    "startup_cost": 0.000000,              # No startup cost
+    "currency": "USD",
+    "is_active": True
+}
+```
+
+## Performance Settings
+
+### Performance Tracking Configuration
+
+```python
+PERFORMANCE_SETTINGS = {
+    'TRACKING_ENABLED': True,
+    'METRICS_RETENTION_DAYS': 90,
+    'BATCH_SIZE': 100,
+    'UPDATE_INTERVAL_SECONDS': 60,
+    
+    # Alert thresholds
+    'ALERT_THRESHOLDS': {
+        'slow_launch_threshold_ms': 10000,
+        'high_cpu_threshold_percent': 80,
+        'high_memory_threshold_mb': 1024,
+        'high_failure_rate_percent': 10,
+        'high_cost_threshold_usd': 1.00,
+    },
+    
+    # Metrics to collect
+    'COLLECT_METRICS': [
+        'launch_time',
+        'execution_duration', 
+        'memory_usage',
+        'cpu_usage',
+        'network_io',
+        'cost_breakdown',
+    ],
+    
+    # Performance optimization
+    'AUTO_OPTIMIZATION_ENABLED': True,
+    'OPTIMIZATION_RULES': {
+        'prefer_faster_executor_if_cost_similar': True,
+        'suggest_resource_adjustments': True,
+        'detect_resource_waste': True,
+    }
+}
+```
+
+### Executor Health Check Settings
+
+```python
+HEALTH_CHECK_SETTINGS = {
+    'ENABLED': True,
+    'INTERVAL_SECONDS': 30,
+    'TIMEOUT_SECONDS': 10,
+    'MAX_FAILURES': 3,
+    'FAILURE_RESET_HOURS': 1,
+    
+    # Health check methods per executor type
+    'METHODS': {
+        'docker': 'docker_ping',
+        'cloudrun': 'gcp_api_check',
+        'fargate': 'aws_api_check',
+        'azure': 'azure_api_check',
+    },
+    
+    # Actions on health check failure
+    'FAILURE_ACTIONS': {
+        'disable_executor': True,
+        'send_alert': True,
+        'trigger_failover': True,
+    }
+}
+```
+
+## Security Configuration
+
+### Authentication and Authorization
+
+```python
+# Service account configurations per cloud provider
+
+# Google Cloud
+GCP_SERVICE_ACCOUNT = {
+    'type': 'service_account',
+    'project_id': 'your-project-id',
+    'private_key_id': 'key-id',
+    'private_key': '-----BEGIN PRIVATE KEY-----\n...',
+    'client_email': 'container-manager@your-project.iam.gserviceaccount.com',
+    'client_id': 'client-id',
+    'auth_uri': 'https://accounts.google.com/o/oauth2/auth',
+    'token_uri': 'https://oauth2.googleapis.com/token',
+}
+
+# Required IAM roles for GCP service account:
+# - roles/run.admin
+# - roles/logging.viewer
+# - roles/monitoring.viewer
+```
+
+### Network Security
+
+```python
+NETWORK_SECURITY = {
+    # Container networking
+    'DOCKER_NETWORK_ISOLATION': True,
+    'CUSTOM_NETWORKS_ONLY': True,
+    'BRIDGE_ACCESS_RESTRICTED': True,
+    
+    # Cloud provider network settings
+    'VPC_CONNECTOR_REQUIRED': True,
+    'PRIVATE_IP_ONLY': False,
+    'INGRESS_CONTROL': 'internal',
+    
+    # Firewall rules
+    'ALLOWED_PORTS': [80, 443, 8080],
+    'EGRESS_RESTRICTIONS': {
+        'block_private_ips': False,
+        'allowed_domains': ['*.googleapis.com', '*.docker.io'],
+    }
+}
+```
+
+### Secret Management
+
+```python
+SECRET_MANAGEMENT = {
+    'ENVIRONMENT_VARIABLE_ENCRYPTION': True,
+    'SECRET_MASKING_IN_LOGS': True,
+    'SECRET_PATTERNS': [
+        r'.*_SECRET.*',
+        r'.*_PASSWORD.*', 
+        r'.*_KEY.*',
+        r'.*_TOKEN.*',
+    ],
+    
+    # External secret stores
+    'SECRET_PROVIDERS': {
+        'hashicorp_vault': {
+            'enabled': False,
+            'url': 'https://vault.example.com',
+            'auth_method': 'kubernetes',
+        },
+        'aws_secrets_manager': {
+            'enabled': False,
+            'region': 'us-east-1',
+        },
+        'azure_key_vault': {
+            'enabled': False,
+            'vault_url': 'https://vault.vault.azure.net/',
+        },
+        'gcp_secret_manager': {
+            'enabled': False,
+            'project_id': 'your-project-id',
+        }
+    }
+}
 ```
 
 ## Container Template Configuration
@@ -552,7 +1125,41 @@ volumes:
   redis_data:
 ```
 
-## Validation
+## Configuration Validation
+
+### Validation Commands
+
+```bash
+# Validate complete configuration
+uv run python manage.py validate_config
+
+# Validate specific components
+uv run python manage.py validate_config --component=executors
+uv run python manage.py validate_config --component=routing
+uv run python manage.py validate_config --component=cost_profiles
+
+# Test all executor connections
+uv run python manage.py test_connections --all
+
+# Validate routing rules
+uv run python manage.py validate_routing --verbose
+
+# Check performance settings
+uv run python manage.py check_performance_config
+```
+
+### Configuration Export/Import
+
+```bash
+# Export current configuration
+uv run python manage.py export_config --format=yaml --output=config.yaml
+
+# Import configuration
+uv run python manage.py import_config --file=config.yaml --validate
+
+# Backup configuration
+uv run python manage.py backup_config --include-secrets --output=backup.json
+```
 
 ### Configuration Testing
 ```bash
@@ -574,5 +1181,7 @@ for host in DockerHost.objects.filter(is_active=True):
         print(f'{host.name}: Failed - {e}')
 "
 ```
+
+This comprehensive configuration reference covers all major aspects of the Django Multi-Executor Container Manager. Refer to specific sections for detailed setup instructions for your environment.
 
 For deployment-specific configuration, see the [Deployment Guide](deployment.md).
