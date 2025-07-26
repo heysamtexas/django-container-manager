@@ -12,15 +12,10 @@ from .models import (
     ContainerJob,
     ContainerTemplate,
     DockerHost,
-    EnvironmentVariable,
     NetworkAssignment,
 )
 
 
-class EnvironmentVariableInline(admin.TabularInline):
-    model = EnvironmentVariable
-    extra = 1
-    fields = ("key", "value", "is_secret")
 
 
 class NetworkAssignmentInline(admin.TabularInline):
@@ -122,7 +117,7 @@ class ContainerTemplateAdmin(admin.ModelAdmin):
     search_fields = ("name", "docker_image", "description")
     readonly_fields = ("created_at", "updated_at")
 
-    inlines = [EnvironmentVariableInline, NetworkAssignmentInline]
+    inlines = [NetworkAssignmentInline]
 
     fieldsets = (
         (

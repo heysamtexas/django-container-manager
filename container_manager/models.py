@@ -174,47 +174,14 @@ class ContainerTemplate(models.Model):
     
     def get_all_environment_variables(self):
         """
-        Get environment variables from both the new text field and legacy EnvironmentVariable objects.
-        The text field takes precedence over individual objects for the same key.
+        Get environment variables from the text field.
         
         Returns:
-            dict: Combined environment variables
+            dict: Environment variables as key-value pairs
         """
-        # Start with legacy environment variables
-        env_vars = {}
-        if hasattr(self, 'environment_variables'):
-            for env_var in self.environment_variables.all():
-                env_vars[env_var.key] = env_var.value
-        
-        # Override with text field variables (takes precedence)
-        env_vars.update(self.get_environment_variables_dict())
-        
-        return env_vars
+        return self.get_environment_variables_dict()
 
 
-class EnvironmentVariable(models.Model):
-    """Environment variables for container templates"""
-
-    template = models.ForeignKey(
-        ContainerTemplate,
-        related_name="environment_variables",
-        on_delete=models.CASCADE,
-    )
-    key = models.CharField(max_length=200)
-    value = models.TextField()
-    is_secret = models.BooleanField(
-        default=False, help_text="Mark as secret to hide value in logs"
-    )
-
-    class Meta:
-        verbose_name = "Environment Variable"
-        verbose_name_plural = "Environment Variables"
-        unique_together = ["template", "key"]
-
-    def __str__(self):
-        if self.is_secret:
-            return f"{self.key}=***"
-        return f"{self.key}={self.value[:50]}..."
 
 
 class NetworkAssignment(models.Model):
