@@ -1,0 +1,254 @@
+{% extends "admin/change_list.html" %}
+{% load static %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+.job-actions-column {
+    min-width: 150px;
+}
+
+.status-badge {
+    display: inline-block;
+    padding: 0.25em 0.6em;
+    font-size: 0.75em;
+    font-weight: 700;
+    line-height: 1;
+    text-align: center;
+    white-space: nowrap;
+    vertical-align: baseline;
+    border-radius: 0.25rem;
+}
+
+.status-pending { color: #664d03; background-color: #fff3cd; }
+.status-running { color: #055160; background-color: #cff4fc; }
+.status-completed { color: #0f5132; background-color: #d1e7dd; }
+.status-failed { color: #842029; background-color: #f8d7da; }
+.status-timeout { color: #664d03; background-color: #fcf8e3; }
+.status-cancelled { color: #495057; background-color: #e9ecef; }
+</style>
+{% endblock %}
+
+{% block result_list %}
+{{ block.super }}
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Add action buttons to each job row
+    const jobRows = document.querySelectorAll('#result_list tbody tr');
+    
+    jobRows.forEach(function(row) {
+        const actionCell = row.querySelector('td.action-checkbox');
+        const jobId = getJobIdFromCheckbox(actionCell);
+        
+        if (jobId) {
+            addJobActionButtons(row, jobId);
+        }
+    });
+    
+    // Setup HTMX triggers for real-time updates
+    setupRealtimeUpdates();
+});
+
+function getJobIdFromCheckbox(actionCell) {
+    const checkbox = actionCell.querySelector('input[type="checkbox"]');
+    return checkbox ? checkbox.value : null;
+}
+
+function addJobActionButtons(row, jobId) {
+    const statusCell = row.querySelector('.field-status');
+    const status = statusCell ? statusCell.textContent.trim().toLowerCase() : '';
+    
+    // Create actions cell
+    const actionsCell = document.createElement('td');
+    actionsCell.className = 'job-actions-column';
+    
+    let buttonsHtml = '<div class="btn-group btn-group-sm" role="group">';
+    
+    // Add appropriate action buttons based on status
+    if (status === 'pending') {
+        buttonsHtml += `
+            <button type="button" class="btn btn-success btn-sm" 
+                    onclick="executeJobAction('${jobId}', 'start')"
+                    data-bs-toggle="tooltip" title="Start Job">
+                <i class="fas fa-play"></i>
+            </button>
+        `;
+    }
+    
+    if (status === 'running') {
+        buttonsHtml += `
+            <button type="button" class="btn btn-warning btn-sm" 
+                    onclick="executeJobAction('${jobId}', 'stop')"
+                    data-bs-toggle="tooltip" title="Stop Job">
+                <i class="fas fa-stop"></i>
+            </button>
+        `;
+    }
+    
+    if (['completed', 'failed', 'running'].includes(status)) {
+        buttonsHtml += `
+            <button type="button" class="btn btn-info btn-sm" 
+                    onclick="viewJobLogs('${jobId}')"
+                    data-bs-toggle="tooltip" title="View Logs">
+                <i class="fas fa-file-alt"></i>
+            </button>
+        `;
+    }
+    
+    if (['running', 'completed', 'failed'].includes(status)) {
+        buttonsHtml += `
+            <button type="button" class="btn btn-secondary btn-sm" 
+                    onclick="executeJobAction('${jobId}', 'restart')"
+                    data-bs-toggle="tooltip" title="Restart Job">
+                <i class="fas fa-redo"></i>
+            </button>
+        `;
+    }
+    
+    if (['pending', 'running'].includes(status)) {
+        buttonsHtml += `
+            <button type="button" class="btn btn-danger btn-sm" 
+                    onclick="executeJobAction('${jobId}', 'cancel')"
+                    data-bs-toggle="tooltip" title="Cancel Job">
+                <i class="fas fa-times"></i>
+            </button>
+        `;
+    }
+    
+    buttonsHtml += '</div>';
+    actionsCell.innerHTML = buttonsHtml;
+    
+    // Add the actions cell to the row
+    row.appendChild(actionsCell);
+    
+    // Initialize tooltips for the new buttons
+    const tooltips = actionsCell.querySelectorAll('[data-bs-toggle="tooltip"]');
+    tooltips.forEach(function(tooltip) {
+        new bootstrap.Tooltip(tooltip);
+    });
+}
+
+function setupRealtimeUpdates() {
+    // Auto-refresh job statuses every 30 seconds
+    setInterval(function() {
+        const statusCells = document.querySelectorAll('.field-status');
+        statusCells.forEach(function(cell) {
+            const row = cell.closest('tr');
+            const jobId = getJobIdFromCheckbox(row.querySelector('.action-checkbox'));
+            
+            if (jobId) {
+                // Use HTMX to update the status
+                htmx.ajax('GET', `${jobId}/status/`, {
+                    target: cell,
+                    swap: 'innerHTML'
+                }).then(function() {
+                    // Update action buttons after status change
+                    updateActionButtons(row, jobId);
+                });
+            }
+        });
+    }, 30000);
+}
+
+function updateActionButtons(row, jobId) {
+    const actionsCell = row.querySelector('.job-actions-column');
+    if (actionsCell) {
+        actionsCell.remove();
+        addJobActionButtons(row, jobId);
+    }
+}
+
+function executeJobAction(jobId, action) {
+    const actionUrl = `/admin/container_manager/containerjob/${jobId}/action/${action}/`;
+    
+    // Show loading state
+    const button = event.target.closest('button');
+    const originalContent = button.innerHTML;
+    button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span>';
+    button.disabled = true;
+    
+    // Execute action via HTMX
+    htmx.ajax('POST', actionUrl, {
+        headers: {
+            'X-CSRFToken': getCsrfToken()
+        }
+    }).then(function(response) {
+        // Restore button state
+        button.innerHTML = originalContent;
+        button.disabled = false;
+        
+        // Show success message
+        showMessage('success', `Job ${action} executed successfully`);
+        
+        // Refresh the page after a short delay
+        setTimeout(function() {
+            window.location.reload();
+        }, 1000);
+        
+    }).catch(function(error) {
+        // Restore button state
+        button.innerHTML = originalContent;
+        button.disabled = false;
+        
+        // Show error message
+        showMessage('error', `Failed to ${action} job: ${error.message}`);
+    });
+}
+
+function viewJobLogs(jobId) {
+    // Open logs modal
+    if (window.ContainerManager && window.ContainerManager.openLogsModal) {
+        window.ContainerManager.openLogsModal(jobId);
+    } else {
+        // Fallback to direct navigation
+        window.open(`/admin/container_manager/containerjob/${jobId}/logs/`, '_blank');
+    }
+}
+
+function showMessage(type, message) {
+    const alertClass = type === 'success' ? 'alert-success' : 'alert-danger';
+    const alertHtml = `
+        <div class="alert ${alertClass} alert-dismissible fade show" role="alert">
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    
+    const container = document.querySelector('.messagelist') || document.querySelector('#content');
+    container.insertAdjacentHTML('afterbegin', alertHtml);
+    
+    // Auto-dismiss after 5 seconds
+    setTimeout(function() {
+        const alert = container.querySelector('.alert');
+        if (alert) {
+            const bsAlert = new bootstrap.Alert(alert);
+            bsAlert.close();
+        }
+    }, 5000);
+}
+
+function getCsrfToken() {
+    return document.querySelector('[name=csrfmiddlewaretoken]').value;
+}
+</script>
+
+{% endblock %}
+
+{% block pagination %}
+<div class="d-flex justify-content-between align-items-center mt-3">
+    <div>
+        {% if cl.result_count %}
+            <small class="text-muted">
+                Showing {{ cl.paginator.count }} job{{ cl.paginator.count|pluralize }}
+                {% if cl.formset.total_error_count %}
+                    ({{ cl.formset.total_error_count }} error{{ cl.formset.total_error_count|pluralize }})
+                {% endif %}
+            </small>
+        {% endif %}
+    </div>
+    <div>
+        {{ block.super }}
+    </div>
+</div>
+{% endblock %}

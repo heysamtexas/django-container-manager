@@ -1,0 +1,243 @@
+/* Container Manager Admin Styles */
+
+/* Dashboard improvements */
+.dashboard .module table th {
+    background-color: #f8f9fa;
+    font-weight: 600;
+}
+
+/* Job status badges */
+.job-status {
+    display: inline-block;
+    padding: 0.25em 0.6em;
+    font-size: 0.75em;
+    font-weight: 700;
+    line-height: 1;
+    text-align: center;
+    white-space: nowrap;
+    vertical-align: baseline;
+    border-radius: 0.25rem;
+}
+
+.job-status-pending {
+    color: #664d03;
+    background-color: #fff3cd;
+}
+
+.job-status-running {
+    color: #055160;
+    background-color: #cff4fc;
+}
+
+.job-status-completed {
+    color: #0f5132;
+    background-color: #d1e7dd;
+}
+
+.job-status-failed {
+    color: #842029;
+    background-color: #f8d7da;
+}
+
+.job-status-timeout {
+    color: #664d03;
+    background-color: #fcf8e3;
+}
+
+.job-status-cancelled {
+    color: #495057;
+    background-color: #e9ecef;
+}
+
+/* Action buttons */
+.admin-actions .btn-group {
+    margin-right: 10px;
+    margin-bottom: 5px;
+}
+
+.admin-actions .btn {
+    font-size: 0.875rem;
+    padding: 0.375rem 0.75rem;
+}
+
+/* Connection status indicators */
+.connection-status {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.connection-status .indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.connection-status .indicator.connected {
+    background-color: #28a745;
+}
+
+.connection-status .indicator.failed {
+    background-color: #dc3545;
+}
+
+.connection-status .indicator.inactive {
+    background-color: #6c757d;
+}
+
+/* Form improvements */
+.form-row .field-box {
+    margin-bottom: 1rem;
+}
+
+.form-row .field-box label {
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+
+/* Inline forms styling */
+.inline-related {
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    margin-bottom: 1rem;
+    padding: 1rem;
+    background-color: #f8f9fa;
+}
+
+.inline-related h3 {
+    color: #495057;
+    font-size: 1.1rem;
+    margin-bottom: 0.75rem;
+    border-bottom: 1px solid #dee2e6;
+    padding-bottom: 0.5rem;
+}
+
+/* Table improvements */
+.results table {
+    border-collapse: separate;
+    border-spacing: 0;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+}
+
+.results table th,
+.results table td {
+    border-bottom: 1px solid #dee2e6;
+    padding: 0.75rem;
+}
+
+.results table th {
+    background-color: #f8f9fa;
+    font-weight: 600;
+    border-bottom: 2px solid #dee2e6;
+}
+
+.results table tbody tr:hover {
+    background-color: #f5f5f5;
+}
+
+/* Logs styling */
+.logs-viewer {
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+    font-family: 'Courier New', Monaco, monospace;
+    font-size: 0.875rem;
+    line-height: 1.4;
+    padding: 1rem;
+    border-radius: 0.375rem;
+    max-height: 500px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.logs-viewer .timestamp {
+    color: #569cd6;
+}
+
+.logs-viewer .error {
+    color: #f44747;
+}
+
+.logs-viewer .warning {
+    color: #ffcc02;
+}
+
+.logs-viewer .info {
+    color: #4fc1ff;
+}
+
+/* Resource usage displays */
+.resource-usage {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.resource-item {
+    flex: 1;
+    padding: 0.75rem;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    text-align: center;
+}
+
+.resource-item .value {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #495057;
+}
+
+.resource-item .label {
+    font-size: 0.875rem;
+    color: #6c757d;
+    margin-top: 0.25rem;
+}
+
+/* Progress bars */
+.progress {
+    height: 0.5rem;
+    background-color: #e9ecef;
+    border-radius: 0.25rem;
+    overflow: hidden;
+}
+
+.progress-bar {
+    height: 100%;
+    background-color: #0d6efd;
+    border-radius: 0.25rem;
+    transition: width 0.3s ease;
+}
+
+/* Responsive improvements */
+@media (max-width: 768px) {
+    .resource-usage {
+        flex-direction: column;
+    }
+    
+    .admin-actions .btn-group {
+        width: 100%;
+        margin-bottom: 0.5rem;
+    }
+    
+    .admin-actions .btn {
+        width: 100%;
+    }
+}
+
+/* Dark mode support (optional) */
+@media (prefers-color-scheme: dark) {
+    .logs-viewer {
+        background-color: #0d1117;
+        color: #c9d1d9;
+        border: 1px solid #30363d;
+    }
+    
+    .resource-item {
+        background-color: #21262d;
+        border-color: #30363d;
+        color: #c9d1d9;
+    }
+}
