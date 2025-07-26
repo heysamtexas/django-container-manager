@@ -1,0 +1,31 @@
+include README.md
+include LICENSE
+include CHANGELOG.md
+include pyproject.toml
+
+# Include all Python files
+recursive-include container_manager *.py
+
+# Include Django templates
+recursive-include container_manager/templates *
+
+# Include static files (CSS, JS, images)
+recursive-include container_manager/static *
+
+# Include Django migrations
+recursive-include container_manager/migrations *.py
+
+# Include locale files if they exist
+recursive-include container_manager/locale *.po *.mo
+
+# Exclude compiled Python files
+global-exclude *.pyc
+global-exclude __pycache__
+global-exclude *.pyo
+global-exclude *.egg-info
+global-exclude .DS_Store
+
+# Exclude test files from distribution
+global-exclude test_*.py
+global-exclude *_test.py
+global-exclude tests.py

@@ -101,9 +101,10 @@ class Command(BaseCommand):
         executor_type = options["executor_type"]
 
         # Determine if we should use the executor factory
+        from ...defaults import get_use_executor_factory
         factory_enabled = (
             use_factory
-            or getattr(settings, "USE_EXECUTOR_FACTORY", False)
+            or get_use_executor_factory()
             or executor_type is not None
         )
 

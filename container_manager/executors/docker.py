@@ -450,8 +450,8 @@ class DockerExecutor(ContainerExecutor):
             return docker_host.auto_pull_images
 
         # Fall back to global setting
-        container_settings = getattr(settings, "CONTAINER_MANAGER", {})
-        return container_settings.get("AUTO_PULL_IMAGES", True)
+        from ..defaults import get_container_manager_setting
+        return get_container_manager_setting("AUTO_PULL_IMAGES", True)
 
     def _collect_data(self, job: ContainerJob) -> None:
         """Collect execution logs and statistics"""
@@ -494,8 +494,8 @@ class DockerExecutor(ContainerExecutor):
 
     def _immediate_cleanup(self, job: ContainerJob) -> None:
         """Immediately cleanup container if configured"""
-        container_settings = getattr(settings, "CONTAINER_MANAGER", {})
-        immediate_cleanup = container_settings.get("IMMEDIATE_CLEANUP", True)
+        from ..defaults import get_container_manager_setting
+        immediate_cleanup = get_container_manager_setting("IMMEDIATE_CLEANUP", True)
 
         if immediate_cleanup and job.container_id:
             self.cleanup(job.container_id)
