@@ -87,7 +87,7 @@ class ContainerTemplateModelTest(TestCase):
         self.assertEqual(self.template.memory_limit, 512)
         self.assertEqual(self.template.cpu_limit, 1.0)
         self.assertEqual(self.template.timeout_seconds, 300)
-        self.assertTrue(self.template.auto_remove)
+        self.assertFalse(self.template.auto_remove)  # auto_remove defaults to False
 
     def test_template_str_representation(self):
         """Test string representation of ContainerTemplate"""
