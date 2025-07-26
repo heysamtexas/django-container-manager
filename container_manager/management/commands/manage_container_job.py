@@ -9,6 +9,7 @@ from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand, CommandError
 
 from container_manager.docker_service import docker_service
+from container_manager.executors.factory import executor_factory
 from container_manager.models import (
     ContainerExecution,
     ContainerJob,
@@ -33,6 +34,9 @@ class Command(BaseCommand):
         create_parser.add_argument("--command", help="Override command")
         create_parser.add_argument(
             "--env", action="append", help="Environment variables (KEY=VALUE format)"
+        )
+        create_parser.add_argument(
+            "--executor-type", help="Preferred executor type (docker, mock, etc.)"
         )
 
         # Run job subcommand
@@ -63,6 +67,12 @@ class Command(BaseCommand):
             help="Hours after which to cleanup (default: 24)",
         )
 
+        # Status subcommand
+        status_parser = subparsers.add_parser("status", help="Show executor status")
+        status_parser.add_argument(
+            "--capacity", action="store_true", help="Show capacity information"
+        )
+
     def handle(self, *args, **options):
         """Main command handler"""
         action = options["action"]
@@ -79,6 +89,8 @@ class Command(BaseCommand):
             self.handle_cancel(options)
         elif action == "cleanup":
             self.handle_cleanup(options)
+        elif action == "status":
+            self.handle_status(options)
 
     def handle_create(self, options):
         """Create a new container job"""
@@ -87,6 +99,7 @@ class Command(BaseCommand):
         job_name = options.get("name", "")
         override_command = options.get("command", "")
         env_vars = options.get("env", [])
+        executor_type = options.get("executor_type", "")
 
         try:
             template = ContainerTemplate.objects.get(name=template_name)
@@ -113,6 +126,7 @@ class Command(BaseCommand):
             name=job_name,
             override_command=override_command or "",
             override_environment=override_environment,
+            preferred_executor=executor_type or "",
             created_by=self.get_default_user(),
         )
 
@@ -142,14 +156,50 @@ class Command(BaseCommand):
         self.stdout.write(f"Running job {job.id}...")
 
         try:
-            success = docker_service.execute_job(job)
+            # Use executor factory for routing and execution
+            if not job.executor_type:
+                job.executor_type = executor_factory.route_job(job)
+                job.save()
+
+            executor = executor_factory.get_executor(job)
+
+            self.stdout.write(f"Using {job.executor_type} executor")
+            if job.routing_reason:
+                self.stdout.write(f"Routing reason: {job.routing_reason}")
+
+            # Launch and wait for completion
+            success, execution_id = executor.launch_job(job)
 
             if success:
+                job.set_execution_identifier(execution_id)
+                job.save()
+
                 self.stdout.write(
-                    self.style.SUCCESS(f"Job {job.id} completed successfully")
+                    f"Job launched as {execution_id}, waiting for completion..."
                 )
+
+                # Wait for completion (simple polling for now)
+                import time
+
+                while job.status == "running":
+                    time.sleep(1)
+                    job.refresh_from_db()
+
+                # Harvest results
+                harvest_success = executor.harvest_job(job)
+
+                if harvest_success and job.status == "completed":
+                    self.stdout.write(
+                        self.style.SUCCESS(f"Job {job.id} completed successfully")
+                    )
+                else:
+                    self.stdout.write(
+                        self.style.ERROR(f"Job {job.id} failed or timed out")
+                    )
             else:
-                self.stdout.write(self.style.ERROR(f"Job {job.id} failed or timed out"))
+                self.stdout.write(
+                    self.style.ERROR(f"Job {job.id} failed to launch: {execution_id}")
+                )
 
             # Refresh and show updated job
             job.refresh_from_db()
@@ -181,11 +231,11 @@ class Command(BaseCommand):
 
         # Display table header
         self.stdout.write("\nContainer Jobs:")
-        self.stdout.write("-" * 100)
+        self.stdout.write("-" * 120)
         self.stdout.write(
-            f"{'ID':<36} {'Name':<20} {'Status':<10} {'Host':<15} {'Created':<20}"
+            f"{'ID':<36} {'Name':<20} {'Status':<10} {'Executor':<10} {'Host':<15} {'Created':<20}"
         )
-        self.stdout.write("-" * 100)
+        self.stdout.write("-" * 120)
 
         # Display jobs
         for job in jobs:
@@ -193,13 +243,14 @@ class Command(BaseCommand):
             if len(name) > 19:
                 name = name[:16] + "..."
 
+            executor_type = job.executor_type or "docker"
             self.stdout.write(
-                f"{str(job.id):<36} {name:<20} {job.status:<10} "
+                f"{str(job.id):<36} {name:<20} {job.status:<10} {executor_type:<10} "
                 f"{job.docker_host.name:<15} "
                 f"{job.created_at.strftime('%Y-%m-%d %H:%M'):<20}"
             )
 
-        self.stdout.write("-" * 100)
+        self.stdout.write("-" * 120)
         self.stdout.write(f"Total: {len(jobs)} jobs")
 
     def handle_show(self, options):
@@ -263,9 +314,12 @@ class Command(BaseCommand):
         self.stdout.write(f"  Name: {job.name or job.template.name}")
         self.stdout.write(f"  Template: {job.template.name}")
         self.stdout.write(f"  Host: {job.docker_host.name}")
+        self.stdout.write(f"  Executor: {job.executor_type or 'docker'}")
         self.stdout.write(f"  Status: {job.status}")
         if job.duration:
             self.stdout.write(f"  Duration: {job.duration}")
+        if job.routing_reason:
+            self.stdout.write(f"  Routing reason: {job.routing_reason}")
 
     def show_job_details(self, job, show_logs=False):
         """Show detailed job information"""
@@ -278,11 +332,22 @@ class Command(BaseCommand):
             f"Template: {job.template.name} ({job.template.docker_image})"
         )
         self.stdout.write(f"Docker Host: {job.docker_host.name}")
+        self.stdout.write(f"Executor Type: {job.executor_type or 'docker'}")
         self.stdout.write(f"Status: {job.status}")
-        self.stdout.write(f"Container ID: {job.container_id or 'N/A'}")
+
+        # Show appropriate execution ID
+        execution_id = job.get_execution_identifier()
+        if job.executor_type == "docker" or not job.executor_type:
+            self.stdout.write(f"Container ID: {execution_id or 'N/A'}")
+        else:
+            self.stdout.write(f"Execution ID: {execution_id or 'N/A'}")
+
         self.stdout.write(
             f"Exit Code: {job.exit_code if job.exit_code is not None else 'N/A'}"
         )
+
+        if job.routing_reason:
+            self.stdout.write(f"Routing Reason: {job.routing_reason}")
 
         # Timestamps
         self.stdout.write(f"Created: {job.created_at}")
@@ -361,3 +426,79 @@ class Command(BaseCommand):
             return User.objects.filter(is_superuser=True).first()
         except Exception:
             return None
+
+    def handle_status(self, options):
+        """Show executor status"""
+        show_capacity = options.get("capacity", False)
+
+        self.stdout.write("\nExecutor Status:")
+        self.stdout.write("=" * 50)
+
+        # Get available executors
+        available_executors = executor_factory.get_available_executors()
+
+        if not available_executors:
+            self.stdout.write(self.style.ERROR("No executors available"))
+            return
+
+        self.stdout.write(f"Available executors: {', '.join(available_executors)}")
+
+        if show_capacity:
+            self.stdout.write("\nCapacity Information:")
+            self.stdout.write("-" * 30)
+
+            for executor_type in available_executors:
+                capacity = executor_factory.get_executor_capacity(executor_type)
+
+                self.stdout.write(f"\n{executor_type.upper()} Executor:")
+                self.stdout.write(f"  Total Capacity: {capacity['total_capacity']}")
+                self.stdout.write(f"  Current Usage: {capacity['current_usage']}")
+                self.stdout.write(f"  Available Slots: {capacity['available_slots']}")
+
+                if capacity["total_capacity"] > 0:
+                    utilization = (
+                        capacity["current_usage"] / capacity["total_capacity"]
+                    ) * 100
+                    self.stdout.write(f"  Utilization: {utilization:.1f}%")
+
+        # Show recent job statistics
+        self.stdout.write("\nRecent Job Statistics:")
+        self.stdout.write("-" * 25)
+
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        # Last 24 hours
+        since = timezone.now() - timedelta(hours=24)
+        recent_jobs = ContainerJob.objects.filter(created_at__gte=since)
+
+        if recent_jobs.exists():
+            # Group by executor type
+            from django.db.models import Count
+
+            stats = (
+                recent_jobs.values("executor_type")
+                .annotate(total=Count("id"))
+                .order_by("executor_type")
+            )
+
+            for stat in stats:
+                executor_type = stat["executor_type"] or "docker"
+                count = stat["total"]
+                self.stdout.write(f"  {executor_type}: {count} jobs")
+
+            # Status breakdown
+            self.stdout.write("\nStatus breakdown (last 24h):")
+            status_stats = (
+                recent_jobs.values("status")
+                .annotate(total=Count("id"))
+                .order_by("status")
+            )
+
+            for stat in status_stats:
+                status = stat["status"]
+                count = stat["total"]
+                self.stdout.write(f"  {status}: {count} jobs")
+        else:
+            self.stdout.write("  No jobs in the last 24 hours")

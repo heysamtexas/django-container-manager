@@ -10,11 +10,14 @@ import signal
 import time
 from typing import Optional
 
+from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
 from container_manager.docker_service import DockerConnectionError, docker_service
+from container_manager.executors.exceptions import ExecutorResourceError
+from container_manager.executors.factory import executor_factory
 from container_manager.models import ContainerJob, DockerHost
 
 logger = logging.getLogger(__name__)
@@ -74,6 +77,16 @@ class Command(BaseCommand):
             default=24,
             help="Hours after which to cleanup old containers (default: 24)",
         )
+        parser.add_argument(
+            "--use-factory",
+            action="store_true",
+            help="Use ExecutorFactory for intelligent job routing (default: auto-detect from settings)",
+        )
+        parser.add_argument(
+            "--executor-type",
+            type=str,
+            help="Force specific executor type (docker, mock, etc.)",
+        )
 
     def handle(self, *args, **options):
         """Main command handler"""
@@ -83,13 +96,30 @@ class Command(BaseCommand):
         single_run = options["single_run"]
         cleanup = options["cleanup"]
         cleanup_hours = options["cleanup_hours"]
+        use_factory = options["use_factory"]
+        executor_type = options["executor_type"]
 
+        # Determine if we should use the executor factory
+        factory_enabled = (
+            use_factory
+            or getattr(settings, "USE_EXECUTOR_FACTORY", False)
+            or executor_type is not None
+        )
+
+        routing_mode = "ExecutorFactory" if factory_enabled else "Direct Docker"
         self.stdout.write(
             self.style.SUCCESS(
                 f"Starting container job processor "
-                f"(poll_interval={poll_interval}s, max_jobs={max_jobs})"
+                f"(poll_interval={poll_interval}s, max_jobs={max_jobs}, routing={routing_mode})"
             )
         )
+
+        if factory_enabled:
+            available_executors = executor_factory.get_available_executors()
+            self.stdout.write(f"Available executors: {', '.join(available_executors)}")
+
+            if executor_type:
+                self.stdout.write(f"Forcing executor type: {executor_type}")
 
         # Run cleanup if requested
         if cleanup:
@@ -116,7 +146,9 @@ class Command(BaseCommand):
             while not self.should_stop:
                 try:
                     # Launch phase: Start pending jobs (non-blocking)
-                    jobs_launched = self.process_pending_jobs(host_filter, max_jobs)
+                    jobs_launched = self.process_pending_jobs(
+                        host_filter, max_jobs, factory_enabled, executor_type
+                    )
 
                     # Monitor phase: Check running jobs and harvest completed ones
                     jobs_harvested = self.monitor_running_jobs(host_filter)
@@ -156,7 +188,11 @@ class Command(BaseCommand):
         )
 
     def process_pending_jobs(
-        self, host_filter: Optional[str] = None, max_jobs: int = 10
+        self,
+        host_filter: Optional[str] = None,
+        max_jobs: int = 10,
+        use_factory: bool = False,
+        force_executor_type: Optional[str] = None,
     ) -> int:
         """Launch pending jobs and return the number launched"""
 
@@ -185,7 +221,7 @@ class Command(BaseCommand):
                 break
 
             try:
-                success = self.launch_single_job(job)
+                success = self.launch_single_job(job, use_factory, force_executor_type)
                 if success:
                     launched += 1
 
@@ -195,9 +231,71 @@ class Command(BaseCommand):
 
         return launched
 
-    def launch_single_job(self, job: ContainerJob) -> bool:
+    def launch_single_job(
+        self,
+        job: ContainerJob,
+        use_factory: bool = False,
+        force_executor_type: Optional[str] = None,
+    ) -> bool:
         """Launch a single container job (non-blocking)"""
 
+        if use_factory:
+            return self.launch_job_with_factory(job, force_executor_type)
+        else:
+            return self.launch_job_with_docker_service(job)
+
+    def launch_job_with_factory(
+        self, job: ContainerJob, force_executor_type: Optional[str] = None
+    ) -> bool:
+        """Launch job using ExecutorFactory"""
+        try:
+            # Route job to appropriate executor
+            if force_executor_type:
+                job.executor_type = force_executor_type
+                job.routing_reason = f"Forced to {force_executor_type} via command line"
+            else:
+                job.executor_type = executor_factory.route_job(job)
+
+            job.save()
+
+            # Display routing information
+            self.stdout.write(
+                f"Launching job {job.id} ({job.template.name}) "
+                f"using {job.executor_type} executor"
+            )
+            if job.routing_reason:
+                self.stdout.write(f"  Routing reason: {job.routing_reason}")
+
+            # Get executor instance and launch job
+            executor = executor_factory.get_executor(job)
+            success, execution_id = executor.launch_job(job)
+
+            if success:
+                job.set_execution_identifier(execution_id)
+                job.save()
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        f"Job {job.id} launched successfully as {execution_id}"
+                    )
+                )
+            else:
+                self.stdout.write(
+                    self.style.ERROR(f"Job {job.id} failed to launch: {execution_id}")
+                )
+
+            return success
+
+        except ExecutorResourceError as e:
+            logger.error(f"No available executors for job {job.id}: {e}")
+            self.mark_job_failed(job, f"No available executors: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Job launch error for {job.id}: {e}")
+            self.mark_job_failed(job, str(e))
+            return False
+
+    def launch_job_with_docker_service(self, job: ContainerJob) -> bool:
+        """Launch job using legacy docker_service (backward compatibility)"""
         # Verify Docker host is accessible
         try:
             docker_service.get_client(job.docker_host)
@@ -262,22 +360,22 @@ class Command(BaseCommand):
                         harvested += 1
                         continue
 
-                # Check container status
-                status = docker_service.check_container_status(job)
+                # Check execution status (works for all executor types)
+                status = self.check_job_status(job)
 
-                if status == "exited":
-                    # Container finished, harvest results
-                    success = docker_service.harvest_completed_job(job)
+                if status == "completed":
+                    # Job finished, harvest results
+                    success = self.harvest_completed_job(job)
                     if success:
                         harvested += 1
                         self.stdout.write(self.style.SUCCESS(f"Harvested job {job.id}"))
-                elif status == "not-found":
-                    # Container disappeared, mark as failed
-                    self.mark_job_failed(job, "Container not found")
+                elif status == "failed":
+                    # Job failed, mark as failed
+                    self.mark_job_failed(job, "Job execution failed")
                     harvested += 1
-                elif status == "error":
-                    # Error checking status, mark as failed
-                    self.mark_job_failed(job, "Error checking container status")
+                elif status == "not-found":
+                    # Execution disappeared, mark as failed
+                    self.mark_job_failed(job, "Execution not found")
                     harvested += 1
                 # For 'running' status, continue monitoring
 
@@ -287,6 +385,35 @@ class Command(BaseCommand):
                 harvested += 1
 
         return harvested
+
+    def check_job_status(self, job: ContainerJob) -> str:
+        """Check job status using appropriate method based on executor type"""
+        if job.executor_type == "docker" or not job.executor_type:
+            # Use legacy docker service for backward compatibility
+            return docker_service.check_container_status(job)
+        else:
+            # Use executor factory for non-docker executors
+            try:
+                executor = executor_factory.get_executor(job)
+                execution_id = job.get_execution_identifier()
+                return executor.check_status(execution_id)
+            except Exception as e:
+                logger.error(f"Error checking status for job {job.id}: {e}")
+                return "error"
+
+    def harvest_completed_job(self, job: ContainerJob) -> bool:
+        """Harvest completed job using appropriate method based on executor type"""
+        if job.executor_type == "docker" or not job.executor_type:
+            # Use legacy docker service for backward compatibility
+            return docker_service.harvest_completed_job(job)
+        else:
+            # Use executor factory for non-docker executors
+            try:
+                executor = executor_factory.get_executor(job)
+                return executor.harvest_job(job)
+            except Exception as e:
+                logger.error(f"Error harvesting job {job.id}: {e}")
+                return False
 
     def handle_job_timeout(self, job: ContainerJob):
         """Handle a job that has timed out"""
@@ -299,19 +426,28 @@ class Command(BaseCommand):
         )
 
         try:
-            # Stop the container
-            docker_service.stop_container(job)
+            # Stop the execution using appropriate method
+            if job.executor_type == "docker" or not job.executor_type:
+                # Use legacy docker service
+                docker_service.stop_container(job)
+                # Try to collect any logs before cleanup
+                try:
+                    docker_service._collect_execution_data(job)
+                except Exception:
+                    pass  # Don't fail if log collection fails
+            else:
+                # Use executor factory for non-docker executors
+                try:
+                    executor = executor_factory.get_executor(job)
+                    execution_id = job.get_execution_identifier()
+                    executor.cleanup(execution_id)
+                except Exception as e:
+                    logger.warning(f"Failed to cleanup timed out job {job.id}: {e}")
 
             # Mark as timed out
             job.status = "timeout"
             job.completed_at = timezone.now()
             job.save()
-
-            # Try to collect any logs before cleanup
-            try:
-                docker_service._collect_execution_data(job)
-            except Exception:
-                pass  # Don't fail if log collection fails
 
         except Exception as e:
             logger.error(f"Error handling timeout for job {job.id}: {e}")

@@ -37,31 +37,29 @@ class DockerHost(models.Model):
     # Multi-executor support
     executor_type = models.CharField(
         max_length=50,
-        default='docker',
+        default="docker",
         choices=[
-            ('docker', 'Docker'),
-            ('cloudrun', 'Google Cloud Run'),
-            ('fargate', 'AWS Fargate'),
-            ('scaleway', 'Scaleway Containers'),
+            ("docker", "Docker"),
+            ("cloudrun", "Google Cloud Run"),
+            ("fargate", "AWS Fargate"),
+            ("scaleway", "Scaleway Containers"),
         ],
-        help_text="Type of container executor this host represents"
+        help_text="Type of container executor this host represents",
     )
 
     executor_config = models.JSONField(
         default=dict,
         blank=True,
-        help_text="Executor-specific configuration (credentials, regions, etc.)"
+        help_text="Executor-specific configuration (credentials, regions, etc.)",
     )
 
     # Resource and capacity management
     max_concurrent_jobs = models.PositiveIntegerField(
-        default=10,
-        help_text="Maximum number of concurrent jobs for this executor"
+        default=10, help_text="Maximum number of concurrent jobs for this executor"
     )
 
     current_job_count = models.PositiveIntegerField(
-        default=0,
-        help_text="Currently running job count (updated by worker process)"
+        default=0, help_text="Currently running job count (updated by worker process)"
     )
 
     # Cost tracking
@@ -70,7 +68,7 @@ class DockerHost(models.Model):
         decimal_places=4,
         null=True,
         blank=True,
-        help_text="Estimated cost per hour for this executor"
+        help_text="Estimated cost per hour for this executor",
     )
 
     cost_per_job = models.DecimalField(
@@ -78,25 +76,20 @@ class DockerHost(models.Model):
         decimal_places=4,
         null=True,
         blank=True,
-        help_text="Estimated cost per job execution"
+        help_text="Estimated cost per job execution",
     )
 
     # Health and performance
     average_startup_time = models.PositiveIntegerField(
-        null=True,
-        blank=True,
-        help_text="Average container startup time in seconds"
+        null=True, blank=True, help_text="Average container startup time in seconds"
     )
 
     last_health_check = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="Last successful health check timestamp"
+        null=True, blank=True, help_text="Last successful health check timestamp"
     )
 
     health_check_failures = models.PositiveIntegerField(
-        default=0,
-        help_text="Consecutive health check failures"
+        default=0, help_text="Consecutive health check failures"
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -108,7 +101,7 @@ class DockerHost(models.Model):
 
     def __str__(self):
         executor_info = (
-            f" ({self.executor_type})" if self.executor_type != 'docker' else ""
+            f" ({self.executor_type})" if self.executor_type != "docker" else ""
         )
         return f"{self.name}{executor_info} ({self.connection_string})"
 
@@ -129,14 +122,13 @@ class DockerHost(models.Model):
     def get_capacity_info(self) -> Dict[str, Any]:
         """Get current capacity information"""
         return {
-            'current_jobs': self.current_job_count,
-            'max_jobs': self.max_concurrent_jobs,
-            'available_slots': max(
+            "current_jobs": self.current_job_count,
+            "max_jobs": self.max_concurrent_jobs,
+            "available_slots": max(
                 0, self.max_concurrent_jobs - self.current_job_count
             ),
-            'utilization_percent': (
-                self.current_job_count / self.max_concurrent_jobs
-            ) * 100,
+            "utilization_percent": (self.current_job_count / self.max_concurrent_jobs)
+            * 100,
         }
 
     def increment_job_count(self) -> None:
@@ -147,7 +139,7 @@ class DockerHost(models.Model):
             self.refresh_from_db()
             if self.current_job_count < self.max_concurrent_jobs:
                 self.current_job_count += 1
-                self.save(update_fields=['current_job_count'])
+                self.save(update_fields=["current_job_count"])
 
     def decrement_job_count(self) -> None:
         """Thread-safe decrement of current job count"""
@@ -157,7 +149,7 @@ class DockerHost(models.Model):
             self.refresh_from_db()
             if self.current_job_count > 0:
                 self.current_job_count -= 1
-                self.save(update_fields=['current_job_count'])
+                self.save(update_fields=["current_job_count"])
 
 
 class ContainerTemplate(models.Model):
@@ -290,46 +282,46 @@ class ContainerJob(models.Model):
     # Multi-executor support
     executor_type = models.CharField(
         max_length=50,
-        default='docker',
+        default="docker",
         choices=[
-            ('docker', 'Docker'),
-            ('cloudrun', 'Google Cloud Run'),
-            ('fargate', 'AWS Fargate'),
-            ('scaleway', 'Scaleway Containers'),
-            ('mock', 'Mock (Testing)'),
+            ("docker", "Docker"),
+            ("cloudrun", "Google Cloud Run"),
+            ("fargate", "AWS Fargate"),
+            ("scaleway", "Scaleway Containers"),
+            ("mock", "Mock (Testing)"),
         ],
-        help_text="Container execution backend to use for this job"
+        help_text="Container execution backend to use for this job",
     )
 
     external_execution_id = models.CharField(
         max_length=200,
         blank=True,
-        default='',
+        default="",
         help_text=(
             "Cloud provider's execution/job ID "
             "(e.g., Cloud Run job name, Fargate task ARN)"
-        )
+        ),
     )
 
     executor_metadata = models.JSONField(
         default=dict,
         blank=True,
-        help_text="Provider-specific data like regions, URLs, resource identifiers"
+        help_text="Provider-specific data like regions, URLs, resource identifiers",
     )
 
     # Routing and preferences
     preferred_executor = models.CharField(
         max_length=50,
         blank=True,
-        default='',
-        help_text="Preferred executor type for this job (overrides routing rules)"
+        default="",
+        help_text="Preferred executor type for this job (overrides routing rules)",
     )
 
     routing_reason = models.CharField(
         max_length=200,
         blank=True,
-        default='',
-        help_text="Reason why this executor was chosen (for debugging/analytics)"
+        default="",
+        help_text="Reason why this executor was chosen (for debugging/analytics)",
     )
 
     # Cost and resource tracking
@@ -338,7 +330,7 @@ class ContainerJob(models.Model):
         decimal_places=4,
         null=True,
         blank=True,
-        help_text="Estimated execution cost in USD"
+        help_text="Estimated execution cost in USD",
     )
 
     actual_cost = models.DecimalField(
@@ -346,7 +338,7 @@ class ContainerJob(models.Model):
         decimal_places=4,
         null=True,
         blank=True,
-        help_text="Actual execution cost in USD (if available)"
+        help_text="Actual execution cost in USD (if available)",
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -359,7 +351,7 @@ class ContainerJob(models.Model):
 
     def __str__(self):
         executor_info = (
-            f" ({self.executor_type})" if self.executor_type != 'docker' else ""
+            f" ({self.executor_type})" if self.executor_type != "docker" else ""
         )
         return f"{self.name or self.template.name} ({self.status}){executor_info}"
 
@@ -372,14 +364,14 @@ class ContainerJob(models.Model):
 
     def get_execution_identifier(self) -> str:
         """Get the appropriate execution ID for this job's executor"""
-        if self.executor_type == 'docker':
+        if self.executor_type == "docker":
             return self.container_id
 
-        return self.external_execution_id or ''
+        return self.external_execution_id or ""
 
     def set_execution_identifier(self, execution_id: str) -> None:
         """Set the execution ID for this job's executor"""
-        if self.executor_type == 'docker':
+        if self.executor_type == "docker":
             self.container_id = execution_id
         else:
             self.external_execution_id = execution_id
@@ -390,7 +382,7 @@ class ContainerJob(models.Model):
             return self.preferred_executor == executor_type
 
         # Check template compatibility
-        if hasattr(self.template, 'supported_executors'):
+        if hasattr(self.template, "supported_executors"):
             return executor_type in self.template.supported_executors
 
         return True  # Default: all jobs can run anywhere
@@ -398,10 +390,10 @@ class ContainerJob(models.Model):
     def estimate_resources(self) -> Dict[str, Any]:
         """Estimate resource requirements for routing decisions"""
         return {
-            'memory_mb': self.template.memory_limit or 512,
-            'cpu_cores': self.template.cpu_limit or 1.0,
-            'timeout_seconds': self.template.timeout_seconds,
-            'storage_required': bool(self.template.working_directory),
+            "memory_mb": self.template.memory_limit or 512,
+            "cpu_cores": self.template.cpu_limit or 1.0,
+            "timeout_seconds": self.template.timeout_seconds,
+            "storage_required": bool(self.template.working_directory),
         }
 
     def clean(self):
@@ -416,9 +408,11 @@ class ContainerJob(models.Model):
             )
 
         # Validate external_execution_id for non-docker executors
-        if (self.executor_type != 'docker' and
-            self.status == 'running' and
-            not self.external_execution_id):
+        if (
+            self.executor_type != "docker"
+            and self.status == "running"
+            and not self.external_execution_id
+        ):
             raise ValidationError(
                 f"external_execution_id required for {self.executor_type} executor"
             )

@@ -58,13 +58,11 @@ class ExecutorFactory:
         # Apply routing rules in order
         for rule in self._routing_rules:
             if self._evaluate_rule(rule, job):
-                executor_type = rule['executor']
+                executor_type = rule["executor"]
                 if self._is_executor_available(executor_type):
-                    reason = rule.get('reason', f'Matched rule: {rule["condition"]}')
+                    reason = rule.get("reason", f"Matched rule: {rule['condition']}")
                     job.routing_reason = reason
-                    logger.info(
-                        f"Routed job {job.id} to {executor_type}: {reason}"
-                    )
+                    logger.info(f"Routed job {job.id} to {executor_type}: {reason}")
                     return executor_type
 
                 logger.debug(
@@ -73,10 +71,10 @@ class ExecutorFactory:
                 )
 
         # Default fallback to docker
-        if self._is_executor_available('docker'):
-            job.routing_reason = 'Default fallback to docker'
+        if self._is_executor_available("docker"):
+            job.routing_reason = "Default fallback to docker"
             logger.info(f"Using default docker executor for job {job.id}")
-            return 'docker'
+            return "docker"
 
         # No executors available
         available_executors = self.get_available_executors()
@@ -127,26 +125,23 @@ class ExecutorFactory:
 
     def get_executor_capacity(self, executor_type: str) -> Dict[str, int]:
         """Get capacity information for executor type"""
-        if executor_type == 'docker':
-            hosts = DockerHost.objects.filter(
-                executor_type='docker',
-                is_active=True
-            )
+        if executor_type == "docker":
+            hosts = DockerHost.objects.filter(executor_type="docker", is_active=True)
 
             total_capacity = sum(host.max_concurrent_jobs for host in hosts)
             current_usage = sum(host.current_job_count for host in hosts)
 
             return {
-                'total_capacity': total_capacity,
-                'current_usage': current_usage,
-                'available_slots': total_capacity - current_usage,
+                "total_capacity": total_capacity,
+                "current_usage": current_usage,
+                "available_slots": total_capacity - current_usage,
             }
 
         # For cloud executors, capacity is typically unlimited or very high
         return {
-            'total_capacity': 1000,  # Cloud services have high limits
-            'current_usage': 0,      # We don't track cloud usage yet
-            'available_slots': 1000,
+            "total_capacity": 1000,  # Cloud services have high limits
+            "current_usage": 0,  # We don't track cloud usage yet
+            "available_slots": 1000,
         }
 
     def clear_cache(self) -> None:
@@ -171,27 +166,25 @@ class ExecutorFactory:
 
         # Add job-specific configuration
         if job.docker_host:
-            config['docker_host'] = job.docker_host
+            config["docker_host"] = job.docker_host
 
         # Import and instantiate executor
-        if executor_type == 'docker':
+        if executor_type == "docker":
             from .docker import DockerExecutor
+
             return DockerExecutor(config)
 
-        if executor_type == 'cloudrun':
+        if executor_type == "cloudrun":
             # TODO: Implement CloudRunExecutor in future task
-            raise ExecutorConfigurationError(
-                "CloudRunExecutor not implemented yet"
-            )
+            raise ExecutorConfigurationError("CloudRunExecutor not implemented yet")
 
-        if executor_type == 'fargate':
+        if executor_type == "fargate":
             # TODO: Implement FargateExecutor in future task
-            raise ExecutorConfigurationError(
-                "FargateExecutor not implemented yet"
-            )
+            raise ExecutorConfigurationError("FargateExecutor not implemented yet")
 
-        if executor_type == 'mock':
+        if executor_type == "mock":
             from .mock import MockExecutor
+
             return MockExecutor(config)
 
         raise ExecutorConfigurationError(
@@ -204,14 +197,13 @@ class ExecutorFactory:
             return False
 
         config = self._executor_configs[executor_type]
-        if not config.get('enabled', True):
+        if not config.get("enabled", True):
             return False
 
-        if executor_type == 'docker':
+        if executor_type == "docker":
             # Check Docker host availability
             available_hosts = DockerHost.objects.filter(
-                executor_type='docker',
-                is_active=True
+                executor_type="docker", is_active=True
             )
 
             for host in available_hosts:
@@ -234,7 +226,7 @@ class ExecutorFactory:
         # For now, assume cloud executors are healthy if enabled
         # TODO: Add actual health check method to executor interface
         config = self._executor_configs.get(executor_type, {})
-        health_status = config.get('enabled', False)
+        health_status = config.get("enabled", False)
 
         # Cache result for 5 minutes
         cache.set(cache_key, health_status, 300)
@@ -243,19 +235,19 @@ class ExecutorFactory:
 
     def _evaluate_rule(self, rule: Dict, job: ContainerJob) -> bool:
         """Evaluate if a routing rule matches a job"""
-        condition = rule.get('condition', '')
+        condition = rule.get("condition", "")
         if not condition:
             return False
 
         try:
             # Create evaluation context
             context = {
-                'job': job,
-                'template': job.template,
-                'user': job.created_by,
-                'memory_mb': job.template.memory_limit or 0,
-                'cpu_cores': job.template.cpu_limit or 0,
-                'timeout_seconds': job.template.timeout_seconds,
+                "job": job,
+                "template": job.template,
+                "user": job.created_by,
+                "memory_mb": job.template.memory_limit or 0,
+                "cpu_cores": job.template.cpu_limit or 0,
+                "timeout_seconds": job.template.timeout_seconds,
             }
 
             # Evaluate condition safely
@@ -276,47 +268,47 @@ class ExecutorFactory:
         """Load routing rules from Django settings"""
         default_rules = [
             {
-                'condition': 'memory_mb > 8192',
-                'executor': 'fargate',
-                'reason': 'High memory requirement (>8GB)',
-                'priority': 1,
+                "condition": "memory_mb > 8192",
+                "executor": "fargate",
+                "reason": "High memory requirement (>8GB)",
+                "priority": 1,
             },
             {
-                'condition': 'cpu_cores > 4.0',
-                'executor': 'fargate',
-                'reason': 'High CPU requirement (>4 cores)',
-                'priority': 2,
+                "condition": "cpu_cores > 4.0",
+                "executor": "fargate",
+                "reason": "High CPU requirement (>4 cores)",
+                "priority": 2,
             },
             {
-                'condition': 'timeout_seconds > 3600',
-                'executor': 'cloudrun',
-                'reason': 'Long-running job (>1 hour)',
-                'priority': 3,
+                "condition": "timeout_seconds > 3600",
+                "executor": "cloudrun",
+                "reason": "Long-running job (>1 hour)",
+                "priority": 3,
             },
             {
-                'condition': 'template.name.startswith("batch-")',
-                'executor': 'cloudrun',
-                'reason': 'Batch processing template',
-                'priority': 4,
+                "condition": 'template.name.startswith("batch-")',
+                "executor": "cloudrun",
+                "reason": "Batch processing template",
+                "priority": 4,
             },
             {
-                'condition': 'user and user.groups.filter(name="premium").exists()',
-                'executor': 'cloudrun',
-                'reason': 'Premium user priority',
-                'priority': 5,
+                "condition": 'user and user.groups.filter(name="premium").exists()',
+                "executor": "cloudrun",
+                "reason": "Premium user priority",
+                "priority": 5,
             },
             {
-                'condition': 'template.name.startswith("test-")',
-                'executor': 'mock',
-                'reason': 'Test template',
-                'priority': 6,
-            }
+                "condition": 'template.name.startswith("test-")',
+                "executor": "mock",
+                "reason": "Test template",
+                "priority": 6,
+            },
         ]
 
-        rules = getattr(settings, 'EXECUTOR_ROUTING_RULES', default_rules)
+        rules = getattr(settings, "EXECUTOR_ROUTING_RULES", default_rules)
 
         # Sort rules by priority (lower number = higher priority)
-        sorted_rules = sorted(rules, key=lambda r: r.get('priority', 999))
+        sorted_rules = sorted(rules, key=lambda r: r.get("priority", 999))
 
         logger.info(f"Loaded {len(sorted_rules)} routing rules")
         return sorted_rules
@@ -324,29 +316,28 @@ class ExecutorFactory:
     def _load_executor_configs(self) -> Dict[str, Dict]:
         """Load executor configurations from Django settings"""
         default_configs = {
-            'docker': {
-                'enabled': True,
-                'default': True,
+            "docker": {
+                "enabled": True,
+                "default": True,
             },
-            'cloudrun': {
-                'enabled': False,
-                'project': 'my-project',
-                'region': 'us-central1',
+            "cloudrun": {
+                "enabled": False,
+                "project": "my-project",
+                "region": "us-central1",
             },
-            'fargate': {
-                'enabled': False,
-                'cluster': 'default',
+            "fargate": {
+                "enabled": False,
+                "cluster": "default",
             },
-            'mock': {
-                'enabled': True,
-            }
+            "mock": {
+                "enabled": True,
+            },
         }
 
-        configs = getattr(settings, 'CONTAINER_EXECUTORS', default_configs)
+        configs = getattr(settings, "CONTAINER_EXECUTORS", default_configs)
         logger.info(f"Loaded executor configs: {list(configs.keys())}")
         return configs
 
 
 # Global factory instance
 executor_factory = ExecutorFactory()
-

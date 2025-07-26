@@ -48,8 +48,11 @@ class DockerHostAdmin(admin.ModelAdmin):
             "Basic Information",
             {
                 "fields": (
-                    "name", "executor_type", "host_type",
-                    "connection_string", "is_active"
+                    "name",
+                    "executor_type",
+                    "host_type",
+                    "connection_string",
+                    "is_active",
                 )
             },
         ),
@@ -62,10 +65,13 @@ class DockerHostAdmin(admin.ModelAdmin):
             "Cost and Performance",
             {
                 "fields": (
-                    "cost_per_hour", "cost_per_job",
-                    "average_startup_time", "last_health_check", "health_check_failures"
+                    "cost_per_hour",
+                    "cost_per_job",
+                    "average_startup_time",
+                    "last_health_check",
+                    "health_check_failures",
                 ),
-                "classes": ("collapse",)
+                "classes": ("collapse",),
             },
         ),
         (
@@ -100,6 +106,7 @@ class DockerHostAdmin(admin.ModelAdmin):
             f"{info['current_jobs']}/{info['max_jobs']} "
             f"({info['utilization_percent']:.1f}%)"
         )
+
     capacity_display.short_description = "Capacity"
 
     def test_connection(self, request, queryset):
@@ -200,11 +207,14 @@ class ContainerJobAdmin(admin.ModelAdmin):
             "Executor Configuration",
             {
                 "fields": (
-                    "executor_type", "preferred_executor", "routing_reason",
-                    "external_execution_id", "executor_metadata"
+                    "executor_type",
+                    "preferred_executor",
+                    "routing_reason",
+                    "external_execution_id",
+                    "executor_metadata",
                 ),
-                "classes": ("collapse",)
-            }
+                "classes": ("collapse",),
+            },
         ),
         (
             "Execution Overrides",
@@ -228,10 +238,7 @@ class ContainerJobAdmin(admin.ModelAdmin):
         ),
         (
             "Cost Tracking",
-            {
-                "fields": ("estimated_cost", "actual_cost"),
-                "classes": ("collapse",)
-            }
+            {"fields": ("estimated_cost", "actual_cost"), "classes": ("collapse",)},
         ),
         (
             "Metadata",
