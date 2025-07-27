@@ -116,6 +116,64 @@ uv run python manage.py manage_container_job cancel JOB-UUID
 - **Mock appropriately**: External services should be mocked, not stubbed
 - **Test coverage**: Focus on core functionality, skip admin interface testing
 
+### Code Coverage Requirements
+
+**Minimum Coverage Targets:**
+- **Overall codebase:** ≥75% statement coverage
+- **New features:** ≥90% coverage required before merge
+- **Management commands:** ≥80% coverage (user-facing interfaces)
+- **Core executors:** ≥85% coverage (business-critical logic)
+- **Models:** ≥70% coverage (focus on business logic, not Django internals)
+
+**Coverage Measurement:**
+```bash
+# Generate coverage report
+uv run coverage run --source='.' manage.py test
+uv run coverage report --show-missing
+uv run coverage html  # For detailed analysis
+
+# Coverage enforcement
+uv run coverage report --fail-under=75
+```
+
+**Coverage Guidelines:**
+- **Focus on behavior**, not implementation details
+- **Test edge cases** and error conditions first
+- **Mock external dependencies** (APIs, file systems, networks)
+- **Skip Django admin interface** testing (low business value)
+- **Prioritize management commands** (highest user impact)
+- **Test integration points** between components
+
+**Coverage Exclusions:**
+- Django migrations (auto-generated)
+- Admin interface configuration
+- Settings files and configuration
+- Import-only modules
+- Debug and development utilities
+
+**Pre-Commit Coverage Check:**
+```bash
+1. uv run python manage.py test          # ALL tests must pass
+2. uv run coverage run --source='.' manage.py test
+3. uv run coverage report --fail-under=75  # Coverage must meet threshold
+4. uv run ruff check .                   # Linting must pass  
+5. uv run ruff format .                  # Code formatting
+6. git add <files>                       # Stage changes
+7. git commit -m "message"               # Only then commit
+```
+
+**Coverage-Driven Development:**
+- **New features:** Write tests achieving ≥90% coverage before implementation
+- **Bug fixes:** Add test reproducing the bug, then fix (TDD approach)
+- **Refactoring:** Maintain or improve coverage during refactoring
+- **Legacy code:** Incremental coverage improvement when touching existing code
+
+**Coverage Analysis:**
+- **Weekly coverage reports** to track progress
+- **Coverage regression prevention** in CI/CD
+- **Focus on uncovered critical paths** during code review
+- **Use coverage to guide test prioritization**
+
 ### Common Issues and Fixes
 
 **Test Import Conflicts:**

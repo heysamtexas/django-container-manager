@@ -170,3 +170,58 @@ disallow_untyped_defs = true
 
 [tool.django-stubs]
 django_settings_module = "tests.settings"
+
+[dependency-groups]
+dev = [
+    "coverage>=7.10.0",
+]
+
+# Coverage configuration
+[tool.coverage.run]
+source = ["."]
+omit = [
+    "*/migrations/*",
+    "*/venv/*",
+    "*/env/*",
+    "manage.py",
+    "*/settings.py", 
+    "*/tests/*",
+    "*/test_*.py",
+    "*/__pycache__/*",
+    "*/node_modules/*",
+    "*/static/*",
+    "*/media/*",
+    "*/htmlcov/*",
+    "*/.venv/*",
+]
+
+[tool.coverage.report]
+# Regexes for lines to exclude from consideration
+exclude_lines = [
+    # Have to re-enable the standard pragma
+    "pragma: no cover",
+    
+    # Don't complain about missing debug-only code:
+    "def __repr__",
+    "if self\\.debug",
+    
+    # Don't complain if tests don't hit defensive assertion code:
+    "raise AssertionError",
+    "raise NotImplementedError",
+    
+    # Don't complain if non-runnable code isn't run:
+    "if 0:",
+    "if __name__ == .__main__.:",
+    
+    # Don't complain about Django admin auto-generated methods
+    "class .*Admin.*:",
+    "def get_.*_display",
+]
+show_missing = true
+skip_covered = false
+precision = 1
+fail_under = 75
+
+[tool.coverage.html]
+directory = "htmlcov"
+title = "Container Manager Coverage Report"
