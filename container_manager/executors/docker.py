@@ -53,7 +53,7 @@ class DockerExecutor(ContainerExecutor):
         except ExecutorError as e:
             return False, str(e)
         except Exception as e:
-            logger.error(f"Unexpected error launching job {job.id}: {e}")
+            logger.exception(f"Unexpected error launching job {job.id}: {e}")
             return False, f"Unexpected error: {e}"
 
     def check_status(self, execution_id: str) -> str:
@@ -85,7 +85,7 @@ class DockerExecutor(ContainerExecutor):
         except NotFound:
             return "not-found"
         except Exception as e:
-            logger.error(f"Error checking container status {execution_id}: {e}")
+            logger.exception(f"Error checking container status {execution_id}: {e}")
             return "failed"
 
     def get_logs(self, execution_id: str) -> Tuple[str, str]:
@@ -104,34 +104,35 @@ class DockerExecutor(ContainerExecutor):
 
             # Get logs
             logs = container.logs(timestamps=True, stderr=True)
-            if isinstance(logs, bytes):
-                logs_str = logs.decode("utf-8", errors="replace")
-            else:
-                logs_str = str(logs)
+            logs_str = logs.decode("utf-8", errors="replace") if isinstance(logs, bytes) else str(logs)
 
-            # For Docker, we get combined stdout/stderr, so split based on timestamps
-            stdout_lines = []
-            stderr_lines = []
-
-            for line in logs_str.split("\n"):
-                if line.strip():
-                    # Simple heuristic to separate stderr from stdout
-                    keywords = ["error", "warning", "exception", "traceback"]
-                    if any(keyword in line.lower() for keyword in keywords):
-                        stderr_lines.append(line)
-                    else:
-                        stdout_lines.append(line)
-
-            stdout = "\n".join(stdout_lines) if stdout_lines else ""
-            stderr = "\n".join(stderr_lines) if stderr_lines else ""
-
+            # Split logs into stdout/stderr
+            stdout, stderr = self._split_docker_logs(logs_str)
             return stdout, stderr
 
         except NotFound:
             return "", ""
         except Exception as e:
-            logger.error(f"Error getting logs for {execution_id}: {e}")
+            logger.exception(f"Error getting logs for {execution_id}: {e}")
             return "", ""
+
+    def _split_docker_logs(self, logs_str: str) -> Tuple[str, str]:
+        """Split combined Docker logs into stdout and stderr based on content heuristics"""
+        stdout_lines = []
+        stderr_lines = []
+        error_keywords = ["error", "warning", "exception", "traceback"]
+
+        for line in logs_str.split("\n"):
+            if line.strip():
+                if any(keyword in line.lower() for keyword in error_keywords):
+                    stderr_lines.append(line)
+                else:
+                    stdout_lines.append(line)
+
+        return (
+            "\n".join(stdout_lines) if stdout_lines else "",
+            "\n".join(stderr_lines) if stderr_lines else ""
+        )
 
     def harvest_job(self, job: ContainerJob) -> bool:
         """Collect final results and update job status"""
@@ -168,7 +169,7 @@ class DockerExecutor(ContainerExecutor):
             job.save()
             return False
         except Exception as e:
-            logger.error(f"Error harvesting job {job.id}: {e}")
+            logger.exception(f"Error harvesting job {job.id}: {e}")
             return False
 
     def cleanup(self, execution_id: str) -> bool:
@@ -195,7 +196,7 @@ class DockerExecutor(ContainerExecutor):
             # Already cleaned up
             return True
         except Exception as e:
-            logger.error(f"Error cleaning up container {execution_id}: {e}")
+            logger.exception(f"Error cleaning up container {execution_id}: {e}")
             return False
 
     def get_capabilities(self) -> Dict[str, bool]:
@@ -267,35 +268,15 @@ class DockerExecutor(ContainerExecutor):
         """Get or create Docker client for host"""
         host_key = f"{docker_host.id}"
 
-        if host_key in self._clients:
-            try:
-                # Test connection only if not in testing mode
-                if not getattr(self, "_skip_ping_for_tests", False):
-                    self._clients[host_key].ping()
-                return self._clients[host_key]
-            except Exception:
-                # Remove stale client
-                del self._clients[host_key]
+        # Try to use cached client
+        cached_client = self._get_cached_client(host_key)
+        if cached_client:
+            return cached_client
 
+        # Create new client
         try:
-            # Create new client based on host type
-            if docker_host.host_type == "unix":
-                client = docker.DockerClient(base_url=docker_host.connection_string)
-            elif docker_host.host_type == "tcp":
-                client_kwargs = {
-                    "base_url": docker_host.connection_string,
-                    "use_ssh_client": False,
-                }
-
-                if docker_host.tls_enabled:
-                    client_kwargs["tls"] = True
-
-                client = docker.DockerClient(**client_kwargs)
-            else:
-                raise ExecutorConnectionError(
-                    f"Unsupported host type: {docker_host.host_type}"
-                )
-
+            client = self._create_docker_client(docker_host)
+            
             # Test connection only if not in testing mode
             if not getattr(self, "_skip_ping_for_tests", False):
                 client.ping()
@@ -307,6 +288,38 @@ class DockerExecutor(ContainerExecutor):
         except Exception as e:
             raise ExecutorConnectionError(
                 f"Cannot connect to Docker host {docker_host.name}: {e}"
+            )
+
+    def _get_cached_client(self, host_key: str) -> Optional[docker.DockerClient]:
+        """Get cached client if available and working"""
+        if host_key not in self._clients:
+            return None
+            
+        try:
+            # Test connection only if not in testing mode
+            if not getattr(self, "_skip_ping_for_tests", False):
+                self._clients[host_key].ping()
+            return self._clients[host_key]
+        except Exception:
+            # Remove stale client
+            del self._clients[host_key]
+            return None
+
+    def _create_docker_client(self, docker_host: DockerHost) -> docker.DockerClient:
+        """Create new Docker client based on host configuration"""
+        if docker_host.host_type == "unix":
+            return docker.DockerClient(base_url=docker_host.connection_string)
+        elif docker_host.host_type == "tcp":
+            client_kwargs = {
+                "base_url": docker_host.connection_string,
+                "use_ssh_client": False,
+            }
+            if docker_host.tls_enabled:
+                client_kwargs["tls"] = True
+            return docker.DockerClient(**client_kwargs)
+        else:
+            raise ExecutorConnectionError(
+                f"Unsupported host type: {docker_host.host_type}"
             )
 
     def _create_container(self, job: ContainerJob) -> str:
@@ -384,7 +397,7 @@ class DockerExecutor(ContainerExecutor):
             return container.id
 
         except Exception as e:
-            logger.error(f"Failed to create container for job {job.id}: {e}")
+            logger.exception(f"Failed to create container for job {job.id}: {e}")
             raise ExecutorError(f"Container creation failed: {e}")
 
     def _start_container(self, job: ContainerJob, container_id: str) -> bool:
@@ -407,7 +420,7 @@ class DockerExecutor(ContainerExecutor):
             return True
 
         except Exception as e:
-            logger.error(f"Failed to start container {container_id}: {e}")
+            logger.exception(f"Failed to start container {container_id}: {e}")
             job.status = "failed"
             job.save()
             return False
@@ -489,7 +502,7 @@ class DockerExecutor(ContainerExecutor):
             execution.save()
 
         except Exception as e:
-            logger.error(f"Failed to collect execution data for job {job.id}: {e}")
+            logger.exception(f"Failed to collect execution data for job {job.id}: {e}")
 
     def _immediate_cleanup(self, job: ContainerJob) -> None:
         """Immediately cleanup container if configured"""

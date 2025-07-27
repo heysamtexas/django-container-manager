@@ -14,6 +14,9 @@ from container_manager.docker_service import docker_service
 
 logger = logging.getLogger(__name__)
 
+# Constants
+ORPHANED_CONTAINERS_DISPLAY_LIMIT = 10  # Limit for displaying orphaned containers list
+
 
 class Command(BaseCommand):
     help = "Clean up old Docker containers based on retention policies"
@@ -83,7 +86,7 @@ class Command(BaseCommand):
 
             except Exception as e:
                 self.stdout.write(self.style.ERROR(f"Cleanup failed: {e}"))
-                logger.error(f"Container cleanup error: {e}")
+                logger.exception(f"Container cleanup error: {e}")
                 raise
 
     def _show_cleanup_preview(self, orphaned_hours: int):
@@ -116,9 +119,9 @@ class Command(BaseCommand):
                     f"{job.status} {job.completed_at}"
                 )
 
-            if orphaned_count > 10:
+            if orphaned_count > ORPHANED_CONTAINERS_DISPLAY_LIMIT:
                 self.stdout.write(
-                    f"  ... and {orphaned_count - 10} more orphaned containers"
+                    f"  ... and {orphaned_count - ORPHANED_CONTAINERS_DISPLAY_LIMIT} more orphaned containers"
                 )
 
         self.stdout.write("\nTo actually perform cleanup, run without --dry-run")

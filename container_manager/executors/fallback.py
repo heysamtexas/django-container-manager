@@ -16,6 +16,9 @@ from .base import ContainerExecutor
 
 logger = logging.getLogger(__name__)
 
+# Constants  
+HIGH_MEMORY_THRESHOLD_MB = 1024  # 1GB threshold for high memory jobs
+
 
 class ExecutorFallbackManager:
     """
@@ -92,7 +95,7 @@ class ExecutorFallbackManager:
                     time.sleep(delay)
 
             except Exception as e:
-                logger.error(
+                logger.exception(
                     f"Exception executing job {job.id} on "
                     f"{executor.__class__.__name__}: {e}"
                 )
@@ -161,7 +164,7 @@ class ExecutorFallbackManager:
                     time.sleep(delay)
 
             except Exception as e:
-                logger.error(
+                logger.exception(
                     f"Exception on retry attempt {attempt + 1} for job {job.id}: {e}"
                 )
                 last_error = str(e)
@@ -246,7 +249,7 @@ class HealthChecker:
             return self._perform_health_check(host)
 
         except Exception as e:
-            logger.error(f"Error checking health for host {host.name}: {e}")
+            logger.exception(f"Error checking health for host {host.name}: {e}")
             return False
 
     def _perform_health_check(self, host: DockerHost) -> bool:
@@ -431,7 +434,7 @@ class GracefulDegradationManager:
                         )
                         return True, message
                 except Exception as e:
-                    logger.error(
+                    logger.exception(
                         f"Degradation strategy '{strategy_name}' failed for "
                         f"job {job.id}: {e}"
                     )
@@ -451,7 +454,7 @@ class GracefulDegradationManager:
         strategies = []
 
         # High priority jobs get resource reduction first
-        if job.template.memory_limit > 1024:  # More than 1GB
+        if job.template.memory_limit > HIGH_MEMORY_THRESHOLD_MB:  # More than 1GB
             strategies.append("reduce_resources")
 
         # Non-critical jobs can be delayed

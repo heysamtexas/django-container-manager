@@ -722,52 +722,6 @@ class ContainerJobAdmin(admin.ModelAdmin):
 
     export_job_data.short_description = "Export selected jobs to CSV"
 
-    def bulk_migrate_jobs(self, request, queryset):
-        """Bulk migrate jobs to different executor types"""
-        from .bulk_operations import BulkJobManager
-
-        # This would ideally be done with a form to select target executor
-        # For now, we'll show how many jobs could be migrated
-        bulk_manager = BulkJobManager()
-
-        # Get available executor types
-        available_executors = bulk_manager.executor_factory.get_available_executors()
-
-        if len(available_executors) <= 1:
-            messages.warning(
-                request, "Need at least 2 executor types available to perform migration"
-            )
-            return
-
-        # For demo, try to migrate to the second available executor
-        target_executor = available_executors[1]
-
-        # Perform dry run first
-        migrated_jobs, errors = bulk_manager.migrate_jobs_cross_executor(
-            jobs=list(queryset),
-            target_executor_type=target_executor,
-            dry_run=True,
-        )
-
-        if migrated_jobs:
-            messages.success(
-                request,
-                f"Could migrate {len(migrated_jobs)} jobs to {target_executor}. "
-                f"Use the bulk_operations management command for actual migration.",
-            )
-        else:
-            messages.info(request, "No jobs can be migrated at this time")
-
-        if errors:
-            messages.warning(
-                request,
-                f"Migration would have {len(errors)} errors. "
-                f"First error: {errors[0] if errors else 'None'}",
-            )
-
-    bulk_migrate_jobs.short_description = (
-        "Check migration possibilities for selected jobs"
-    )
 
     def bulk_status_report(self, request, queryset):
         """Generate bulk status report for selected jobs"""

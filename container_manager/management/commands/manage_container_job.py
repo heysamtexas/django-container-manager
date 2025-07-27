@@ -17,6 +17,9 @@ from container_manager.models import (
     DockerHost,
 )
 
+# Constants
+MAX_NAME_DISPLAY_LENGTH = 19  # Maximum job name length for display before truncation
+
 
 class Command(BaseCommand):
     help = "Manage individual container jobs"
@@ -247,8 +250,8 @@ class Command(BaseCommand):
         # Display jobs
         for job in jobs:
             name = job.name or job.template.name
-            if len(name) > 19:
-                name = name[:16] + "..."
+            if len(name) > MAX_NAME_DISPLAY_LENGTH:
+                name = name[:MAX_NAME_DISPLAY_LENGTH - 3] + "..."
 
             executor_type = job.executor_type or "docker"
             self.stdout.write(

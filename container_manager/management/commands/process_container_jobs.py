@@ -174,7 +174,7 @@ class Command(BaseCommand):
 
                 except Exception as e:
                     error_count += 1
-                    logger.error(f"Error in processing cycle: {e}")
+                    logger.exception(f"Error in processing cycle: {e}")
                     self.stdout.write(self.style.ERROR(f"Processing error: {e}"))
 
                     # Sleep longer after errors
@@ -229,7 +229,7 @@ class Command(BaseCommand):
                     launched += 1
 
             except Exception as e:
-                logger.error(f"Failed to launch job {job.id}: {e}")
+                logger.exception(f"Failed to launch job {job.id}: {e}")
                 self.mark_job_failed(job, str(e))
 
         return launched
@@ -294,11 +294,11 @@ class Command(BaseCommand):
             return success
 
         except ExecutorResourceError as e:
-            logger.error(f"No available executors for job {job.id}: {e}")
+            logger.exception(f"No available executors for job {job.id}: {e}")
             self.mark_job_failed(job, f"No available executors: {e}")
             return False
         except Exception as e:
-            logger.error(f"Job launch error for {job.id}: {e}")
+            logger.exception(f"Job launch error for {job.id}: {e}")
             self.mark_job_failed(job, str(e))
             return False
 
@@ -308,7 +308,7 @@ class Command(BaseCommand):
         try:
             docker_service.get_client(job.docker_host)
         except DockerConnectionError as e:
-            logger.error(f"Cannot connect to Docker host {job.docker_host.name}: {e}")
+            logger.exception(f"Cannot connect to Docker host {job.docker_host.name}: {e}")
             self.mark_job_failed(job, f"Docker host connection failed: {e}")
             return False
 
@@ -330,7 +330,7 @@ class Command(BaseCommand):
             return success
 
         except Exception as e:
-            logger.error(f"Job launch error for {job.id}: {e}")
+            logger.exception(f"Job launch error for {job.id}: {e}")
             self.mark_job_failed(job, str(e))
             return False
 
@@ -388,7 +388,7 @@ class Command(BaseCommand):
                 # For 'running' status, continue monitoring
 
             except Exception as e:
-                logger.error(f"Error monitoring job {job.id}: {e}")
+                logger.exception(f"Error monitoring job {job.id}: {e}")
                 self.mark_job_failed(job, str(e))
                 harvested += 1
 
@@ -406,7 +406,7 @@ class Command(BaseCommand):
                 execution_id = job.get_execution_identifier()
                 return executor.check_status(execution_id)
             except Exception as e:
-                logger.error(f"Error checking status for job {job.id}: {e}")
+                logger.exception(f"Error checking status for job {job.id}: {e}")
                 return "error"
 
     def harvest_completed_job(self, job: ContainerJob) -> bool:
@@ -420,7 +420,7 @@ class Command(BaseCommand):
                 executor = self.executor_factory.get_executor(job.docker_host)
                 return executor.harvest_job(job)
             except Exception as e:
-                logger.error(f"Error harvesting job {job.id}: {e}")
+                logger.exception(f"Error harvesting job {job.id}: {e}")
                 return False
 
     def handle_job_timeout(self, job: ContainerJob):
@@ -458,7 +458,7 @@ class Command(BaseCommand):
             job.save()
 
         except Exception as e:
-            logger.error(f"Error handling timeout for job {job.id}: {e}")
+            logger.exception(f"Error handling timeout for job {job.id}: {e}")
 
     def mark_job_failed(self, job: ContainerJob, error_message: str):
         """Mark a job as failed with error message"""
@@ -476,4 +476,4 @@ class Command(BaseCommand):
                 execution.save()
 
         except Exception as e:
-            logger.error(f"Failed to mark job {job.id} as failed: {e}")
+            logger.exception(f"Failed to mark job {job.id} as failed: {e}")

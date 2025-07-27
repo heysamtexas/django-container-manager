@@ -18,6 +18,9 @@ from .models import ContainerJob, ContainerTemplate, DockerHost
 
 logger = logging.getLogger(__name__)
 
+# Constants
+MAX_BULK_CREATION_LIMIT = 10000  # Maximum jobs that can be created in a single bulk operation
+
 
 class BulkJobManager:
     """
@@ -63,8 +66,8 @@ class BulkJobManager:
             errors.append("Count must be positive")
             return created_jobs, errors
 
-        if count > 10000:
-            errors.append("Maximum bulk creation limit is 10,000 jobs")
+        if count > MAX_BULK_CREATION_LIMIT:
+            errors.append(f"Maximum bulk creation limit is {MAX_BULK_CREATION_LIMIT:,} jobs")
             return created_jobs, errors
 
         # Prepare environment and command overrides
@@ -162,134 +165,15 @@ class BulkJobManager:
                     except Exception as e:
                         error_msg = f"Failed to create job {i}: {e}"
                         errors.append(error_msg)
-                        logger.error(error_msg)
+                        logger.exception(error_msg)
 
         except Exception as e:
             error_msg = f"Batch creation failed: {e}"
             errors.append(error_msg)
-            logger.error(error_msg)
+            logger.exception(error_msg)
 
         return jobs, errors
 
-    def migrate_jobs_cross_executor(
-        self,
-        jobs: List[ContainerJob],
-        target_executor_type: str,
-        dry_run: bool = False,
-        force_migration: bool = False,
-    ) -> Tuple[List[ContainerJob], List[str]]:
-        """
-        Migrate jobs to a different executor type.
-
-        Args:
-            jobs: List of jobs to migrate
-            target_executor_type: Target executor type (docker, cloudrun, etc.)
-            dry_run: If True, don't actually migrate, just validate
-            force_migration: If True, migrate even running jobs
-
-        Returns:
-            Tuple of (migrated_jobs, error_messages)
-        """
-        migrated_jobs = []
-        errors = []
-
-        # Get target hosts
-        target_hosts = list(
-            DockerHost.objects.filter(
-                executor_type=target_executor_type, is_active=True
-            )
-        )
-
-        if not target_hosts:
-            errors.append(
-                f"No available hosts for executor type {target_executor_type}"
-            )
-            return migrated_jobs, errors
-
-        logger.info(
-            f"{'[DRY RUN] ' if dry_run else ''}Migrating {len(jobs)} jobs to "
-            f"{target_executor_type}"
-        )
-
-        for job in jobs:
-            try:
-                # Validate migration is possible
-                if job.status == "running" and not force_migration:
-                    errors.append(
-                        f"Job {job.id} is running. Use force_migration=True to "
-                        f"migrate running jobs"
-                    )
-                    continue
-
-                if job.docker_host.executor_type == target_executor_type:
-                    errors.append(
-                        f"Job {job.id} already on {target_executor_type} executor"
-                    )
-                    continue
-
-                # Select best target host
-                target_host = self._select_best_host(target_hosts, job)
-
-                if dry_run:
-                    logger.info(
-                        f"[DRY RUN] Would migrate job {job.id} to {target_host.name}"
-                    )
-                    migrated_jobs.append(job)
-                    continue
-
-                # Perform migration
-                original_host = job.docker_host
-                original_status = job.status
-
-                # Stop job if running
-                if job.status == "running":
-                    try:
-                        executor = self.executor_factory.get_executor(original_host)
-                        execution_id = job.get_execution_identifier()
-                        if execution_id:
-                            executor.cleanup(execution_id)
-                    except Exception as e:
-                        logger.warning(f"Failed to stop job {job.id}: {e}")
-
-                # Update job to new host
-                job.docker_host = target_host
-                job.executor_type = target_executor_type
-                job.routing_reason = (
-                    f"Bulk migration from {original_host.executor_type} "
-                    f"to {target_executor_type}"
-                )
-
-                # Reset execution identifiers
-                job.container_id = ""
-                job.external_execution_id = ""
-
-                # Set status based on original state
-                if original_status == "running":
-                    job.status = "pending"  # Will be restarted
-                elif original_status in ["completed", "failed", "timeout", "cancelled"]:
-                    # Keep final states as-is
-                    pass
-                else:
-                    job.status = "pending"
-
-                job.save()
-                migrated_jobs.append(job)
-
-                logger.info(
-                    f"Migrated job {job.id} from {original_host.name} to "
-                    f"{target_host.name}"
-                )
-
-            except Exception as e:
-                error_msg = f"Failed to migrate job {job.id}: {e}"
-                errors.append(error_msg)
-                logger.error(error_msg)
-
-        logger.info(
-            f"Migration completed: {len(migrated_jobs)} jobs migrated, "
-            f"{len(errors)} errors"
-        )
-        return migrated_jobs, errors
 
     def _select_best_host(
         self, hosts: List[DockerHost], job: ContainerJob
@@ -345,7 +229,7 @@ class BulkJobManager:
                 except Exception as e:
                     error_msg = f"Exception starting job {job.id}: {e}"
                     errors.append(error_msg)
-                    logger.error(error_msg)
+                    logger.exception(error_msg)
 
         logger.info(
             f"Bulk start completed: {len(started_jobs)} jobs started, "
@@ -396,7 +280,7 @@ class BulkJobManager:
                 except Exception as e:
                     error_msg = f"Exception stopping job {job.id}: {e}"
                     errors.append(error_msg)
-                    logger.error(error_msg)
+                    logger.exception(error_msg)
 
         logger.info(
             f"Bulk stop completed: {len(stopped_jobs)} jobs stopped, "
@@ -443,7 +327,7 @@ class BulkJobManager:
             except Exception as e:
                 error_msg = f"Exception cancelling job {job.id}: {e}"
                 errors.append(error_msg)
-                logger.error(error_msg)
+                logger.exception(error_msg)
 
         logger.info(
             f"Bulk cancel completed: {len(cancelled_jobs)} jobs cancelled, "
@@ -518,7 +402,7 @@ class BulkJobManager:
                 except Exception as e:
                     error_msg = f"Exception restarting job {job.id}: {e}"
                     errors.append(error_msg)
-                    logger.error(error_msg)
+                    logger.exception(error_msg)
 
         logger.info(
             f"Bulk restart completed: {len(restarted_jobs)} jobs restarted, "

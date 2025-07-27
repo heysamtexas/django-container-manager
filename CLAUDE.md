@@ -133,6 +133,76 @@ uv run python manage.py manage_container_job cancel JOB-UUID
 - Use `@unittest.skipUnless()` for optional dependency tests
 - Never require actual cloud credentials for basic test runs
 
+### Code Complexity and Design Guidelines
+
+**Complexity Management:**
+- Keep cyclomatic complexity ≤ 8 per function (enforced by ruff C901)
+- Extract helper methods when functions exceed 8 branches/conditions
+- Prefer early returns over deep nesting of if statements
+- Break complex functions into smaller, focused methods
+- Use guard clauses to reduce indentation levels
+
+**Exception Handling Patterns:**
+- Use `logger.exception()` in except blocks for full tracebacks
+- Avoid nested try/except blocks - extract to separate methods instead
+- Keep exception handling focused and specific
+- Don't silence exceptions without logging
+
+**Code Organization:**
+- **Avoid magic numbers**: Use named constants for numeric values
+- **Single Responsibility**: Each function should do one thing well
+- **Extract Methods**: When complexity grows, extract logical sections
+- **Reduce Nesting**: Use early returns and guard clauses
+- **Named Constants**: Replace magic numbers with descriptive constants
+
+**Refactoring Patterns:**
+```python
+# ❌ Complex nested function
+def complex_function(data):
+    if data:
+        if data.is_valid():
+            try:
+                if data.type == "special":
+                    # ... many lines of logic
+                else:
+                    # ... more complex logic
+            except Exception as e:
+                logger.error(f"Error: {e}")
+                return None
+    return result
+
+# ✅ Refactored with early returns and extracted methods
+def simple_function(data):
+    if not data or not data.is_valid():
+        return None
+    
+    try:
+        return self._process_data_by_type(data)
+    except Exception as e:
+        logger.exception(f"Error processing data: {e}")
+        return None
+
+def _process_data_by_type(self, data):
+    if data.type == "special":
+        return self._handle_special_data(data)
+    return self._handle_regular_data(data)
+```
+
+**Specific Complexity Rules:**
+- **McCabe Complexity ≤ 8**: Functions exceeding this should be refactored
+- **Function Length**: Aim for <50 lines per function
+- **Parameter Count**: Limit to 6 parameters maximum (PLR0913)
+- **Nested Levels**: Avoid more than 3 levels of indentation
+- **Magic Numbers**: Extract to named constants (PLR2004)
+
+**When Refactoring:**
+1. **Identify complexity hotspots** using `ruff check --select C901`
+2. **Extract methods** for logical sections (5+ lines doing one thing)
+3. **Use early returns** to reduce nesting
+4. **Extract constants** for magic numbers
+5. **Split large functions** into focused helpers
+6. **Test thoroughly** after each refactoring step
+
 ### Version Control Best Practices
 - Remember to commit often as a means of checkpointing your progress. Do not be shy to rollback, branch, or use git to its fullest potential.
 - **Testing discipline must be as rigorous as code quality standards**

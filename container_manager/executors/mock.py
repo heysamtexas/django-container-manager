@@ -19,6 +19,11 @@ from django.utils import timezone
 from ..models import ContainerExecution, ContainerJob
 from .base import ContainerExecutor
 
+# Constants
+IMMEDIATE_EXECUTION_THRESHOLD = 0.5  # Seconds threshold for immediate test completion
+HIGH_MEMORY_THRESHOLD_MB = 8192  # 8GB threshold for high memory jobs  
+HIGH_CPU_THRESHOLD = 4.0  # CPU cores threshold for high CPU jobs
+
 logger = logging.getLogger(__name__)
 
 
@@ -162,7 +167,7 @@ class MockExecutor(ContainerExecutor):
             return True, execution_id
 
         except Exception as e:
-            logger.error(f"Mock executor failed to launch job {job.id}: {e}")
+            logger.exception(f"Mock executor failed to launch job {job.id}: {e}")
             return False, str(e)
 
     def check_status(self, execution_id: str) -> str:
@@ -198,7 +203,7 @@ class MockExecutor(ContainerExecutor):
         # Check if execution should be completed
         # For tests, if execution_delay is very small, complete immediately
         if (
-            execution_info["execution_time"] < 0.5
+            execution_info["execution_time"] < IMMEDIATE_EXECUTION_THRESHOLD
             or elapsed >= execution_info["execution_time"]
         ):
             # Determine final status based on exit code
@@ -303,7 +308,7 @@ class MockExecutor(ContainerExecutor):
             return True
 
         except Exception as e:
-            logger.error(f"Failed to harvest mock job {job.id}: {e}")
+            logger.exception(f"Failed to harvest mock job {job.id}: {e}")
             return False
 
     def cleanup(self, execution_id: str) -> bool:
@@ -434,9 +439,9 @@ class MockExecutor(ContainerExecutor):
         base_time = self.execution_delay
 
         # Adjust based on template properties
-        if job.template.memory_limit > 8192:  # High memory jobs take longer
+        if job.template.memory_limit > HIGH_MEMORY_THRESHOLD_MB:  # High memory jobs take longer
             base_time *= 1.5
-        if job.template.cpu_limit > 4.0:  # High CPU jobs take longer
+        if job.template.cpu_limit > HIGH_CPU_THRESHOLD:  # High CPU jobs take longer
             base_time *= 1.2
 
         # Add some randomness

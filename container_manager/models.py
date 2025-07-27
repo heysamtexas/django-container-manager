@@ -8,6 +8,9 @@ from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
+# Constants
+MAX_PERCENTAGE = 100  # Maximum percentage value for A/B testing
+
 
 class EnvironmentVariableTemplate(models.Model):
     """Reusable environment variable templates"""
@@ -569,8 +572,8 @@ class RoutingRuleSet(models.Model):
         from django.core.exceptions import ValidationError
 
         if self.ab_test_enabled:
-            if not (0 <= self.ab_test_percentage <= 100):
-                raise ValidationError("A/B test percentage must be between 0 and 100")
+            if not (0 <= self.ab_test_percentage <= MAX_PERCENTAGE):
+                raise ValidationError(f"A/B test percentage must be between 0 and {MAX_PERCENTAGE}")
 
 
 class RoutingRule(models.Model):
@@ -757,9 +760,3 @@ class RuleValidationResult(models.Model):
     def __str__(self):
         status = "PASS" if self.passed else "FAIL"
         return f"{self.rule.name} - {self.test_case}: {status}"
-
-
-# Import cost tracking models
-# Import performance monitoring models
-
-# Import migration models to include them in migrations

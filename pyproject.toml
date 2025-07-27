@@ -119,27 +119,43 @@ select = [
     "PIE",  # flake8-pie
     "T20",  # flake8-print
     "RUF",  # Ruff-specific rules
+    "C90",  # mccabe complexity
+    "PLR",  # pylint refactor (complexity, too many arguments, etc.)
+    "TRY",  # tryceratops (exception handling)
 ]
 ignore = [
     "E501",   # line too long (handled by formatter)
     "DJ001",  # django model string representation
     "T201",   # print statements (useful for management commands)
+    "PLR0913", # too many arguments (Django views often need many args)
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*.py" = ["T201", "S101"]  # Allow prints and asserts in tests
+"tests/*.py" = ["T201", "S101", "TRY002", "TRY003", "PLR2004"]  # Allow prints, asserts, test exceptions, magic values in tests
+"*/tests/*.py" = ["T201", "S101", "TRY002", "TRY003", "PLR2004"]  # Allow magic values in test subdirectories
 "*/migrations/*.py" = ["N806", "N999"]  # Ignore naming in migrations
 "*/management/commands/*.py" = ["T201"]  # Allow prints in management commands
+"manage.py" = ["TRY003"]  # Allow Django's standard manage.py exception message
+"test_*.py" = ["PLR0915", "PLR0911"]  # Allow complex test functions
+"simple_test.py" = ["PLR0915", "PLR0911"]  # Allow complex test functions
+
+# Complexity limits
+[tool.ruff.lint.mccabe]
+max-complexity = 8  # Lower than default 10
+
+[tool.ruff.lint.pylint]
+max-args = 6  # Lower than default 8
+max-branches = 10  # Default 12
+max-statements = 40  # Lower than default 50
 
 [tool.ruff.lint.isort]
 known-first-party = ["container_manager"]
-known-django = ["django"]
-section-order = ["future", "standard-library", "django", "third-party", "first-party", "local-folder"]
+known-third-party = ["django"]
+section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
 
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
-skip-source-first-line = false
 line-ending = "auto"
 
 

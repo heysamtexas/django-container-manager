@@ -17,6 +17,9 @@ from .exceptions import ExecutorConfigurationError
 
 logger = logging.getLogger(__name__)
 
+# Constants
+MIN_CONNECTION_STRING_PARTS = 2  # Minimum parts required in cloudrun:// connection string
+
 
 class CloudRunExecutor(ContainerExecutor):
     """
@@ -69,7 +72,7 @@ class CloudRunExecutor(ContainerExecutor):
             connection_string = config["docker_host"].connection_string
             if connection_string.startswith("cloudrun://"):
                 parts = connection_string[11:].split("/")
-                if len(parts) >= 2:
+                if len(parts) >= MIN_CONNECTION_STRING_PARTS:
                     self.region = parts[1]
         
         # Default region if still not set
@@ -218,11 +221,11 @@ class CloudRunExecutor(ContainerExecutor):
                 return True, job_name
 
             except Exception as e:
-                logger.error(f"Failed to create/run Cloud Run job: {e}")
+                logger.exception(f"Failed to create/run Cloud Run job: {e}")
                 return False, f"Cloud Run API error: {e}"
 
         except Exception as e:
-            logger.error(f"CloudRun executor failed to launch job {job.id}: {e}")
+            logger.exception(f"CloudRun executor failed to launch job {job.id}: {e}")
             return False, str(e)
 
     def check_status(self, execution_id: str) -> str:
@@ -288,11 +291,11 @@ class CloudRunExecutor(ContainerExecutor):
                 return "failed"
 
             except Exception as e:
-                logger.error(f"Error checking Cloud Run job status: {e}")
+                logger.exception(f"Error checking Cloud Run job status: {e}")
                 return "running"  # Assume still running on API errors
 
         except Exception as e:
-            logger.error(f"Error checking status for execution {execution_id}: {e}")
+            logger.exception(f"Error checking status for execution {execution_id}: {e}")
             return "not-found"
 
     def harvest_job(self, job: ContainerJob) -> bool:
@@ -391,7 +394,7 @@ class CloudRunExecutor(ContainerExecutor):
                         )
 
             except Exception as e:
-                logger.error(f"Error harvesting Cloud Run job details: {e}")
+                logger.exception(f"Error harvesting Cloud Run job details: {e}")
                 # Still mark as completed but with minimal data
                 job.status = "completed"
                 job.exit_code = 0
@@ -406,7 +409,7 @@ class CloudRunExecutor(ContainerExecutor):
             return True
 
         except Exception as e:
-            logger.error(f"Failed to harvest CloudRun job {job.id}: {e}")
+            logger.exception(f"Failed to harvest CloudRun job {job.id}: {e}")
             return False
 
     def cleanup(self, execution_id: str) -> bool:
@@ -451,7 +454,7 @@ class CloudRunExecutor(ContainerExecutor):
             return True
 
         except Exception as e:
-            logger.error(f"Error cleaning up execution {execution_id}: {e}")
+            logger.exception(f"Error cleaning up execution {execution_id}: {e}")
             return False
 
     def get_logs(self, execution_id: str) -> Optional[str]:
@@ -634,7 +637,7 @@ class CloudRunExecutor(ContainerExecutor):
             }
 
         except Exception as e:
-            logger.error(f"Failed to collect logs: {e}")
+            logger.exception(f"Failed to collect logs: {e}")
             return {
                 "stdout": f"Failed to collect logs: {e}\n",
                 "stderr": "",
