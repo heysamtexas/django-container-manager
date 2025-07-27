@@ -768,3 +768,55 @@ class CloudRunExecutor(ContainerExecutor):
             "total_cost": total_cost,
             "currency": "USD",
         }
+
+    def _validate_executor_specific(self, job) -> list[str]:
+        """CloudRun-specific validation logic"""
+        errors = []
+        
+        # CloudRun-specific validation: execution_id required for running jobs
+        if job.status == "running" and not job.get_execution_identifier():
+            errors.append("Execution ID required for running Cloud Run jobs")
+            
+        # CloudRun-specific validation: project_id is required
+        config = job.docker_host.executor_config or {}
+        if not config.get("project_id"):
+            errors.append("project_id is required for Cloud Run executor")
+            
+        # CloudRun-specific validation: resource limits
+        if job.template:
+            if job.template.memory_limit and job.template.memory_limit > 32768:
+                errors.append("Cloud Run memory limit cannot exceed 32768 MB")
+            if job.template.cpu_limit and job.template.cpu_limit > 8.0:
+                errors.append("Cloud Run CPU limit cannot exceed 8.0 cores")
+                
+        return errors
+
+    def get_execution_display(self, job) -> dict[str, str]:
+        """CloudRun-specific execution display information"""
+        execution_id = job.get_execution_identifier()
+        config = job.docker_host.executor_config or {}
+        region = config.get("region", "unknown")
+        
+        return {
+            "type_name": f"Cloud Run Job ({region})",
+            "id_label": "Execution ID",
+            "id_value": execution_id or "Not started",
+            "status_detail": self._get_cloudrun_status_detail(job)
+        }
+    
+    def _get_cloudrun_status_detail(self, job) -> str:
+        """Get CloudRun-specific status details"""
+        status = job.status.title()
+        
+        if job.exit_code is not None:
+            if job.exit_code == 0:
+                status += " (Success)"
+            else:
+                status += f" (Exit Code: {job.exit_code})"
+        
+        # Add Cloud Run specific details if available
+        config = job.docker_host.executor_config or {}
+        if config.get("project_id"):
+            status += f" [Project: {config['project_id']}]"
+        
+        return status

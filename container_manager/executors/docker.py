@@ -241,6 +241,43 @@ class DockerExecutor(ContainerExecutor):
                 "response_time": None,
             }
 
+    def _validate_executor_specific(self, job) -> list[str]:
+        """Docker-specific validation logic"""
+        errors = []
+        
+        # Docker-specific validation: execution_id required for running jobs
+        if job.status == "running" and not job.get_execution_identifier():
+            errors.append("Execution ID required for running Docker jobs")
+            
+        # Docker-specific validation: template image is required
+        if job.template and not job.template.docker_image:
+            errors.append("Docker image is required for Docker executor")
+            
+        return errors
+
+    def get_execution_display(self, job) -> dict[str, str]:
+        """Docker-specific execution display information"""
+        execution_id = job.get_execution_identifier()
+        
+        return {
+            "type_name": "Docker Container",
+            "id_label": "Container ID",
+            "id_value": execution_id or "Not started",
+            "status_detail": self._get_docker_status_detail(job)
+        }
+    
+    def _get_docker_status_detail(self, job) -> str:
+        """Get Docker-specific status details"""
+        status = job.status.title()
+        
+        if job.exit_code is not None:
+            if job.exit_code == 0:
+                status += " (Success)"
+            else:
+                status += f" (Exit Code: {job.exit_code})"
+        
+        return status
+
     # Private helper methods
 
     def _validate_job(self, job: ContainerJob) -> None:

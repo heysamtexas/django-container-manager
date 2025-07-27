@@ -155,15 +155,14 @@ class ExecutorHost(models.Model):
         return self.is_active
 
     def get_display_name(self) -> str:
-        """Get display name for the host"""
-        if self.executor_type == "docker":
-            return f"{self.name} (Docker)"
-        elif self.executor_type == "cloudrun":
-            config = self.executor_config
-            region = config.get("region", "unknown")
-            return f"{self.name} (Cloud Run - {region})"
-        else:
-            return f"{self.name} ({self.executor_type.title()})"
+        """
+        Get simple display name for the host.
+        
+        Note: Executor-specific display formatting has been moved to the service layer
+        and individual executor classes to enable true polymorphism.
+        Use JobManagementService.get_host_display_info() for detailed display information.
+        """
+        return f"{self.name} ({self.executor_type.title()})"
 
 
 class ContainerTemplate(models.Model):
@@ -460,21 +459,21 @@ class ContainerJob(models.Model):
         return True
 
     def clean(self):
-        """Model validation for ContainerJob"""
+        """
+        Model validation for ContainerJob.
+        
+        Note: Executor-specific validation has been moved to the service layer
+        and individual executor classes to enable true polymorphism.
+        Use JobManagementService.validate_job_for_execution() for comprehensive validation.
+        """
         super().clean()
 
-        # Validate executor type matches docker_host
-        if self.docker_host and self.executor_type != self.docker_host.executor_type:
-            raise ValidationError(
-                f"Job executor type '{self.executor_type}' doesn't match "
-                f"host executor type '{self.docker_host.executor_type}'"
-            )
-
-        # Validate execution_id for running jobs (all executor types)
-        if self.status == "running" and not self.get_execution_identifier():
-            raise ValidationError(
-                f"execution_id required for running {self.executor_type} jobs"
-            )
+        # Only core business logic validation remains here
+        if self.name and len(self.name) > 200:
+            raise ValidationError("Job name cannot exceed 200 characters")
+            
+        if self.override_command and len(self.override_command) > 2000:
+            raise ValidationError("Override command cannot exceed 2000 characters")
 
 
 class ContainerExecution(models.Model):
