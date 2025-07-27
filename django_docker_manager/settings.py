@@ -37,7 +37,6 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    "channels",
     "container_manager",
 ]
 
@@ -69,7 +68,6 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = "django_docker_manager.wsgi.application"
-ASGI_APPLICATION = "django_docker_manager.asgi.application"
 
 
 # Database
@@ -126,15 +124,6 @@ STATIC_URL = "static/"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# Channels configuration
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {
-            "hosts": [("127.0.0.1", 6379)],
-        },
-    },
-}
 
 # Container Manager Settings
 CONTAINER_MANAGER = {
