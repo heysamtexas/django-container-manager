@@ -85,7 +85,6 @@ class ExecutorHostAdmin(admin.ModelAdmin):
 
     connection_status.short_description = "Status"
 
-
     def test_connection(self, request, queryset):
         """Test connection to selected Docker hosts"""
         for host in queryset:
@@ -102,7 +101,7 @@ class ExecutorHostAdmin(admin.ModelAdmin):
 class EnvironmentVariableTemplateAdmin(admin.ModelAdmin):
     formfield_overrides: ClassVar = {
         models.TextField: {
-            'widget': admin.widgets.AdminTextareaWidget(attrs={'rows': 10, 'cols': 80})
+            "widget": admin.widgets.AdminTextareaWidget(attrs={"rows": 10, "cols": 80})
         },
     }
 
@@ -120,16 +119,14 @@ class EnvironmentVariableTemplateAdmin(admin.ModelAdmin):
     fieldsets = (
         (
             "Basic Information",
-            {
-                "fields": ("name", "description")
-            },
+            {"fields": ("name", "description")},
         ),
         (
             "Environment Variables",
             {
                 "fields": ("environment_variables_text",),
-                "description": "Enter environment variables one per line in KEY=value format. Comments starting with # are ignored."
-            }
+                "description": "Enter environment variables one per line in KEY=value format. Comments starting with # are ignored.",
+            },
         ),
         (
             "Metadata",
@@ -150,7 +147,7 @@ class EnvironmentVariableTemplateAdmin(admin.ModelAdmin):
 class ContainerTemplateAdmin(admin.ModelAdmin):
     formfield_overrides: ClassVar = {
         models.TextField: {
-            'widget': admin.widgets.AdminTextareaWidget(attrs={'rows': 8, 'cols': 80})
+            "widget": admin.widgets.AdminTextareaWidget(attrs={"rows": 8, "cols": 80})
         },
     }
     list_display = (
@@ -191,9 +188,12 @@ class ContainerTemplateAdmin(admin.ModelAdmin):
         (
             "Environment Variables",
             {
-                "fields": ("environment_template", "override_environment_variables_text"),
-                "description": "Choose a base environment template and add overrides as needed. Overrides take precedence over template variables."
-            }
+                "fields": (
+                    "environment_template",
+                    "override_environment_variables_text",
+                ),
+                "description": "Choose a base environment template and add overrides as needed. Overrides take precedence over template variables.",
+            },
         ),
         ("Execution Settings", {"fields": ("auto_remove",)}),
         (
@@ -281,9 +281,7 @@ class ContainerJobAdmin(admin.ModelAdmin):
         (
             "Multi-Executor Data",
             {
-                "fields": (
-                                "executor_metadata_display",
-                ),
+                "fields": ("executor_metadata_display",),
                 "classes": ("collapse",),
             },
         ),
@@ -323,8 +321,6 @@ class ContainerJobAdmin(admin.ModelAdmin):
 
     duration_display.short_description = "Duration"
 
-
-
     def executor_metadata_display(self, obj):
         """Display executor metadata in readable format"""
         if obj.executor_metadata:
@@ -335,7 +331,6 @@ class ContainerJobAdmin(admin.ModelAdmin):
         return "None"
 
     executor_metadata_display.short_description = "Executor Metadata"
-
 
     def get_urls(self):
         urls = super().get_urls()
@@ -721,7 +716,6 @@ class ContainerJobAdmin(admin.ModelAdmin):
         return response
 
     export_job_data.short_description = "Export selected jobs to CSV"
-
 
     def bulk_status_report(self, request, queryset):
         """Generate bulk status report for selected jobs"""

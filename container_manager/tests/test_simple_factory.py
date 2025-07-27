@@ -24,7 +24,7 @@ class SimpleExecutorFactoryTest(TestCase):
             executor_type="docker",
             connection_string="unix:///var/run/docker.sock",
             is_active=True,
-            weight=100
+            weight=100,
         )
 
         self.host2 = ExecutorHost.objects.create(
@@ -32,7 +32,7 @@ class SimpleExecutorFactoryTest(TestCase):
             executor_type="docker",
             connection_string="tcp://localhost:2376",
             is_active=True,
-            weight=200  # Higher weight = more preferred
+            weight=200,  # Higher weight = more preferred
         )
 
         # Create test template
@@ -41,7 +41,7 @@ class SimpleExecutorFactoryTest(TestCase):
             docker_image="nginx:latest",
             memory_limit=512,
             cpu_limit=1.0,
-            created_by=self.user
+            created_by=self.user,
         )
 
         self.factory = ExecutorFactory()
@@ -51,7 +51,7 @@ class SimpleExecutorFactoryTest(TestCase):
         job = ContainerJob.objects.create(
             template=self.template,
             docker_host=self.host1,  # Initial assignment
-            created_by=self.user
+            created_by=self.user,
         )
 
         # Route the job - should return a ExecutorHost
@@ -67,9 +67,7 @@ class SimpleExecutorFactoryTest(TestCase):
         ExecutorHost.objects.all().update(is_active=False)
 
         job = ContainerJob.objects.create(
-            template=self.template,
-            docker_host=self.host1,
-            created_by=self.user
+            template=self.template, docker_host=self.host1, created_by=self.user
         )
 
         selected_host = self.factory.route_job(job)
@@ -86,9 +84,7 @@ class SimpleExecutorFactoryTest(TestCase):
     def test_weight_distribution(self):
         """Test that higher weights are more likely to be selected."""
         job = ContainerJob.objects.create(
-            template=self.template,
-            docker_host=self.host1,
-            created_by=self.user
+            template=self.template, docker_host=self.host1, created_by=self.user
         )
 
         # Run multiple routing attempts and track results

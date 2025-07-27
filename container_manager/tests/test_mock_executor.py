@@ -128,7 +128,6 @@ class MockExecutorTest(TestCase):
             self.assertEqual(job.status, "failed")  # But job failed
             self.assertEqual(job.exit_code, 1)
 
-
     def test_cpu_usage_patterns(self):
         """Test different CPU usage patterns"""
         test_cases = [

@@ -438,7 +438,9 @@ class MockExecutor(ContainerExecutor):
         base_time = self.execution_delay
 
         # Adjust based on template properties
-        if job.template.memory_limit > HIGH_MEMORY_THRESHOLD_MB:  # High memory jobs take longer
+        if (
+            job.template.memory_limit > HIGH_MEMORY_THRESHOLD_MB
+        ):  # High memory jobs take longer
             base_time *= 1.5
         if job.template.cpu_limit > HIGH_CPU_THRESHOLD:  # High CPU jobs take longer
             base_time *= 1.2
@@ -564,19 +566,19 @@ class MockExecutor(ContainerExecutor):
     def _validate_executor_specific(self, job) -> list[str]:
         """Mock-specific validation logic"""
         errors = []
-        
+
         # Mock-specific validation: can be configured to fail validation
         config = self.config.get("mock_behaviors", {})
         if config.get("fail_validation"):
             errors.append("Mock executor configured to fail validation")
-            
+
         # Mock executor is very permissive, most validation passes
         return errors
 
     def get_execution_display(self, job) -> dict[str, str]:
         """Mock-specific execution display information"""
         execution_id = job.get_execution_identifier()
-        
+
         # Add mock-specific details
         config = self.config.get("mock_behaviors", {})
         behavior = "Default"
@@ -586,24 +588,24 @@ class MockExecutor(ContainerExecutor):
             behavior = "Always Succeed"
         elif config.get("random_failure"):
             behavior = "Random Failure"
-        
+
         return {
             "type_name": f"Mock Executor ({behavior})",
             "id_label": "Mock Execution ID",
             "id_value": execution_id or "Not started",
-            "status_detail": self._get_mock_status_detail(job)
+            "status_detail": self._get_mock_status_detail(job),
         }
-    
+
     def _get_mock_status_detail(self, job) -> str:
         """Get Mock-specific status details"""
         status = job.status.title()
-        
+
         if job.exit_code is not None:
             if job.exit_code == 0:
                 status += " (Mock Success)"
             else:
                 status += f" (Mock Exit Code: {job.exit_code})"
-        
+
         # Add mock behavior info
         config = self.config.get("mock_behaviors", {})
         if config:
@@ -616,5 +618,5 @@ class MockExecutor(ContainerExecutor):
                 behaviors.append("Random Failure")
             if behaviors:
                 status += f" [Behaviors: {', '.join(behaviors)}]"
-        
+
         return status

@@ -19,7 +19,9 @@ from .models import ContainerJob, ContainerTemplate, ExecutorHost
 logger = logging.getLogger(__name__)
 
 # Constants
-MAX_BULK_CREATION_LIMIT = 10000  # Maximum jobs that can be created in a single bulk operation
+MAX_BULK_CREATION_LIMIT = (
+    10000  # Maximum jobs that can be created in a single bulk operation
+)
 
 
 class BulkJobManager:
@@ -67,7 +69,9 @@ class BulkJobManager:
             return created_jobs, errors
 
         if count > MAX_BULK_CREATION_LIMIT:
-            errors.append(f"Maximum bulk creation limit is {MAX_BULK_CREATION_LIMIT:,} jobs")
+            errors.append(
+                f"Maximum bulk creation limit is {MAX_BULK_CREATION_LIMIT:,} jobs"
+            )
             return created_jobs, errors
 
         # Prepare environment and command overrides
@@ -173,7 +177,6 @@ class BulkJobManager:
             logger.exception(error_msg)
 
         return jobs, errors
-
 
     def _select_best_host(
         self, hosts: list[ExecutorHost], job: ContainerJob

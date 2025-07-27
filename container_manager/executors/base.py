@@ -176,7 +176,7 @@ class ContainerExecutor(ABC):
     def validate_job_for_execution(self, job) -> list[str]:
         """
         Validate job can be executed by this executor.
-        
+
         This method performs comprehensive validation including executor-specific
         requirements that were previously scattered in model validation.
 
@@ -187,36 +187,36 @@ class ContainerExecutor(ABC):
             List of validation error messages (empty if valid)
         """
         errors = []
-        
+
         # Common validations all executors need
         if not job:
             errors.append("Job is None")
             return errors
-            
+
         if not job.template:
             errors.append("Job must have a template")
-            
+
         if not job.docker_host:
             errors.append("Job must have a docker_host")
-            
+
         # Validate executor type matches host
         if job.docker_host and job.executor_type != job.docker_host.executor_type:
             errors.append(
                 f"Job executor type '{job.executor_type}' doesn't match "
                 f"host executor type '{job.docker_host.executor_type}'"
             )
-        
+
         # Let subclasses add executor-specific validations
         errors.extend(self._validate_executor_specific(job))
         return errors
-    
+
     def _validate_executor_specific(self, job) -> list[str]:
         """
         Override in subclasses for executor-specific validation.
-        
+
         Args:
             job: ContainerJob instance to validate
-            
+
         Returns:
             List of executor-specific validation errors
         """
@@ -225,7 +225,7 @@ class ContainerExecutor(ABC):
     def get_execution_display(self, job) -> dict[str, str]:
         """
         Get execution display information for this executor type.
-        
+
         This method provides executor-specific display formatting that was
         previously scattered in model display methods.
 
@@ -243,16 +243,16 @@ class ContainerExecutor(ABC):
             "type_name": f"{self.name.title()} Executor",
             "id_label": "Execution ID",
             "id_value": job.get_execution_identifier() or "Not assigned",
-            "status_detail": self._get_status_detail(job)
+            "status_detail": self._get_status_detail(job),
         }
-    
+
     def _get_status_detail(self, job) -> str:
         """
         Override in subclasses for executor-specific status details.
-        
+
         Args:
             job: ContainerJob instance
-            
+
         Returns:
             Executor-specific status detail string
         """

@@ -148,7 +148,6 @@ class BulkJobManagerTest(TestCase):
         self.assertEqual(len(errors), 1)
         self.assertIn("Maximum bulk creation limit", errors[0])
 
-
     def test_bulk_start_jobs(self):
         """Test bulk job starting."""
         # Create pending jobs

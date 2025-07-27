@@ -17,7 +17,9 @@ from .exceptions import ExecutorConfigurationError
 logger = logging.getLogger(__name__)
 
 # Constants
-MIN_CONNECTION_STRING_PARTS = 2  # Minimum parts required in cloudrun:// connection string
+MIN_CONNECTION_STRING_PARTS = (
+    2  # Minimum parts required in cloudrun:// connection string
+)
 
 
 class CloudRunExecutor(ContainerExecutor):
@@ -435,21 +437,28 @@ class CloudRunExecutor(ContainerExecutor):
 
         conditions = execution.status.conditions
         for condition in conditions:
-            if condition.type_ == "Completed" and condition.state.name == "CONDITION_FAILED":
+            if (
+                condition.type_ == "Completed"
+                and condition.state.name == "CONDITION_FAILED"
+            ):
                 exit_code = 1
                 status = "failed"
                 break
 
         return exit_code, status
 
-    def _update_job_status(self, job: ContainerJob, exit_code: int, status: str) -> None:
+    def _update_job_status(
+        self, job: ContainerJob, exit_code: int, status: str
+    ) -> None:
         """Update job with final status and exit code"""
         job.exit_code = exit_code
         job.status = status
         job.completed_at = timezone.now()
         job.save()
 
-    def _update_execution_record(self, job: ContainerJob, logs: dict, exit_code: int) -> None:
+    def _update_execution_record(
+        self, job: ContainerJob, logs: dict, exit_code: int
+    ) -> None:
         """Create or update the execution record with logs and resource usage"""
         try:
             execution = job.execution
@@ -465,17 +474,24 @@ class CloudRunExecutor(ContainerExecutor):
         execution.docker_log += logs.get("cloud_run", "")
 
         # Estimate resource usage (Cloud Run doesn't provide detailed metrics)
-        execution.max_memory_usage = self.memory_limit * 1024 * 1024  # Convert MB to bytes
-        execution.cpu_usage_percent = min(self.cpu_limit * 100, 100)  # Estimate CPU usage
+        execution.max_memory_usage = (
+            self.memory_limit * 1024 * 1024
+        )  # Convert MB to bytes
+        execution.cpu_usage_percent = min(
+            self.cpu_limit * 100, 100
+        )  # Estimate CPU usage
         execution.save()
 
-    def _create_new_execution(self, job: ContainerJob, logs: dict, exit_code: int) -> None:
+    def _create_new_execution(
+        self, job: ContainerJob, logs: dict, exit_code: int
+    ) -> None:
         """Create new execution record"""
         ContainerExecution.objects.create(
             job=job,
             stdout_log=logs.get("stdout", "No stdout logs available\n"),
             stderr_log=logs.get("stderr", ""),
-            docker_log=f"Job completed with exit code {exit_code}\n" + logs.get("cloud_run", ""),
+            docker_log=f"Job completed with exit code {exit_code}\n"
+            + logs.get("cloud_run", ""),
             max_memory_usage=self.memory_limit * 1024 * 1024,
             cpu_usage_percent=min(self.cpu_limit * 100, 100),
         )
@@ -586,9 +602,7 @@ class CloudRunExecutor(ContainerExecutor):
         task_template = self._create_task_template(container, job)
         labels = self._build_job_labels(job)
 
-        return run_v2.Job(
-            spec=run_v2.JobSpec(template=task_template), labels=labels
-        )
+        return run_v2.Job(spec=run_v2.JobSpec(template=task_template), labels=labels)
 
     def _build_environment_variables(self, job: ContainerJob) -> list:
         """Build complete list of environment variables"""
@@ -623,7 +637,9 @@ class CloudRunExecutor(ContainerExecutor):
 
         return [command_parts[0]], command_parts[1:]
 
-    def _create_container_spec(self, job: ContainerJob, env_vars: list, command: list, args: list):
+    def _create_container_spec(
+        self, job: ContainerJob, env_vars: list, command: list, args: list
+    ):
         """Create Cloud Run container specification"""
         from google.cloud import run_v2
 
@@ -772,23 +788,23 @@ class CloudRunExecutor(ContainerExecutor):
     def _validate_executor_specific(self, job) -> list[str]:
         """CloudRun-specific validation logic"""
         errors = []
-        
+
         # CloudRun-specific validation: execution_id required for running jobs
         if job.status == "running" and not job.get_execution_identifier():
             errors.append("Execution ID required for running Cloud Run jobs")
-            
+
         # CloudRun-specific validation: project_id is required
         config = job.docker_host.executor_config or {}
         if not config.get("project_id"):
             errors.append("project_id is required for Cloud Run executor")
-            
+
         # CloudRun-specific validation: resource limits
         if job.template:
             if job.template.memory_limit and job.template.memory_limit > 32768:
                 errors.append("Cloud Run memory limit cannot exceed 32768 MB")
             if job.template.cpu_limit and job.template.cpu_limit > 8.0:
                 errors.append("Cloud Run CPU limit cannot exceed 8.0 cores")
-                
+
         return errors
 
     def get_execution_display(self, job) -> dict[str, str]:
@@ -796,27 +812,27 @@ class CloudRunExecutor(ContainerExecutor):
         execution_id = job.get_execution_identifier()
         config = job.docker_host.executor_config or {}
         region = config.get("region", "unknown")
-        
+
         return {
             "type_name": f"Cloud Run Job ({region})",
             "id_label": "Execution ID",
             "id_value": execution_id or "Not started",
-            "status_detail": self._get_cloudrun_status_detail(job)
+            "status_detail": self._get_cloudrun_status_detail(job),
         }
-    
+
     def _get_cloudrun_status_detail(self, job) -> str:
         """Get CloudRun-specific status details"""
         status = job.status.title()
-        
+
         if job.exit_code is not None:
             if job.exit_code == 0:
                 status += " (Success)"
             else:
                 status += f" (Exit Code: {job.exit_code})"
-        
+
         # Add Cloud Run specific details if available
         config = job.docker_host.executor_config or {}
         if config.get("project_id"):
             status += f" [Project: {config['project_id']}]"
-        
+
         return status

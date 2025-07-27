@@ -14,6 +14,7 @@ from ..models import ContainerExecution, ContainerJob, ContainerTemplate, Execut
 
 try:
     import importlib.util
+
     CLOUD_RUN_AVAILABLE = importlib.util.find_spec("google.cloud.run_v2") is not None
 except ImportError:
     CLOUD_RUN_AVAILABLE = False

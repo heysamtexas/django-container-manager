@@ -80,7 +80,6 @@ class ExecutorFactoryTest(TestCase):
         self.assertEqual(executor_type, "docker")
         self.assertEqual(job.routing_reason, "Default fallback to docker")
 
-
     @override_settings(
         EXECUTOR_ROUTING_RULES=[
             {
@@ -146,7 +145,6 @@ class ExecutorFactoryTest(TestCase):
 
         self.assertEqual(executor_type, "docker")
         self.assertEqual(job.routing_reason, "Default fallback to docker")
-
 
     @override_settings(
         EXECUTOR_ROUTING_RULES=[
@@ -279,7 +277,6 @@ class ExecutorFactoryTest(TestCase):
         self.assertEqual(cost["currency"], "USD")
         self.assertGreater(cost["total_cost"], 0)
 
-
     def test_get_executor_unknown_type(self):
         """Test error for unknown executor type"""
         job = ContainerJob.objects.create(
@@ -307,7 +304,6 @@ class ExecutorFactoryTest(TestCase):
         with self.assertRaises(ExecutorConfigurationError):
             self.factory.get_executor(job)
 
-
     def test_get_executor_capacity_docker(self):
         """Test getting Docker executor capacity"""
         capacity = self.factory.get_executor_capacity("docker")
@@ -315,7 +311,6 @@ class ExecutorFactoryTest(TestCase):
         self.assertEqual(capacity["total_capacity"], 5)
         self.assertEqual(capacity["current_usage"], 0)
         self.assertEqual(capacity["available_slots"], 5)
-
 
     def test_executor_caching(self):
         """Test that executor instances are cached"""
@@ -392,4 +387,3 @@ class ExecutorFactoryTest(TestCase):
         # Should not raise exception, just skip invalid rule
         executor_type = factory.route_job_to_executor_type(job)
         self.assertEqual(executor_type, "docker")
-

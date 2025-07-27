@@ -168,4 +168,6 @@ class Command(BaseCommand):
         self.stdout.write("1. Visit the Django admin to see the templates and jobs")
         self.stdout.write("2. Start the sample job using the admin interface")
         self.stdout.write("3. Run: uv run python manage.py process_container_jobs")
-        self.stdout.write("4. Test with: uv run python manage.py manage_container_job list")
+        self.stdout.write(
+            "4. Test with: uv run python manage.py manage_container_job list"
+        )

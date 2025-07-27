@@ -21,7 +21,7 @@ class EnvironmentVariableTemplate(models.Model):
     environment_variables_text = models.TextField(
         blank=True,
         help_text="Environment variables, one per line in KEY=value format. Example:\nDEBUG=true\nAPI_KEY=secret123\nTIMEOUT=300",
-        verbose_name="Environment Variables"
+        verbose_name="Environment Variables",
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -31,7 +31,7 @@ class EnvironmentVariableTemplate(models.Model):
     class Meta:
         verbose_name = "Environment Variable Template"
         verbose_name_plural = "Environment Variable Templates"
-        ordering: ClassVar = ['name']
+        ordering: ClassVar = ["name"]
 
     def __str__(self):
         return self.name
@@ -47,13 +47,13 @@ class EnvironmentVariableTemplate(models.Model):
         if not self.environment_variables_text:
             return env_vars
 
-        for line in self.environment_variables_text.strip().split('\n'):
+        for line in self.environment_variables_text.strip().split("\n"):
             line = line.strip()
-            if not line or line.startswith('#'):
+            if not line or line.startswith("#"):
                 continue  # Skip empty lines and comments
 
-            if '=' in line:
-                key, value = line.split('=', 1)  # Split only on first =
+            if "=" in line:
+                key, value = line.split("=", 1)  # Split only on first =
                 env_vars[key.strip()] = value.strip()
 
         return env_vars
@@ -117,24 +117,20 @@ class ExecutorHost(models.Model):
     weight = models.PositiveIntegerField(
         default=100,
         validators=[MinValueValidator(1), MaxValueValidator(1000)],
-        help_text="Routing weight (higher = more preferred, 1-1000)"
+        help_text="Routing weight (higher = more preferred, 1-1000)",
     )
 
     # Current capacity tracking
     current_job_count = models.PositiveIntegerField(
-        default=0,
-        help_text="Current number of running jobs on this host"
+        default=0, help_text="Current number of running jobs on this host"
     )
 
     # Health monitoring
     health_check_failures = models.PositiveIntegerField(
-        default=0,
-        help_text="Number of consecutive health check failures"
+        default=0, help_text="Number of consecutive health check failures"
     )
     last_health_check = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="Timestamp of last health check"
+        null=True, blank=True, help_text="Timestamp of last health check"
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -157,7 +153,7 @@ class ExecutorHost(models.Model):
     def get_display_name(self) -> str:
         """
         Get simple display name for the host.
-        
+
         Note: Executor-specific display formatting has been moved to the service layer
         and individual executor classes to enable true polymorphism.
         Use JobManagementService.get_host_display_info() for detailed display information.
@@ -198,14 +194,14 @@ class ContainerTemplate(models.Model):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        help_text="Optional environment variable template to use as base configuration"
+        help_text="Optional environment variable template to use as base configuration",
     )
 
     # Environment variable overrides (simple key=value format)
     override_environment_variables_text = models.TextField(
         blank=True,
         help_text="Environment variable overrides, one per line in KEY=value format. These override any variables from the template. Example:\nDEBUG=true\nWORKER_COUNT=4",
-        verbose_name="Environment Variable Overrides"
+        verbose_name="Environment Variable Overrides",
     )
 
     # Auto cleanup (deprecated - use cleanup process instead)
@@ -236,13 +232,13 @@ class ContainerTemplate(models.Model):
         if not self.override_environment_variables_text:
             return env_vars
 
-        for line in self.override_environment_variables_text.strip().split('\n'):
+        for line in self.override_environment_variables_text.strip().split("\n"):
             line = line.strip()
-            if not line or line.startswith('#'):
+            if not line or line.startswith("#"):
                 continue  # Skip empty lines and comments
 
-            if '=' in line:
-                key, value = line.split('=', 1)  # Split only on first =
+            if "=" in line:
+                key, value = line.split("=", 1)  # Split only on first =
                 env_vars[key.strip()] = value.strip()
 
         return env_vars
@@ -266,8 +262,6 @@ class ContainerTemplate(models.Model):
         env_vars.update(self.get_override_environment_variables_dict())
 
         return env_vars
-
-
 
 
 class NetworkAssignment(models.Model):
@@ -319,23 +313,23 @@ class ContainerJob(models.Model):
         help_text=(
             "Override the template's default command. Examples:\n"
             "• Single command: python main.py --config=prod\n"
-            "• Shell command: bash -c \"echo Starting...; python app.py; echo Done\"\n"
-            "• Multi-step: bash -c \"pip install -r requirements.txt && python manage.py migrate && python manage.py runserver\"\n"
+            '• Shell command: bash -c "echo Starting...; python app.py; echo Done"\n'
+            '• Multi-step: bash -c "pip install -r requirements.txt && python manage.py migrate && python manage.py runserver"\n'
             "• Script execution: /bin/sh /scripts/deploy.sh --environment=staging\n"
             "• Data processing: python process_data.py --input=/data/input.csv --output=/data/results.json\n"
             "Leave blank to use the template's default command."
-        )
+        ),
     )
     override_environment = models.JSONField(
         default=dict,
         blank=True,
         help_text=(
             "Additional or override environment variables for this specific job. Examples:\n"
-            "• Simple config: {\"DEBUG\": \"true\", \"LOG_LEVEL\": \"info\"}\n"
-            "• Database: {\"DB_HOST\": \"prod-db.company.com\", \"DB_NAME\": \"prod_db\"}\n"
-            "• API keys: {\"API_KEY\": \"sk-1234567890\", \"WEBHOOK_URL\": \"https://api.company.com/webhook\"}\n"
-            "• File paths: {\"INPUT_FILE\": \"/data/batch_2024.csv\", \"OUTPUT_DIR\": \"/results/batch_001\"}\n"
-            "• Feature flags: {\"ENABLE_FEATURE_X\": \"true\", \"USE_NEW_ALGORITHM\": \"false\"}\n"
+            '• Simple config: {"DEBUG": "true", "LOG_LEVEL": "info"}\n'
+            '• Database: {"DB_HOST": "prod-db.company.com", "DB_NAME": "prod_db"}\n'
+            '• API keys: {"API_KEY": "sk-1234567890", "WEBHOOK_URL": "https://api.company.com/webhook"}\n'
+            '• File paths: {"INPUT_FILE": "/data/batch_2024.csv", "OUTPUT_DIR": "/results/batch_001"}\n'
+            '• Feature flags: {"ENABLE_FEATURE_X": "true", "USE_NEW_ALGORITHM": "false"}\n'
             "These merge with template environment variables, with job values taking precedence."
         ),
     )
@@ -345,9 +339,11 @@ class ContainerJob(models.Model):
         max_length=255,
         blank=True,
         default="",
-        help_text="Unified execution identifier for all executor types"
+        help_text="Unified execution identifier for all executor types",
     )
-    container_id = models.CharField(max_length=100, blank=True, default="")  # DEPRECATED: Remove after migration
+    container_id = models.CharField(
+        max_length=100, blank=True, default=""
+    )  # DEPRECATED: Remove after migration
     exit_code = models.IntegerField(null=True, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
@@ -383,7 +379,7 @@ class ContainerJob(models.Model):
     routing_reason = models.TextField(
         blank=True,
         default="",
-        help_text="Explanation of why this executor was chosen for this job"
+        help_text="Explanation of why this executor was chosen for this job",
     )
 
     external_execution_id = models.CharField(
@@ -411,7 +407,9 @@ class ContainerJob(models.Model):
     # Basic metadata
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True
+    )
 
     class Meta:
         verbose_name = "Container Job"
@@ -461,7 +459,7 @@ class ContainerJob(models.Model):
     def clean(self):
         """
         Model validation for ContainerJob.
-        
+
         Note: Executor-specific validation has been moved to the service layer
         and individual executor classes to enable true polymorphism.
         Use JobManagementService.validate_job_for_execution() for comprehensive validation.
@@ -471,7 +469,7 @@ class ContainerJob(models.Model):
         # Only core business logic validation remains here
         if self.name and len(self.name) > 200:
             raise ValidationError("Job name cannot exceed 200 characters")
-            
+
         if self.override_command and len(self.override_command) > 2000:
             raise ValidationError("Override command cannot exceed 2000 characters")
 
@@ -581,8 +579,12 @@ class RoutingRuleSet(models.Model):
         """Validate the ruleset"""
         from django.core.exceptions import ValidationError
 
-        if self.ab_test_enabled and not (0 <= self.ab_test_percentage <= MAX_PERCENTAGE):
-            raise ValidationError(f"A/B test percentage must be between 0 and {MAX_PERCENTAGE}")
+        if self.ab_test_enabled and not (
+            0 <= self.ab_test_percentage <= MAX_PERCENTAGE
+        ):
+            raise ValidationError(
+                f"A/B test percentage must be between 0 and {MAX_PERCENTAGE}"
+            )
 
 
 class RoutingRule(models.Model):

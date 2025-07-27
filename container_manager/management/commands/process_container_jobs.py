@@ -126,7 +126,9 @@ class Command(BaseCommand):
 
     def _display_startup_info(self, config):
         """Display startup information and configuration"""
-        routing_mode = "ExecutorFactory" if config["factory_enabled"] else "Direct Docker"
+        routing_mode = (
+            "ExecutorFactory" if config["factory_enabled"] else "Direct Docker"
+        )
         self.stdout.write(
             self.style.SUCCESS(
                 f"Starting container job processor "
@@ -142,7 +144,7 @@ class Command(BaseCommand):
         """Display available executor information"""
         available_hosts = ExecutorHost.objects.filter(is_active=True)
         available_executors = list(
-            available_hosts.values_list('executor_type', flat=True).distinct()
+            available_hosts.values_list("executor_type", flat=True).distinct()
         )
         self.stdout.write(f"Available executors: {', '.join(available_executors)}")
 
@@ -154,7 +156,9 @@ class Command(BaseCommand):
         if config["cleanup"]:
             self.stdout.write("Running container cleanup...")
             try:
-                docker_service.cleanup_old_containers(orphaned_hours=config["cleanup_hours"])
+                docker_service.cleanup_old_containers(
+                    orphaned_hours=config["cleanup_hours"]
+                )
                 self.stdout.write(self.style.SUCCESS("Cleanup completed"))
             except Exception as e:
                 self.stdout.write(self.style.ERROR(f"Cleanup failed: {e}"))
@@ -166,7 +170,9 @@ class Command(BaseCommand):
                 docker_host = ExecutorHost.objects.get(name=host_filter, is_active=True)
                 self.stdout.write(f"Processing jobs only for host: {docker_host.name}")
             except ExecutorHost.DoesNotExist:
-                raise CommandError(f'Docker host "{host_filter}" not found or inactive') from None
+                raise CommandError(
+                    f'Docker host "{host_filter}" not found or inactive'
+                ) from None
 
     def _run_processing_loop(self, config):
         """Run the main job processing loop"""
@@ -206,7 +212,7 @@ class Command(BaseCommand):
             config["host_filter"],
             config["max_jobs"],
             config["factory_enabled"],
-            config["executor_type"]
+            config["executor_type"],
         )
 
         # Monitor phase: Check running jobs and harvest completed ones
@@ -498,6 +504,7 @@ class Command(BaseCommand):
                 docker_service.stop_container(job)
                 # Try to collect any logs before cleanup
                 import contextlib
+
                 with contextlib.suppress(Exception):
                     docker_service._collect_execution_data(job)
             else:

@@ -116,7 +116,9 @@ class Command(BaseCommand):
         try:
             docker_host = ExecutorHost.objects.get(name=host_name, is_active=True)
         except ExecutorHost.DoesNotExist:
-            raise CommandError(f'Docker host "{host_name}" not found or inactive') from None
+            raise CommandError(
+                f'Docker host "{host_name}" not found or inactive'
+            ) from None
 
         # Parse environment variables
         override_environment = {}
@@ -228,9 +230,7 @@ class Command(BaseCommand):
                 self.style.SUCCESS(f"Job {job.id} completed successfully")
             )
         else:
-            self.stdout.write(
-                self.style.ERROR(f"Job {job.id} failed or timed out")
-            )
+            self.stdout.write(self.style.ERROR(f"Job {job.id} failed or timed out"))
 
     def handle_list(self, options):
         """List container jobs"""
@@ -265,7 +265,7 @@ class Command(BaseCommand):
         for job in jobs:
             name = job.name or job.template.name
             if len(name) > MAX_NAME_DISPLAY_LENGTH:
-                name = name[:MAX_NAME_DISPLAY_LENGTH - 3] + "..."
+                name = name[: MAX_NAME_DISPLAY_LENGTH - 3] + "..."
 
             executor_type = job.executor_type or "docker"
             self.stdout.write(
@@ -456,6 +456,7 @@ class Command(BaseCommand):
         self.stdout.write("-" * 25)
         if isinstance(parsed, dict | list):
             import json
+
             self.stdout.write(json.dumps(parsed, indent=2))
         else:
             self.stdout.write(str(parsed))
@@ -490,7 +491,9 @@ class Command(BaseCommand):
 
         # Get available executors
         available_hosts = ExecutorHost.objects.filter(is_active=True)
-        available_executors = list(available_hosts.values_list('executor_type', flat=True).distinct())
+        available_executors = list(
+            available_hosts.values_list("executor_type", flat=True).distinct()
+        )
 
         if not available_executors:
             self.stdout.write(self.style.ERROR("No executors available"))
@@ -505,8 +508,8 @@ class Command(BaseCommand):
             for executor_type in available_executors:
                 hosts_of_type = available_hosts.filter(executor_type=executor_type)
                 capacity = {
-                    'total_hosts': hosts_of_type.count(),
-                    'active_hosts': hosts_of_type.filter(is_active=True).count()
+                    "total_hosts": hosts_of_type.count(),
+                    "active_hosts": hosts_of_type.filter(is_active=True).count(),
                 }
 
                 self.stdout.write(f"\n{executor_type.upper()} Executor:")

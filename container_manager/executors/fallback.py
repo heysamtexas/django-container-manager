@@ -95,8 +95,7 @@ class ExecutorFallbackManager:
 
             except Exception as e:
                 logger.exception(
-                    f"Exception executing job {job.id} on "
-                    f"{executor.__class__.__name__}"
+                    f"Exception executing job {job.id} on {executor.__class__.__name__}"
                 )
                 last_error = str(e)
 
@@ -237,7 +236,10 @@ class HealthChecker:
                 return False
 
             # Check recent failure count
-            if host.health_check_failures >= self.failure_threshold and host.last_health_check:
+            if (
+                host.health_check_failures >= self.failure_threshold
+                and host.last_health_check
+            ):
                 time_since_check = timezone.now() - host.last_health_check
                 if time_since_check.total_seconds() < self.health_check_interval:
                     return False
@@ -386,7 +388,6 @@ class CircuitBreaker:
 
 class CircuitBreakerOpenError(Exception):
     """Raised when circuit breaker is open."""
-
 
 
 class GracefulDegradationManager:

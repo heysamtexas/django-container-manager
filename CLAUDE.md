@@ -261,6 +261,149 @@ def _process_data_by_type(self, data):
 5. **Split large functions** into focused helpers
 6. **Test thoroughly** after each refactoring step
 
+## Advanced Testing & Development Guidelines
+
+### Testing Strategy Framework (MANDATORY)
+
+**Required Test Development Sequence:**
+1. **Start Simple, Always**: Begin with basic success/failure cases
+2. **Validate Early**: Run tests after every 2-3 test methods added  
+3. **Build Incrementally**: Add complexity only after simple tests pass
+4. **Stop on Buffer Bloat**: If test output exceeds ~1000 lines, rethink approach
+
+**Coverage Priority Framework:**
+- **Priority 1**: Core business logic (models, executors, job processing)
+- **Priority 2**: Utility functions (helpers, validators, formatters)
+- **Priority 3**: Compatibility layers (backward compatibility, legacy APIs) 
+- **Priority 4**: Framework integrations (admin, signals) - DEFER UNLESS EXPLICIT
+
+### External API Testing Framework
+
+**Non-Deterministic Testing Approach:**
+When testing external APIs (Docker, Cloud services, databases):
+
+1. **Isolation First**: Mock at module import level
+2. **Behavior Focus**: Test your logic, not the external API
+3. **Error Scenarios**: Test what happens when external service fails
+4. **Timeout Awareness**: Use reasonable timeouts in tests
+5. **Dependency Gates**: Use `@skipUnless` for optional dependencies
+
+**Key Principle**: Think "How does my code behave when X happens?" not "Does X work?"
+
+### Test Complexity Self-Check Framework
+
+**Before Writing Complex Tests, Ask:**
+- **Method Length**: >20 lines? Extract helpers
+- **Mock Complexity**: >5 mocks in one test? Split scenarios  
+- **Assertion Count**: >10 assertions? Multiple test methods needed
+- **Setup Lines**: >15 lines of setup? Extract to helper method
+- **Nested Logic**: >2 levels of if/for? Simplify test logic
+- **Output Volume**: Will this generate >100 lines output? Redesign approach
+
+**Red Flags for Test Complexity:**
+🚨 **STOP** if you're creating:
+- Tests that test multiple unrelated scenarios
+- Complex mock hierarchies spanning >3 objects deep  
+- Tests requiring extensive setup/teardown
+- Tests that generate massive output logs
+- Tests with unclear pass/fail criteria
+
+### Output and Context Management
+
+**Buffer Management Guidelines:**
+- **Test Output Limit**: Stop if single test command outputs >500 lines
+- **Batch Size Awareness**: Run tests in small batches during development
+- **Context Conservation**: Large outputs eat context - prefer focused tests
+- **Early Termination**: Use timeouts and `--failfast` liberally
+
+### Recovery Patterns
+
+**When Things Go Wrong:**
+1. **Infinite Loops**: Kill immediately, examine mock return values
+2. **Massive Output**: Ctrl+C, rethink test approach  
+3. **Complex Failures**: Step back to simpler version
+4. **Mock Confusion**: Start with one mock, add incrementally
+5. **Parameter Errors**: Verify actual method signatures first
+
+### Quality Gates Integration
+
+**Automated Complexity Checks:**
+Beyond ruff C901 (cyclomatic complexity ≤ 8):
+
+**Test Method Complexity Indicators:**
+- Line count per test method (<20 lines ideal)
+- Number of mocks per test (<5 mocks preferred)
+- Assertion density (max 5-7 assertions per test)
+- Setup/teardown ratio (setup should be <50% of test)
+- Exception handling coverage (test error paths explicitly)
+
+**Self-Check Questions:**
+- Can I explain this test in one sentence?
+- Would a junior developer understand this test?
+- Does this test only fail for one specific reason?
+- Can this test run in isolation?
+
+### External Dependency Mocking Patterns
+
+**Google Cloud Services Example:**
+```python
+def setUp(self):
+    # Mock at module level
+    mock_run_v2 = MagicMock()
+    mock_jobs_client = MagicMock()
+    mock_run_v2.JobsClient = Mock(return_value=mock_jobs_client)
+    
+    sys.modules['google.cloud.run_v2'] = mock_run_v2
+    
+def tearDown(self):
+    # Clean up mocked modules
+    for module in ['google.cloud.run_v2', 'google.auth']:
+        if module in sys.modules:
+            del sys.modules[module]
+```
+
+**Docker Services Example:**
+```python
+@patch('container_manager.docker_service.DockerExecutor')
+def test_service_method(self, mock_executor_class):
+    mock_executor = Mock()
+    mock_executor.method.return_value = expected_result
+    mock_executor_class.return_value = mock_executor
+    
+    # Test your logic, not Docker's
+```
+
+### Test Organization Best Practices
+
+**File Structure:**
+```
+tests/
+├── __init__.py
+├── test_models.py              # Core business logic
+├── test_executors/             # Priority 1
+│   ├── test_docker.py
+│   ├── test_cloudrun.py
+│   └── test_base.py
+├── test_management/            # Priority 2  
+│   ├── test_process_jobs.py
+│   └── test_manage_jobs.py
+├── test_services/              # Priority 3
+│   └── test_docker_service.py  # Backward compatibility
+└── test_admin.py               # Priority 4 (defer)
+```
+
+**Test Method Naming:**
+```python
+def test_method_scenario_expectedOutcome(self):
+    """Test method_name with scenario produces expected_outcome"""
+    pass
+
+# Examples:
+def test_launch_job_with_valid_config_returns_success(self):
+def test_check_status_when_job_not_found_returns_not_found(self):
+def test_harvest_job_with_failed_execution_updates_exit_code(self):
+```
+
 ### Version Control Best Practices
 - Remember to commit often as a means of checkpointing your progress. Do not be shy to rollback, branch, or use git to its fullest potential.
 - **Testing discipline must be as rigorous as code quality standards**

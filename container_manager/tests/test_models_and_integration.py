@@ -97,7 +97,9 @@ class ContainerTemplateModelTest(TestCase):
 
     def test_template_with_environment_variables(self):
         """Test template with environment variables text field"""
-        self.template.override_environment_variables_text = "TEST_VAR=test_value\nSECOND_VAR=second_value"
+        self.template.override_environment_variables_text = (
+            "TEST_VAR=test_value\nSECOND_VAR=second_value"
+        )
         self.template.save()
 
         env_vars = self.template.get_override_environment_variables_dict()
@@ -395,8 +397,6 @@ class ManagementCommandTest(TestCase):
         output = out.getvalue()
         self.assertIn("list-test-job", output)
         self.assertIn("pending", output)
-
-
 
 
 class IntegrationTest(TestCase):

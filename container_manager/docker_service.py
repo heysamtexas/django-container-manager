@@ -26,10 +26,8 @@ class DockerConnectionError(ExecutorConnectionError):
     """Raised when unable to connect to Docker host - legacy alias"""
 
 
-
 class ContainerExecutionError(ExecutorError):
     """Raised when container execution fails - legacy alias"""
-
 
 
 class DockerService:

@@ -21,7 +21,6 @@ class ExecutorFactory:
     def __init__(self):
         self._executor_cache: dict[str, ContainerExecutor] = {}
 
-
     def route_job_to_executor_type(self, job: ContainerJob) -> str:
         """
         Route job to best executor type and update job with routing details.
@@ -33,9 +32,11 @@ class ExecutorFactory:
             str: Executor type to use
         """
         # Check for preferred executor first
-        if job.preferred_executor and self._is_executor_available(job.preferred_executor):
+        if job.preferred_executor and self._is_executor_available(
+            job.preferred_executor
+        ):
             job.routing_reason = f"Preferred executor: {job.preferred_executor}"
-            job.save(update_fields=['routing_reason'])
+            job.save(update_fields=["routing_reason"])
             return job.preferred_executor
 
         # Use weight-based routing to get a host
@@ -46,8 +47,12 @@ class ExecutorFactory:
         # Update job with routing info
         job.docker_host = selected_host
         job.executor_type = selected_host.executor_type
-        job.routing_reason = "Default fallback to docker" if selected_host.executor_type == "docker" else f"Routed to {selected_host.executor_type}"
-        job.save(update_fields=['docker_host', 'executor_type', 'routing_reason'])
+        job.routing_reason = (
+            "Default fallback to docker"
+            if selected_host.executor_type == "docker"
+            else f"Routed to {selected_host.executor_type}"
+        )
+        job.save(update_fields=["docker_host", "executor_type", "routing_reason"])
 
         return selected_host.executor_type
 
@@ -106,7 +111,7 @@ class ExecutorFactory:
             ContainerExecutor: Configured executor instance
         """
         # Handle both DockerHost and ContainerJob inputs
-        if hasattr(docker_host_or_job, 'docker_host'):
+        if hasattr(docker_host_or_job, "docker_host"):
             # It's a ContainerJob - use job's executor_type
             job = docker_host_or_job
             docker_host = job.docker_host
@@ -134,7 +139,9 @@ class ExecutorFactory:
         logger.debug(f"Created new executor instance for {executor_type}")
         return executor
 
-    def _create_executor(self, docker_host: ExecutorHost, executor_type: str) -> ContainerExecutor:
+    def _create_executor(
+        self, docker_host: ExecutorHost, executor_type: str
+    ) -> ContainerExecutor:
         """Create executor instance with appropriate configuration"""
         # Create configuration dict for the executor
         config = {
@@ -144,20 +151,21 @@ class ExecutorFactory:
 
         if executor_type == "docker":
             from .docker import DockerExecutor
+
             return DockerExecutor(config)
 
         elif executor_type == "cloudrun":
             from .cloudrun import CloudRunExecutor
+
             return CloudRunExecutor(config)
 
         elif executor_type == "mock":
             from .mock import MockExecutor
+
             return MockExecutor(config)
 
         else:
-            raise ExecutorConfigurationError(
-                f"Unknown executor type: {executor_type}"
-            )
+            raise ExecutorConfigurationError(f"Unknown executor type: {executor_type}")
 
     def route_job_dry_run(self, job: ContainerJob) -> str:
         """
@@ -170,7 +178,9 @@ class ExecutorFactory:
             str: Executor type that would be selected
         """
         # Check for preferred executor first
-        if job.preferred_executor and self._is_executor_available(job.preferred_executor):
+        if job.preferred_executor and self._is_executor_available(
+            job.preferred_executor
+        ):
             return job.preferred_executor
 
         # Use weight-based routing to get a host
@@ -187,7 +197,11 @@ class ExecutorFactory:
         Returns:
             List of executor type strings
         """
-        executor_types = ExecutorHost.objects.filter(is_active=True).values_list('executor_type', flat=True).distinct()
+        executor_types = (
+            ExecutorHost.objects.filter(is_active=True)
+            .values_list("executor_type", flat=True)
+            .distinct()
+        )
         return list(executor_types)
 
     def get_executor_capacity(self, executor_type: str) -> dict:
@@ -203,19 +217,11 @@ class ExecutorFactory:
         hosts = ExecutorHost.objects.filter(executor_type=executor_type, is_active=True)
 
         if not hosts.exists():
-            return {
-                "total_capacity": 0,
-                "current_usage": 0,
-                "available_slots": 0
-            }
+            return {"total_capacity": 0, "current_usage": 0, "available_slots": 0}
 
         # For cloud executors, use large default capacity
         if executor_type in ["cloudrun", "fargate"]:
-            return {
-                "total_capacity": 1000,
-                "current_usage": 0,
-                "available_slots": 1000
-            }
+            return {"total_capacity": 1000, "current_usage": 0, "available_slots": 1000}
 
         # For Docker hosts, sum up the capacity
         total_capacity = sum(host.max_concurrent_jobs for host in hosts)
@@ -224,7 +230,7 @@ class ExecutorFactory:
         return {
             "total_capacity": total_capacity,
             "current_usage": current_usage,
-            "available_slots": max(0, total_capacity - current_usage)
+            "available_slots": max(0, total_capacity - current_usage),
         }
 
     def _is_executor_available(self, executor_type: str) -> bool:

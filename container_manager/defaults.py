@@ -16,26 +16,21 @@ DEFAULT_CONTAINER_MANAGER_SETTINGS = {
     # Image Management
     "AUTO_PULL_IMAGES": True,
     "IMAGE_PULL_TIMEOUT": 300,
-
     # Container Cleanup
     "IMMEDIATE_CLEANUP": True,
     "CLEANUP_ENABLED": True,
     "CLEANUP_HOURS": 24,
-
     # Job Processing
     "MAX_CONCURRENT_JOBS": 10,
     "POLL_INTERVAL": 5,
     "JOB_TIMEOUT_SECONDS": 3600,
-
     # Resource Limits
     "DEFAULT_MEMORY_LIMIT": 512,  # MB
-    "DEFAULT_CPU_LIMIT": 1.0,     # cores
-
+    "DEFAULT_CPU_LIMIT": 1.0,  # cores
     # Logging and Monitoring
     "LOG_RETENTION_DAYS": 30,
     "ENABLE_METRICS": True,
     "ENABLE_HEALTH_CHECKS": True,
-
     # Network and Security
     "DEFAULT_NETWORK": "bridge",
     "ENABLE_PRIVILEGED_CONTAINERS": False,
@@ -62,9 +57,12 @@ def get_container_manager_setting(key: str, default=None):
     """
     try:
         from django.conf import settings
+
         if settings.configured:
             container_settings = getattr(settings, "CONTAINER_MANAGER", {})
-            return container_settings.get(key, default or DEFAULT_CONTAINER_MANAGER_SETTINGS.get(key))
+            return container_settings.get(
+                key, default or DEFAULT_CONTAINER_MANAGER_SETTINGS.get(key)
+            )
         else:
             return default or DEFAULT_CONTAINER_MANAGER_SETTINGS.get(key)
     except (ImportError, Exception):
@@ -81,8 +79,11 @@ def get_use_executor_factory():
     """
     try:
         from django.conf import settings
+
         if settings.configured:
-            return getattr(settings, "USE_EXECUTOR_FACTORY", DEFAULT_USE_EXECUTOR_FACTORY)
+            return getattr(
+                settings, "USE_EXECUTOR_FACTORY", DEFAULT_USE_EXECUTOR_FACTORY
+            )
         else:
             return DEFAULT_USE_EXECUTOR_FACTORY
     except (ImportError, Exception):

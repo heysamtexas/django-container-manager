@@ -3,6 +3,7 @@
 Test script to validate django-container-manager package installation
 and functionality in a fresh Django project.
 """
+
 import os
 import subprocess
 import sys
@@ -56,7 +57,7 @@ def test_package_installation():
         run_command([python_path, "-m", "django", "startproject", "testproject", "."])
 
         # Create test settings
-        settings_content = '''
+        settings_content = """
 # Test settings for django-container-manager
 import os
 from pathlib import Path
@@ -122,9 +123,9 @@ CONTAINER_MANAGER = {
 }
 
 USE_EXECUTOR_FACTORY = False
-'''
+"""
 
-        with open('testproject/settings.py', 'w') as f:
+        with open("testproject/settings.py", "w") as f:
             f.write(settings_content)
 
         print("\n🗄️ Testing Django setup...")
@@ -144,11 +145,13 @@ USE_EXECUTOR_FACTORY = False
         required_commands = ["process_container_jobs", "manage_container_job"]
         for cmd in required_commands:
             if cmd not in result.stdout:
-                raise AssertionError(f"Management command '{cmd}' not found in help output")
+                raise AssertionError(
+                    f"Management command '{cmd}' not found in help output"
+                )
 
         # Test that models can be imported
         print("  ✓ Testing model imports...")
-        test_import_script = '''
+        test_import_script = """
 import os
 import django
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "testproject.settings")
@@ -160,16 +163,16 @@ from container_manager.defaults import get_container_manager_setting
 print("✓ Successfully imported models")
 print(f"✓ Default AUTO_PULL_IMAGES: {get_container_manager_setting('AUTO_PULL_IMAGES')}")
 print(f"✓ Custom MAX_CONCURRENT_JOBS: {get_container_manager_setting('MAX_CONCURRENT_JOBS')}")
-'''
+"""
 
-        with open('test_imports.py', 'w') as f:
+        with open("test_imports.py", "w") as f:
             f.write(test_import_script)
 
         run_command([python_path, "test_imports.py"])
 
         # Test admin integration
         print("  ✓ Testing admin integration...")
-        admin_test_script = '''
+        admin_test_script = """
 import os
 import django
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "testproject.settings")
@@ -187,16 +190,16 @@ for model in required_models:
         raise AssertionError(f"Model {model.__name__} not registered in admin")
 
 print("✓ All models registered in admin")
-'''
+"""
 
-        with open('test_admin.py', 'w') as f:
+        with open("test_admin.py", "w") as f:
             f.write(admin_test_script)
 
         run_command([python_path, "test_admin.py"])
 
         # Test that settings defaults work
         print("  ✓ Testing settings defaults...")
-        settings_test_script = '''
+        settings_test_script = """
 import os
 import django
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "testproject.settings")
@@ -217,9 +220,9 @@ use_factory = get_use_executor_factory()
 assert use_factory == False, f"Expected False, got {use_factory}"
 
 print("✓ Settings and defaults working correctly")
-'''
+"""
 
-        with open('test_settings.py', 'w') as f:
+        with open("test_settings.py", "w") as f:
             f.write(settings_test_script)
 
         run_command([python_path, "test_settings.py"])

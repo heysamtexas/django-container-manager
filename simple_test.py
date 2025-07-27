@@ -2,6 +2,7 @@
 """
 Simple test to validate django-container-manager package functionality
 """
+
 import os
 import subprocess
 import sys
@@ -19,6 +20,7 @@ def run_command(cmd, cwd=None):
     print(f"SUCCESS: {result.stdout}")
     return True
 
+
 def test_package_locally():
     """Test the package in the current environment"""
 
@@ -29,7 +31,9 @@ def test_package_locally():
     wheel_file = next(project_dir.glob("dist/*.whl"))
 
     print(f"📦 Installing package from {wheel_file}...")
-    if not run_command([sys.executable, "-m", "pip", "install", str(wheel_file), "--force-reinstall"]):
+    if not run_command(
+        [sys.executable, "-m", "pip", "install", str(wheel_file), "--force-reinstall"]
+    ):
         return False
 
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -38,11 +42,13 @@ def test_package_locally():
 
         # Create minimal Django project
         print("\n🏗️ Creating Django project...")
-        if not run_command([sys.executable, "-m", "django", "startproject", "testproject", "."]):
+        if not run_command(
+            [sys.executable, "-m", "django", "startproject", "testproject", "."]
+        ):
             return False
 
         # Create test settings
-        settings_content = '''
+        settings_content = """
 import os
 from pathlib import Path
 
@@ -70,9 +76,9 @@ CONTAINER_MANAGER = {
     "AUTO_PULL_IMAGES": True,
     "MAX_CONCURRENT_JOBS": 5,
 }
-'''
+"""
 
-        with open('testproject/settings.py', 'w') as f:
+        with open("testproject/settings.py", "w") as f:
             f.write(settings_content)
 
         print("\n🗄️ Testing Django functionality...")
@@ -89,8 +95,9 @@ CONTAINER_MANAGER = {
 
         # Test management commands
         print("  ✓ Testing management commands...")
-        result = subprocess.run([sys.executable, "manage.py", "help"],
-                              capture_output=True, text=True)
+        result = subprocess.run(
+            [sys.executable, "manage.py", "help"], capture_output=True, text=True
+        )
 
         if "process_container_jobs" not in result.stdout:
             print("ERROR: process_container_jobs command not found")
@@ -102,7 +109,7 @@ CONTAINER_MANAGER = {
 
         # Test imports
         print("  ✓ Testing imports...")
-        test_script = '''
+        test_script = """
 import os
 import django
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "testproject.settings")
@@ -112,9 +119,9 @@ from container_manager.models import DockerHost, ContainerTemplate, ContainerJob
 from container_manager.defaults import get_container_manager_setting
 print("Models imported successfully")
 print(f"MAX_CONCURRENT_JOBS setting: {get_container_manager_setting('MAX_CONCURRENT_JOBS')}")
-'''
+"""
 
-        with open('test_imports.py', 'w') as f:
+        with open("test_imports.py", "w") as f:
             f.write(test_script)
 
         if not run_command([sys.executable, "test_imports.py"]):
@@ -122,6 +129,7 @@ print(f"MAX_CONCURRENT_JOBS setting: {get_container_manager_setting('MAX_CONCURR
 
         print("\n🎉 All tests passed!")
         return True
+
 
 if __name__ == "__main__":
     if test_package_locally():
