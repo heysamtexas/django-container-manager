@@ -4,7 +4,6 @@ from django.core.management.base import BaseCommand
 from container_manager.models import (
     ContainerJob,
     ContainerTemplate,
-    EnvironmentVariableTemplate,
     ExecutorHost,
 )
 
