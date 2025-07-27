@@ -497,10 +497,9 @@ class Command(BaseCommand):
                 # Use legacy docker service
                 docker_service.stop_container(job)
                 # Try to collect any logs before cleanup
-                try:
+                import contextlib
+                with contextlib.suppress(Exception):
                     docker_service._collect_execution_data(job)
-                except Exception:
-                    pass  # Don't fail if log collection fails
             else:
                 # Use executor factory for non-docker executors
                 try:

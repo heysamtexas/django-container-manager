@@ -48,7 +48,7 @@ class ExecutorFallbackManager:
         Returns:
             Tuple of (success, execution_id_or_error_message)
         """
-        executors_to_try = [primary_executor] + fallback_executors
+        executors_to_try = [primary_executor, *fallback_executors]
         last_error = "No executors available"
 
         for attempt, executor in enumerate(executors_to_try):
@@ -286,7 +286,7 @@ class HealthChecker:
             logger.warning(f"Health check failed for host {host.name}")
             return False
 
-    def get_healthy_hosts(self, executor_type: str = None) -> list[DockerHost]:
+    def get_healthy_hosts(self, executor_type: str | None = None) -> list[DockerHost]:
         """
         Get list of healthy hosts, optionally filtered by executor type.
 

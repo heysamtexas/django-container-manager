@@ -576,7 +576,7 @@ class CloudRunExecutor(ContainerExecutor):
             "execution_time_seconds": 0,  # Would need to calculate from start/end times
         }
 
-    def _create_job_spec(self, job: ContainerJob, job_name: str) -> "run_v2.Job":
+    def _create_job_spec(self, job: ContainerJob, job_name: str):
         """Create Cloud Run job specification."""
         from google.cloud import run_v2
 

@@ -37,7 +37,7 @@ class BulkJobManager:
         count: int,
         user: User,
         host: DockerHost | None = None,
-        name_pattern: str = None,
+        name_pattern: str | None = None,
         environment_overrides: list[dict[str, Any]] | None = None,
         command_overrides: list[str] | None = None,
         batch_size: int = 100,

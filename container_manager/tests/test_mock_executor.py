@@ -175,7 +175,7 @@ class MockExecutorTest(TestCase):
 
         # Run multiple jobs to see variation
         cpu_values = []
-        for i in range(10):
+        for _ in range(10):
             job = ContainerJob.objects.create(
                 template=self.template,
                 docker_host=self.docker_host,

@@ -13,8 +13,8 @@ from ..executors.exceptions import ExecutorConfigurationError
 from ..models import ContainerExecution, ContainerJob, ContainerTemplate, DockerHost
 
 try:
-    import google.cloud.run_v2
-    CLOUD_RUN_AVAILABLE = True
+    import importlib.util
+    CLOUD_RUN_AVAILABLE = importlib.util.find_spec("google.cloud.run_v2") is not None
 except ImportError:
     CLOUD_RUN_AVAILABLE = False
 
@@ -102,10 +102,10 @@ class CloudRunExecutorTest(TestCase):
         config = {"project_id": "test-project"}
         executor = CloudRunExecutor(config)
 
-        with patch("google.cloud.run_v2") as mock_run_v2:
+        with patch("google.cloud.run_v2") as mock_gcp_run:
             # Mock GCP clients and responses
             mock_client = MagicMock()
-            mock_run_v2.JobsClient.return_value = mock_client
+            mock_gcp_run.JobsClient.return_value = mock_client
 
             # Mock job creation
             mock_job_resource = MagicMock()
@@ -140,14 +140,14 @@ class CloudRunExecutorTest(TestCase):
             self.assertIn("Cloud Run job", execution.stdout_log)
 
     @patch("google.cloud.run_v2")
-    def test_launch_job_failure(self, mock_run_v2):
+    def test_launch_job_failure(self, mock_gcp_run):
         """Test job launch failure"""
         config = {"project_id": "test-project"}
         executor = CloudRunExecutor(config)
 
         # Mock GCP client that raises an exception
         mock_client = MagicMock()
-        mock_run_v2.JobsClient.return_value = mock_client
+        mock_gcp_run.JobsClient.return_value = mock_client
         mock_client.create_job.side_effect = Exception("GCP API Error")
 
         job = ContainerJob.objects.create(
@@ -160,14 +160,14 @@ class CloudRunExecutorTest(TestCase):
         self.assertIn("Cloud Run API error", error_msg)
 
     @patch("google.cloud.run_v2")
-    def test_check_status_running(self, mock_run_v2):
+    def test_check_status_running(self, mock_gcp_run):
         """Test status check for running job"""
         config = {"project_id": "test-project"}
         executor = CloudRunExecutor(config)
 
         # Setup mock client
         mock_client = MagicMock()
-        mock_run_v2.JobsClient.return_value = mock_client
+        mock_gcp_run.JobsClient.return_value = mock_client
 
         # Mock running execution
         mock_execution = MagicMock()
@@ -190,14 +190,14 @@ class CloudRunExecutorTest(TestCase):
         self.assertEqual(status, "running")
 
     @patch("google.cloud.run_v2")
-    def test_check_status_completed(self, mock_run_v2):
+    def test_check_status_completed(self, mock_gcp_run):
         """Test status check for completed job"""
         config = {"project_id": "test-project"}
         executor = CloudRunExecutor(config)
 
         # Setup mock client
         mock_client = MagicMock()
-        mock_run_v2.JobsClient.return_value = mock_client
+        mock_gcp_run.JobsClient.return_value = mock_client
 
         # Mock completed execution
         mock_execution = MagicMock()
@@ -223,14 +223,14 @@ class CloudRunExecutorTest(TestCase):
         self.assertEqual(status, "completed")
 
     @patch("google.cloud.run_v2")
-    def test_check_status_failed(self, mock_run_v2):
+    def test_check_status_failed(self, mock_gcp_run):
         """Test status check for failed job"""
         config = {"project_id": "test-project"}
         executor = CloudRunExecutor(config)
 
         # Setup mock client
         mock_client = MagicMock()
-        mock_run_v2.JobsClient.return_value = mock_client
+        mock_gcp_run.JobsClient.return_value = mock_client
 
         # Mock failed execution
         mock_execution = MagicMock()
@@ -264,7 +264,7 @@ class CloudRunExecutorTest(TestCase):
         self.assertEqual(status, "not-found")
 
     @patch("google.cloud.run_v2")
-    def test_harvest_job_success(self, mock_run_v2):
+    def test_harvest_job_success(self, mock_gcp_run):
         """Test successful job harvest"""
         config = {"project_id": "test-project"}
         executor = CloudRunExecutor(config)
@@ -283,7 +283,7 @@ class CloudRunExecutorTest(TestCase):
 
         # Setup mock client
         mock_client = MagicMock()
-        mock_run_v2.JobsClient.return_value = mock_client
+        mock_gcp_run.JobsClient.return_value = mock_client
 
         # Mock successful execution
         mock_execution = MagicMock()
@@ -331,7 +331,7 @@ class CloudRunExecutorTest(TestCase):
         self.assertGreater(execution.max_memory_usage, 0)
 
     @patch("google.cloud.run_v2")
-    def test_harvest_job_failed(self, mock_run_v2):
+    def test_harvest_job_failed(self, mock_gcp_run):
         """Test harvest of failed job"""
         config = {"project_id": "test-project"}
         executor = CloudRunExecutor(config)
@@ -342,7 +342,7 @@ class CloudRunExecutorTest(TestCase):
 
         # Setup mock client
         mock_client = MagicMock()
-        mock_run_v2.JobsClient.return_value = mock_client
+        mock_gcp_run.JobsClient.return_value = mock_client
 
         # Mock failed execution
         mock_execution = MagicMock()
@@ -384,14 +384,14 @@ class CloudRunExecutorTest(TestCase):
         self.assertEqual(job.exit_code, 1)
 
     @patch("google.cloud.run_v2")
-    def test_cleanup_job(self, mock_run_v2):
+    def test_cleanup_job(self, mock_gcp_run):
         """Test job cleanup"""
         config = {"project_id": "test-project"}
         executor = CloudRunExecutor(config)
 
         # Setup mock client
         mock_client = MagicMock()
-        mock_run_v2.JobsClient.return_value = mock_client
+        mock_gcp_run.JobsClient.return_value = mock_client
 
         # Mock successful deletion
         mock_delete_operation = MagicMock()
@@ -477,7 +477,7 @@ class CloudRunExecutorTest(TestCase):
         self.assertGreater(cost["memory_cost"], 0)
 
     @patch("google.cloud.run_v2")
-    def test_job_spec_creation(self, mock_run_v2):
+    def test_job_spec_creation(self, mock_gcp_run):
         """Test Cloud Run job specification creation"""
         config = {
             "project_id": "test-project",
@@ -497,11 +497,11 @@ class CloudRunExecutorTest(TestCase):
         )
 
         # Mock the run_v2 classes by patching the imports in the executor module
-        with patch("google.cloud.run_v2") as mock_run_v2:
+        with patch("google.cloud.run_v2") as mock_run:
             mock_job = MagicMock()
-            mock_run_v2.Job.return_value = mock_job
-            mock_run_v2.Container.return_value = MagicMock()
-            mock_run_v2.EnvVar.return_value = MagicMock()
+            mock_run.Job.return_value = mock_job
+            mock_run.Container.return_value = MagicMock()
+            mock_run.EnvVar.return_value = MagicMock()
 
             job_spec = executor._create_job_spec(job, "test-job-123")
 
@@ -509,10 +509,10 @@ class CloudRunExecutorTest(TestCase):
             self.assertIsNotNone(job_spec)
 
             # Verify environment variables were processed
-            mock_run_v2.EnvVar.assert_called()
+            mock_gcp_run.EnvVar.assert_called()
 
             # Verify container was created with correct image
-            mock_run_v2.Container.assert_called()
+            mock_gcp_run.Container.assert_called()
 
     @patch("google.cloud.logging")
     def test_log_collection(self, mock_logging):
@@ -573,17 +573,17 @@ class CloudRunExecutorTest(TestCase):
         )
 
         # Mock the run_v2 to capture the resource requirements
-        with patch("google.cloud.run_v2") as mock_run_v2:
+        with patch("google.cloud.run_v2") as mock_gcp_run:
             mock_container = MagicMock()
-            mock_run_v2.Container.return_value = mock_container
-            mock_run_v2.Job.return_value = MagicMock()
+            mock_gcp_run.Container.return_value = mock_container
+            mock_gcp_run.Job.return_value = MagicMock()
 
             executor._create_job_spec(job, "test-job")
 
             # Verify that resources were capped at Cloud Run limits
             # The ResourceRequirements should have been called with capped values
-            mock_run_v2.ResourceRequirements.assert_called()
-            call_args = mock_run_v2.ResourceRequirements.call_args
+            mock_gcp_run.ResourceRequirements.assert_called()
+            call_args = mock_gcp_run.ResourceRequirements.call_args
 
             # Check if limits were passed as keyword argument
             if "limits" in call_args[1]:

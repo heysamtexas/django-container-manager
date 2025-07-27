@@ -270,14 +270,14 @@ class CircuitBreakerTest(TestCase):
         """Test circuit opens after failure threshold."""
 
         def failing_func():
-            raise Exception("Test failure")
+            raise RuntimeError("Test failure")
 
         # First failure
-        with self.assertRaises(Exception):
+        with self.assertRaises(RuntimeError):
             self.breaker.call("test-executor", failing_func)
 
         # Second failure - should open circuit
-        with self.assertRaises(Exception):
+        with self.assertRaises(RuntimeError):
             self.breaker.call("test-executor", failing_func)
 
         # Third call should raise CircuitBreakerOpenError
@@ -288,15 +288,15 @@ class CircuitBreakerTest(TestCase):
         """Test circuit goes to half-open after timeout."""
 
         def failing_func():
-            raise Exception("Test failure")
+            raise RuntimeError("Test failure")
 
         def success_func():
             return "recovered"
 
         # Trigger failures to open circuit
-        with self.assertRaises(Exception):
+        with self.assertRaises(RuntimeError):
             self.breaker.call("test-executor", failing_func)
-        with self.assertRaises(Exception):
+        with self.assertRaises(RuntimeError):
             self.breaker.call("test-executor", failing_func)
 
         # Should be open now

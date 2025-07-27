@@ -269,7 +269,7 @@ class Command(BaseCommand):
 
             executor_type = job.executor_type or "docker"
             self.stdout.write(
-                f"{str(job.id):<36} {name:<20} {job.status:<10} {executor_type:<10} "
+                f"{job.id!s:<36} {name:<20} {job.status:<10} {executor_type:<10} "
                 f"{job.docker_host.name:<15} "
                 f"{job.created_at.strftime('%Y-%m-%d %H:%M'):<20}"
             )
@@ -346,10 +346,20 @@ class Command(BaseCommand):
 
     def show_job_details(self, job, show_logs=False):
         """Show detailed job information"""
+        self._display_job_header(job)
+        self._display_basic_job_info(job)
+        self._display_execution_identifier(job)
+        self._display_job_timestamps(job)
+        self._display_command_info(job)
+        self._display_execution_details(job, show_logs)
+
+    def _display_job_header(self, job):
+        """Display job header information"""
         self.stdout.write(f"\nJob Details: {job.id}")
         self.stdout.write("=" * 50)
 
-        # Basic info
+    def _display_basic_job_info(self, job):
+        """Display basic job information"""
         self.stdout.write(f"Name: {job.name or job.template.name}")
         self.stdout.write(
             f"Template: {job.template.name} ({job.template.docker_image})"
@@ -358,7 +368,8 @@ class Command(BaseCommand):
         self.stdout.write(f"Executor Type: {job.executor_type or 'docker'}")
         self.stdout.write(f"Status: {job.status}")
 
-        # Show appropriate execution ID
+    def _display_execution_identifier(self, job):
+        """Display appropriate execution ID based on executor type"""
         execution_id = job.get_execution_identifier()
         if job.executor_type == "docker" or not job.executor_type:
             self.stdout.write(f"Container ID: {execution_id or 'N/A'}")
@@ -369,9 +380,8 @@ class Command(BaseCommand):
             f"Exit Code: {job.exit_code if job.exit_code is not None else 'N/A'}"
         )
 
-        # Routing reason removed in simplified system
-
-        # Timestamps
+    def _display_job_timestamps(self, job):
+        """Display job timestamp information"""
         self.stdout.write(f"Created: {job.created_at}")
         if job.started_at:
             self.stdout.write(f"Started: {job.started_at}")
@@ -380,7 +390,8 @@ class Command(BaseCommand):
         if job.duration:
             self.stdout.write(f"Duration: {job.duration}")
 
-        # Command and environment
+    def _display_command_info(self, job):
+        """Display command and environment information"""
         command = job.override_command or job.template.command
         if command:
             self.stdout.write(f"Command: {command}")
@@ -390,57 +401,78 @@ class Command(BaseCommand):
             for key, value in job.override_environment.items():
                 self.stdout.write(f"  {key}={value}")
 
-        # Execution details
+    def _display_execution_details(self, job, show_logs):
+        """Display execution details and logs if available"""
         try:
             execution = job.execution
-            self.stdout.write("\nExecution Details:")
-            self.stdout.write("-" * 20)
-
-            if execution.max_memory_usage:
-                memory_mb = execution.max_memory_usage / (1024 * 1024)
-                self.stdout.write(f"Max Memory: {memory_mb:.2f} MB")
-
-            if execution.cpu_usage_percent:
-                self.stdout.write(f"CPU Usage: {execution.cpu_usage_percent:.2f}%")
-
-            # Show logs if requested
+            self._display_execution_stats(execution)
             if show_logs:
-                if execution.stdout_log:
-                    self.stdout.write("\nStdout Logs:")
-                    self.stdout.write("-" * 15)
-                    self.stdout.write(execution.stdout_log)
-
-                # Show clean output for downstream processing
-                clean_output = execution.clean_output
-                if clean_output:
-                    self.stdout.write("\nClean Output (timestamps stripped):")
-                    self.stdout.write("-" * 40)
-                    self.stdout.write(clean_output)
-
-                    # Try to show parsed JSON in a nice format
-                    parsed = execution.parsed_output
-                    if parsed is not None and parsed != clean_output:
-                        self.stdout.write("\nParsed Output (JSON):")
-                        self.stdout.write("-" * 25)
-                        if isinstance(parsed, dict | list):
-                            import json
-
-                            self.stdout.write(json.dumps(parsed, indent=2))
-                        else:
-                            self.stdout.write(str(parsed))
-
-                if execution.stderr_log:
-                    self.stdout.write("\nStderr Logs:")
-                    self.stdout.write("-" * 15)
-                    self.stdout.write(execution.stderr_log)
-
-                if execution.docker_log:
-                    self.stdout.write("\nDocker Logs:")
-                    self.stdout.write("-" * 15)
-                    self.stdout.write(execution.docker_log)
-
+                self._display_execution_logs(execution)
         except ContainerExecution.DoesNotExist:
             self.stdout.write("\nNo execution details available")
+
+    def _display_execution_stats(self, execution):
+        """Display execution statistics"""
+        self.stdout.write("\nExecution Details:")
+        self.stdout.write("-" * 20)
+
+        if execution.max_memory_usage:
+            memory_mb = execution.max_memory_usage / (1024 * 1024)
+            self.stdout.write(f"Max Memory: {memory_mb:.2f} MB")
+
+        if execution.cpu_usage_percent:
+            self.stdout.write(f"CPU Usage: {execution.cpu_usage_percent:.2f}%")
+
+    def _display_execution_logs(self, execution):
+        """Display execution logs in various formats"""
+        self._display_stdout_logs(execution)
+        self._display_clean_output(execution)
+        self._display_stderr_logs(execution)
+        self._display_docker_logs(execution)
+
+    def _display_stdout_logs(self, execution):
+        """Display stdout logs"""
+        if execution.stdout_log:
+            self.stdout.write("\nStdout Logs:")
+            self.stdout.write("-" * 15)
+            self.stdout.write(execution.stdout_log)
+
+    def _display_clean_output(self, execution):
+        """Display clean output and parsed JSON"""
+        clean_output = execution.clean_output
+        if clean_output:
+            self.stdout.write("\nClean Output (timestamps stripped):")
+            self.stdout.write("-" * 40)
+            self.stdout.write(clean_output)
+
+            # Try to show parsed JSON in a nice format
+            parsed = execution.parsed_output
+            if parsed is not None and parsed != clean_output:
+                self._display_parsed_output(parsed)
+
+    def _display_parsed_output(self, parsed):
+        """Display parsed JSON output"""
+        self.stdout.write("\nParsed Output (JSON):")
+        self.stdout.write("-" * 25)
+        if isinstance(parsed, dict | list):
+            import json
+            self.stdout.write(json.dumps(parsed, indent=2))
+        else:
+            self.stdout.write(str(parsed))
+
+    def _display_stderr_logs(self, execution):
+        """Display stderr logs"""
+        if execution.stderr_log:
+            self.stdout.write("\nStderr Logs:")
+            self.stdout.write("-" * 15)
+            self.stdout.write(execution.stderr_log)
+
+    def _display_docker_logs(self, execution):
+        """Display docker logs"""
+        if execution.docker_log:
+            self.stdout.write("\nDocker Logs:")
+            self.stdout.write("-" * 15)
+            self.stdout.write(execution.docker_log)
 
     def get_default_user(self):
         """Get a default user for job creation"""

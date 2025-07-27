@@ -177,24 +177,19 @@ class DockerExecutor(ContainerExecutor):
         try:
             # Find the job to get docker_host
             job = ContainerJob.objects.filter(container_id=execution_id).first()
-            if not job:
-                # Try to cleanup anyway with default client
-                client = docker.from_env()
-            else:
-                client = self._get_client(job.docker_host)
+            client = docker.from_env() if not job else self._get_client(job.docker_host)
 
             container = client.containers.get(execution_id)
             container.remove(force=True)
-
-            logger.info(f"Cleaned up container {execution_id}")
-            return True
-
         except NotFound:
             # Already cleaned up
             return True
         except Exception:
             logger.exception(f"Error cleaning up container {execution_id}")
             return False
+        else:
+            logger.info(f"Cleaned up container {execution_id}")
+            return True
 
     def get_capabilities(self) -> dict[str, bool]:
         """Return Docker executor capabilities"""

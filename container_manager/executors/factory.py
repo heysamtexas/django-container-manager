@@ -239,11 +239,7 @@ class ExecutorFactory:
         """
         hosts = DockerHost.objects.filter(executor_type=executor_type, is_active=True)
 
-        for host in hosts:
-            if host.current_job_count < host.max_concurrent_jobs:
-                return True
-
-        return False
+        return any(host.current_job_count < host.max_concurrent_jobs for host in hosts)
 
     def clear_cache(self):
         """Clear the executor cache."""

@@ -645,7 +645,7 @@ class RoutingRule(models.Model):
                 }
                 evaluator.evaluate(self.condition, dummy_context)
             except SafeExpressionError as e:
-                raise ValidationError(f"Invalid condition: {e}")
+                raise ValidationError(f"Invalid condition: {e}") from e
 
     def evaluate(self, job) -> bool:
         """

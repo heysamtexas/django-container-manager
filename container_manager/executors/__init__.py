@@ -27,7 +27,7 @@ __all__ = [
 ]
 
 
-def get_executor(executor_type: str, config: dict = None) -> ContainerExecutor:
+def get_executor(executor_type: str, config: dict | None = None) -> ContainerExecutor:
     """
     Factory function to create executor instances.
 
