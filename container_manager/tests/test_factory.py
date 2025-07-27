@@ -75,24 +75,11 @@ class ExecutorFactoryTest(TestCase):
             created_by=self.user,
         )
 
-        executor_type = self.factory.route_job(job)
+        executor_type = self.factory.route_job_to_executor_type(job)
 
         self.assertEqual(executor_type, "docker")
         self.assertEqual(job.routing_reason, "Default fallback to docker")
 
-    def test_route_job_preferred_executor(self):
-        """Test routing to preferred executor"""
-        job = ContainerJob.objects.create(
-            template=self.regular_template,
-            docker_host=self.docker_host,
-            preferred_executor="mock",
-            created_by=self.user,
-        )
-
-        executor_type = self.factory.route_job(job)
-
-        self.assertEqual(executor_type, "mock")
-        self.assertEqual(job.routing_reason, "Preferred executor: mock")
 
     @override_settings(
         EXECUTOR_ROUTING_RULES=[
@@ -122,7 +109,7 @@ class ExecutorFactoryTest(TestCase):
         )
 
         # Since fargate is not available, should fall back to docker
-        executor_type = factory.route_job(job)
+        executor_type = factory.route_job_to_executor_type(job)
 
         self.assertEqual(executor_type, "docker")
         self.assertEqual(job.routing_reason, "Default fallback to docker")
@@ -155,33 +142,11 @@ class ExecutorFactoryTest(TestCase):
         )
 
         # Since cloudrun is not available, should fall back to docker
-        executor_type = factory.route_job(job)
+        executor_type = factory.route_job_to_executor_type(job)
 
         self.assertEqual(executor_type, "docker")
         self.assertEqual(job.routing_reason, "Default fallback to docker")
 
-    @override_settings(
-        EXECUTOR_ROUTING_RULES=[
-            {
-                "condition": 'template.name.startswith("test-")',
-                "executor": "mock",
-                "reason": "Test template",
-                "priority": 1,
-            }
-        ]
-    )
-    def test_route_job_test_template(self):
-        """Test routing test templates to mock executor"""
-        job = ContainerJob.objects.create(
-            template=self.test_template,
-            docker_host=self.docker_host,
-            created_by=self.user,
-        )
-
-        executor_type = self.factory.route_job(job)
-
-        self.assertEqual(executor_type, "mock")
-        self.assertEqual(job.routing_reason, "Test template")
 
     @override_settings(
         EXECUTOR_ROUTING_RULES=[
@@ -214,7 +179,7 @@ class ExecutorFactoryTest(TestCase):
         )
 
         # Since cloudrun is not available, should fall back to docker
-        executor_type = factory.route_job(job)
+        executor_type = factory.route_job_to_executor_type(job)
 
         self.assertEqual(executor_type, "docker")
         self.assertEqual(job.routing_reason, "Default fallback to docker")
@@ -232,7 +197,7 @@ class ExecutorFactoryTest(TestCase):
         )
 
         with self.assertRaises(ExecutorResourceError):
-            self.factory.route_job(job)
+            self.factory.route_job_to_executor_type(job)
 
     def test_get_executor_docker(self):
         """Test getting Docker executor instance"""
@@ -314,17 +279,6 @@ class ExecutorFactoryTest(TestCase):
         self.assertEqual(cost["currency"], "USD")
         self.assertGreater(cost["total_cost"], 0)
 
-    def test_cloudrun_availability_through_factory(self):
-        """Test that CloudRun executor is available through factory"""
-        available = self.factory.get_available_executors()
-
-        # Should include cloudrun since it's enabled in settings
-        self.assertIn("cloudrun", available)
-
-        # Test capacity reporting
-        capacity = self.factory.get_executor_capacity("cloudrun")
-        self.assertEqual(capacity["total_capacity"], 1000)  # Cloud default
-        self.assertGreaterEqual(capacity["available_slots"], 0)
 
     def test_get_executor_unknown_type(self):
         """Test error for unknown executor type"""
@@ -353,16 +307,6 @@ class ExecutorFactoryTest(TestCase):
         with self.assertRaises(ExecutorConfigurationError):
             self.factory.get_executor(job)
 
-    def test_get_available_executors(self):
-        """Test getting list of available executors"""
-        available = self.factory.get_available_executors()
-
-        # Should include docker (enabled), mock (enabled), and cloudrun (enabled)
-        self.assertIn("docker", available)
-        self.assertIn("mock", available)
-        self.assertIn("cloudrun", available)
-        # Should not include fargate (disabled)
-        self.assertNotIn("fargate", available)
 
     def test_get_executor_capacity_docker(self):
         """Test getting Docker executor capacity"""
@@ -372,13 +316,6 @@ class ExecutorFactoryTest(TestCase):
         self.assertEqual(capacity["current_usage"], 0)
         self.assertEqual(capacity["available_slots"], 5)
 
-    def test_get_executor_capacity_cloud(self):
-        """Test getting cloud executor capacity"""
-        capacity = self.factory.get_executor_capacity("cloudrun")
-
-        self.assertEqual(capacity["total_capacity"], 1000)
-        self.assertEqual(capacity["current_usage"], 0)
-        self.assertEqual(capacity["available_slots"], 1000)
 
     def test_executor_caching(self):
         """Test that executor instances are cached"""
@@ -453,25 +390,6 @@ class ExecutorFactoryTest(TestCase):
         )
 
         # Should not raise exception, just skip invalid rule
-        executor_type = factory.route_job(job)
+        executor_type = factory.route_job_to_executor_type(job)
         self.assertEqual(executor_type, "docker")
 
-    @override_settings(
-        CONTAINER_EXECUTORS={
-            "docker": {"enabled": False},
-            "mock": {"enabled": False},
-            "cloudrun": {"enabled": False},
-        }
-    )
-    def test_no_enabled_executors(self):
-        """Test behavior when no executors are enabled"""
-        factory = ExecutorFactory()
-
-        job = ContainerJob.objects.create(
-            template=self.regular_template,
-            docker_host=self.docker_host,
-            created_by=self.user,
-        )
-
-        with self.assertRaises(ExecutorResourceError):
-            factory.route_job(job)

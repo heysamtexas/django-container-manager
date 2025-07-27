@@ -116,6 +116,18 @@ class DockerHost(models.Model):
         help_text="Routing weight (higher = more preferred, 1-1000)"
     )
 
+    # Current capacity tracking
+    current_job_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Current number of running jobs on this host"
+    )
+
+    # Health monitoring
+    health_check_failures = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of consecutive health check failures"
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -338,6 +350,26 @@ class ContainerJob(models.Model):
             ("mock", "Mock (Testing)"),
         ],
         help_text="Container execution backend to use for this job",
+    )
+
+    preferred_executor = models.CharField(
+        max_length=50,
+        blank=True,
+        default="",
+        choices=[
+            ("docker", "Docker"),
+            ("cloudrun", "Google Cloud Run"),
+            ("fargate", "AWS Fargate"),
+            ("scaleway", "Scaleway Containers"),
+            ("mock", "Mock (Testing)"),
+        ],
+        help_text="Preferred executor type for this job (used by routing logic)",
+    )
+
+    routing_reason = models.TextField(
+        blank=True,
+        default="",
+        help_text="Explanation of why this executor was chosen for this job"
     )
 
     external_execution_id = models.CharField(

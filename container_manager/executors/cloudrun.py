@@ -40,15 +40,42 @@ class CloudRunExecutor(ContainerExecutor):
     def __init__(self, config: Dict):
         super().__init__(config)
 
-        # Required configuration
+        # Required configuration - try executor_config first, then parse connection_string
         self.project_id = config.get("project_id")
+        if not self.project_id and "executor_config" in config:
+            self.project_id = config["executor_config"].get("project_id")
+        
+        # If still no project_id, try parsing from connection_string
+        if not self.project_id and "docker_host" in config:
+            connection_string = config["docker_host"].connection_string
+            if connection_string.startswith("cloudrun://"):
+                # Parse cloudrun://project-id/region format
+                parts = connection_string[11:].split("/")
+                if len(parts) >= 1:
+                    self.project_id = parts[0]
+        
         if not self.project_id:
             raise ExecutorConfigurationError(
                 "CloudRun executor requires 'project_id' configuration"
             )
 
-        # Cloud Run settings
-        self.region = config.get("region", "us-central1")
+        # Cloud Run settings - parse region from connection string if available
+        self.region = config.get("region")
+        if not self.region and "executor_config" in config:
+            self.region = config["executor_config"].get("region")
+        
+        # Parse region from connection_string if still not set
+        if not self.region and "docker_host" in config:
+            connection_string = config["docker_host"].connection_string
+            if connection_string.startswith("cloudrun://"):
+                parts = connection_string[11:].split("/")
+                if len(parts) >= 2:
+                    self.region = parts[1]
+        
+        # Default region if still not set
+        if not self.region:
+            self.region = "us-central1"
+            
         self.service_account = config.get("service_account")
         self.vpc_connector = config.get("vpc_connector")
 

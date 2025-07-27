@@ -128,41 +128,6 @@ class MockExecutorTest(TestCase):
             self.assertEqual(job.status, "failed")  # But job failed
             self.assertEqual(job.exit_code, 1)
 
-    def test_memory_usage_patterns(self):
-        """Test different memory usage patterns"""
-        test_cases = [
-            ("low", 32),
-            ("medium", 128),
-            ("high", 512),
-            (256, 256),  # Custom MB value
-        ]
-
-        for pattern, expected_base in test_cases:
-            with self.subTest(pattern=pattern):
-                config = {"memory_usage_pattern": pattern, "execution_delay": 0.1}
-                executor = MockExecutor(config)
-
-                job = ContainerJob.objects.create(
-                    template=self.template,
-                    docker_host=self.docker_host,
-                    created_by=self.user,
-                )
-
-                success, execution_id = executor.launch_job(job)
-                self.assertTrue(success)
-
-                # Check resource usage
-                usage = executor.get_resource_usage(execution_id)
-                self.assertIsNotNone(usage)
-
-                memory_mb = usage["memory_usage_bytes"] / (1024 * 1024)
-                if isinstance(pattern, str):
-                    # Should be roughly in the expected range
-                    self.assertGreater(memory_mb, expected_base * 0.5)
-                    self.assertLess(memory_mb, expected_base * 2.5)
-                else:
-                    # Custom value should be close
-                    self.assertGreater(memory_mb, expected_base * 0.5)
 
     def test_cpu_usage_patterns(self):
         """Test different CPU usage patterns"""

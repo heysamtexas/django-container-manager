@@ -98,15 +98,13 @@ class ContainerTemplateModelTest(TestCase):
         self.assertEqual(str(self.template), expected)
 
     def test_template_with_environment_variables(self):
-        """Test template with environment variables"""
-        env_var = EnvironmentVariable.objects.create(
-            template=self.template, key="TEST_VAR", value="test_value", is_secret=False
-        )
+        """Test template with environment variables text field"""
+        self.template.override_environment_variables_text = "TEST_VAR=test_value\nSECOND_VAR=second_value"
+        self.template.save()
 
-        self.assertEqual(env_var.template, self.template)
-        self.assertEqual(env_var.key, "TEST_VAR")
-        self.assertEqual(env_var.value, "test_value")
-        self.assertFalse(env_var.is_secret)
+        env_vars = self.template.get_override_environment_variables_dict()
+        self.assertEqual(env_vars["TEST_VAR"], "test_value")
+        self.assertEqual(env_vars["SECOND_VAR"], "second_value")
 
     def test_template_with_network_assignments(self):
         """Test template with network assignments"""
@@ -283,9 +281,8 @@ class DockerServiceTest(TestCase):
         mock_get_client.return_value = mock_client
 
         # Add environment variable to template
-        EnvironmentVariable.objects.create(
-            template=self.template, key="TEST_VAR", value="test_value"
-        )
+        self.template.override_environment_variables_text = "TEST_VAR=test_value"
+        self.template.save()
 
         container_id = self.docker_service.create_container(self.job)
 
@@ -559,9 +556,8 @@ class IntegrationTest(TestCase):
         )
 
         # Add environment variable
-        EnvironmentVariable.objects.create(
-            template=self.template, key="TEST_ENV", value="integration_value"
-        )
+        self.template.override_environment_variables_text = "TEST_ENV=integration_value"
+        self.template.save()
 
     def test_complete_job_workflow(self):
         """Test complete job creation and execution workflow"""
