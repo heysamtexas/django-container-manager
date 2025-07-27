@@ -6,7 +6,7 @@ enabling a pluggable architecture for different execution environments.
 """
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Dict, Optional, Tuple
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..models import ContainerJob
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 class ContainerExecutor(ABC):
     """Abstract interface for container execution backends"""
 
-    def __init__(self, config: Dict):
+    def __init__(self, config: dict):
         """
         Initialize executor with configuration.
 
@@ -26,7 +26,7 @@ class ContainerExecutor(ABC):
         self.name = self.__class__.__name__.replace("Executor", "").lower()
 
     @abstractmethod
-    def launch_job(self, job) -> Tuple[bool, str]:
+    def launch_job(self, job) -> tuple[bool, str]:
         """
         Launch a container job in the background.
 
@@ -46,7 +46,6 @@ class ContainerExecutor(ABC):
             else:
                 logger.error(f"Launch failed: {execution_id}")
         """
-        pass
 
     @abstractmethod
     def check_status(self, execution_id: str) -> str:
@@ -65,10 +64,9 @@ class ContainerExecutor(ABC):
                 # Job completed, harvest results
                 executor.harvest_job(job)
         """
-        pass
 
     @abstractmethod
-    def get_logs(self, execution_id: str) -> Tuple[str, str]:
+    def get_logs(self, execution_id: str) -> tuple[str, str]:
         """
         Retrieve logs from completed or running execution.
 
@@ -83,7 +81,6 @@ class ContainerExecutor(ABC):
             execution.stdout_log = stdout
             execution.stderr_log = stderr
         """
-        pass
 
     @abstractmethod
     def harvest_job(self, job) -> bool:
@@ -108,7 +105,6 @@ class ContainerExecutor(ABC):
             else:
                 logger.error(f"Failed to harvest job {job.id}")
         """
-        pass
 
     @abstractmethod
     def cleanup(self, execution_id: str) -> bool:
@@ -128,9 +124,8 @@ class ContainerExecutor(ABC):
             if not executor.cleanup(execution_id):
                 logger.warning(f"Failed to cleanup {execution_id}")
         """
-        pass
 
-    def get_capabilities(self) -> Dict[str, bool]:
+    def get_capabilities(self) -> dict[str, bool]:
         """
         Return executor capabilities and features.
 
@@ -152,7 +147,7 @@ class ContainerExecutor(ABC):
             "supports_scaling": False,
         }
 
-    def validate_job(self, job) -> Tuple[bool, str]:
+    def validate_job(self, job) -> tuple[bool, str]:
         """
         Validate that a job can be executed by this executor.
 
@@ -168,17 +163,17 @@ class ContainerExecutor(ABC):
                 logger.error(f"Job validation failed: {error}")
         """
         if not job:
-            return False, "Job cannot be None"
+            return False, "Job is None"
 
         if not hasattr(job, "template") or not job.template:
-            return False, "Job must have a template"
+            return False, "No template"
 
         if not hasattr(job, "docker_host") or not job.docker_host:
-            return False, "Job must have a docker_host"
+            return False, "No docker_host"
 
         return True, ""
 
-    def estimate_cost(self, job) -> Optional[float]:
+    def estimate_cost(self, job) -> float | None:
         """
         Estimate the cost of executing a job.
 
@@ -283,7 +278,7 @@ class ContainerExecutor(ABC):
             logger = logging.getLogger(__name__)
             logger.warning(f"Failed to finalize cost tracking for job {job.id}: {e}")
 
-    def get_health_status(self) -> Dict[str, any]:
+    def get_health_status(self) -> dict[str, any]:
         """
         Get health status of the executor backend.
 

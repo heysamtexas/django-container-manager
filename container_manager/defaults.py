@@ -16,26 +16,26 @@ DEFAULT_CONTAINER_MANAGER_SETTINGS = {
     # Image Management
     "AUTO_PULL_IMAGES": True,
     "IMAGE_PULL_TIMEOUT": 300,
-    
+
     # Container Cleanup
     "IMMEDIATE_CLEANUP": True,
     "CLEANUP_ENABLED": True,
     "CLEANUP_HOURS": 24,
-    
+
     # Job Processing
     "MAX_CONCURRENT_JOBS": 10,
     "POLL_INTERVAL": 5,
     "JOB_TIMEOUT_SECONDS": 3600,
-    
+
     # Resource Limits
     "DEFAULT_MEMORY_LIMIT": 512,  # MB
     "DEFAULT_CPU_LIMIT": 1.0,     # cores
-    
+
     # Logging and Monitoring
     "LOG_RETENTION_DAYS": 30,
     "ENABLE_METRICS": True,
     "ENABLE_HEALTH_CHECKS": True,
-    
+
     # Network and Security
     "DEFAULT_NETWORK": "bridge",
     "ENABLE_PRIVILEGED_CONTAINERS": False,
@@ -52,11 +52,11 @@ DEFAULT_DEBUG_MODE = False
 def get_container_manager_setting(key: str, default=None):
     """
     Get a container manager setting with fallback to defaults.
-    
+
     Args:
         key: Setting key to retrieve
         default: Override default if provided
-        
+
     Returns:
         Setting value or default
     """
@@ -75,7 +75,7 @@ def get_container_manager_setting(key: str, default=None):
 def get_use_executor_factory():
     """
     Get the USE_EXECUTOR_FACTORY setting with fallback.
-    
+
     Returns:
         bool: Whether to use the executor factory
     """

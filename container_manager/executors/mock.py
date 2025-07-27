@@ -12,7 +12,6 @@ import logging
 import random
 import time
 import uuid
-from typing import Dict, List, Optional, Tuple
 
 from django.utils import timezone
 
@@ -21,7 +20,7 @@ from .base import ContainerExecutor
 
 # Constants
 IMMEDIATE_EXECUTION_THRESHOLD = 0.5  # Seconds threshold for immediate test completion
-HIGH_MEMORY_THRESHOLD_MB = 8192  # 8GB threshold for high memory jobs  
+HIGH_MEMORY_THRESHOLD_MB = 8192  # 8GB threshold for high memory jobs
 HIGH_CPU_THRESHOLD = 4.0  # CPU cores threshold for high CPU jobs
 
 logger = logging.getLogger(__name__)
@@ -44,7 +43,7 @@ class MockExecutor(ContainerExecutor):
     - resource_fluctuation: Enable resource usage fluctuation (default: False)
     """
 
-    def __init__(self, config: Dict):
+    def __init__(self, config: dict):
         super().__init__(config)
 
         # Failure simulation
@@ -91,7 +90,7 @@ class MockExecutor(ContainerExecutor):
         # In-memory execution tracking
         self._running_executions = {}  # execution_id -> execution_info
 
-    def launch_job(self, job: ContainerJob) -> Tuple[bool, str]:
+    def launch_job(self, job: ContainerJob) -> tuple[bool, str]:
         """
         Simulate launching a job with configurable behaviors.
 
@@ -167,7 +166,7 @@ class MockExecutor(ContainerExecutor):
             return True, execution_id
 
         except Exception as e:
-            logger.exception(f"Mock executor failed to launch job {job.id}: {e}")
+            logger.exception(f"Mock executor failed to launch job {job.id}")
             return False, str(e)
 
     def check_status(self, execution_id: str) -> str:
@@ -307,8 +306,8 @@ class MockExecutor(ContainerExecutor):
             )
             return True
 
-        except Exception as e:
-            logger.exception(f"Failed to harvest mock job {job.id}: {e}")
+        except Exception:
+            logger.exception(f"Failed to harvest mock job {job.id}")
             return False
 
     def cleanup(self, execution_id: str) -> bool:
@@ -329,7 +328,7 @@ class MockExecutor(ContainerExecutor):
 
         return True
 
-    def get_logs(self, execution_id: str) -> Optional[str]:
+    def get_logs(self, execution_id: str) -> str | None:
         """
         Get logs from mock execution.
 
@@ -351,7 +350,7 @@ class MockExecutor(ContainerExecutor):
             f"Mock logs for execution {execution_id}\nExecution not found in tracking\n"
         )
 
-    def get_resource_usage(self, execution_id: str) -> Optional[Dict]:
+    def get_resource_usage(self, execution_id: str) -> dict | None:
         """
         Get resource usage stats for mock execution.
 
@@ -378,7 +377,7 @@ class MockExecutor(ContainerExecutor):
 
     # Performance and benchmarking methods
 
-    def get_performance_stats(self) -> Dict:
+    def get_performance_stats(self) -> dict:
         """
         Get performance statistics for benchmarking.
 
@@ -413,7 +412,7 @@ class MockExecutor(ContainerExecutor):
         self._memory_peaks.clear()
         self._cpu_averages.clear()
 
-    def get_active_executions(self) -> List[Dict]:
+    def get_active_executions(self) -> list[dict]:
         """
         Get list of currently active executions.
 
@@ -449,14 +448,14 @@ class MockExecutor(ContainerExecutor):
 
     def _calculate_memory_usage(self, job: ContainerJob) -> int:
         """Calculate memory usage in bytes based on pattern and job."""
-        if isinstance(self.memory_usage_pattern, (int, float)):
+        if isinstance(self.memory_usage_pattern, int | float):
             base_mb = self.memory_usage_pattern
         else:
             patterns = {"low": 32, "medium": 128, "high": 512}
             base_mb = patterns.get(self.memory_usage_pattern, 128)
 
         # For testing custom values, honor them exactly when specified
-        if isinstance(self.memory_usage_pattern, (int, float)):
+        if isinstance(self.memory_usage_pattern, int | float):
             actual_mb = base_mb
         else:
             # Use template memory limit as upper bound for pattern-based calculation
@@ -467,7 +466,7 @@ class MockExecutor(ContainerExecutor):
 
     def _calculate_cpu_usage(self, job: ContainerJob) -> float:
         """Calculate CPU usage percentage based on pattern and job."""
-        if isinstance(self.cpu_usage_pattern, (int, float)):
+        if isinstance(self.cpu_usage_pattern, int | float):
             base_percent = self.cpu_usage_pattern
         else:
             patterns = {"low": 15.0, "medium": 45.0, "high": 85.0}
@@ -496,7 +495,7 @@ class MockExecutor(ContainerExecutor):
         # Fallback to success
         return 0
 
-    def _generate_logs(self, job: ContainerJob) -> Dict[str, str]:
+    def _generate_logs(self, job: ContainerJob) -> dict[str, str]:
         """Generate realistic log patterns for the job."""
         template_name = job.template.name
         job_id = str(job.id)
@@ -549,7 +548,7 @@ class MockExecutor(ContainerExecutor):
             "docker": "\n".join(docker_lines) + "\n",
         }
 
-    def _get_container_config(self, job: ContainerJob) -> Dict:
+    def _get_container_config(self, job: ContainerJob) -> dict:
         """Generate container configuration for logging."""
         return {
             "image": job.template.docker_image,

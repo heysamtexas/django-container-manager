@@ -7,7 +7,6 @@ should handle each job based on configured weights.
 
 import logging
 import random
-from typing import Dict, List, Optional
 
 from ..models import ContainerJob, DockerHost
 from .base import ContainerExecutor
@@ -20,52 +19,51 @@ class ExecutorFactory:
     """Factory for creating and routing to appropriate container executors"""
 
     def __init__(self):
-        self._executor_cache: Dict[str, ContainerExecutor] = {}
+        self._executor_cache: dict[str, ContainerExecutor] = {}
 
-    
+
     def route_job_to_executor_type(self, job: ContainerJob) -> str:
         """
         Route job to best executor type and update job with routing details.
-        
+
         Args:
             job: ContainerJob to route
-            
+
         Returns:
             str: Executor type to use
         """
         # Check for preferred executor first
-        if job.preferred_executor:
-            if self._is_executor_available(job.preferred_executor):
-                job.routing_reason = f"Preferred executor: {job.preferred_executor}"
-                job.save(update_fields=['routing_reason'])
-                return job.preferred_executor
-        
+        if job.preferred_executor and self._is_executor_available(job.preferred_executor):
+            job.routing_reason = f"Preferred executor: {job.preferred_executor}"
+            job.save(update_fields=['routing_reason'])
+            return job.preferred_executor
+
         # Use weight-based routing to get a host
         selected_host = self.route_job_to_host(job)
         if not selected_host:
             raise ExecutorResourceError("No available executors for job")
-        
+
         # Update job with routing info
         job.docker_host = selected_host
         job.executor_type = selected_host.executor_type
         job.routing_reason = "Default fallback to docker" if selected_host.executor_type == "docker" else f"Routed to {selected_host.executor_type}"
         job.save(update_fields=['docker_host', 'executor_type', 'routing_reason'])
-        
+
         return selected_host.executor_type
-    
-    def route_job(self, job: ContainerJob) -> Optional[DockerHost]:
+
+    def route_job(self, job: ContainerJob) -> DockerHost | None:
         """
         Route job to best host using weight-based routing.
-        
+
         Args:
             job: ContainerJob to route
-            
+
         Returns:
             DockerHost instance to use for execution, or None if none available
         """
         return self.route_job_to_host(job)
-    
-    def route_job_to_host(self, job: ContainerJob) -> Optional[DockerHost]:
+
+    def route_job_to_host(self, job: ContainerJob) -> DockerHost | None:
         """
         Original weight-based routing method that returns a DockerHost.
         """
@@ -160,58 +158,57 @@ class ExecutorFactory:
             raise ExecutorConfigurationError(
                 f"Unknown executor type: {executor_type}"
             )
-    
+
     def route_job_dry_run(self, job: ContainerJob) -> str:
         """
         Perform dry run routing without saving job changes.
-        
+
         Args:
             job: ContainerJob to route
-            
+
         Returns:
             str: Executor type that would be selected
         """
         # Check for preferred executor first
-        if job.preferred_executor:
-            if self._is_executor_available(job.preferred_executor):
-                return job.preferred_executor
-        
+        if job.preferred_executor and self._is_executor_available(job.preferred_executor):
+            return job.preferred_executor
+
         # Use weight-based routing to get a host
         selected_host = self.route_job_to_host(job)
         if not selected_host:
             raise ExecutorResourceError("No available executors for job")
-        
+
         return selected_host.executor_type
-    
-    def get_available_executors(self) -> List[str]:
+
+    def get_available_executors(self) -> list[str]:
         """
         Get list of available executor types.
-        
+
         Returns:
             List of executor type strings
         """
         executor_types = DockerHost.objects.filter(is_active=True).values_list('executor_type', flat=True).distinct()
         return list(executor_types)
-    
-    def get_executor_capacity(self, executor_type: str) -> Dict:
+
+    def get_executor_capacity(self, executor_type: str) -> dict:
         """
         Get capacity information for an executor type.
-        
+
         Args:
             executor_type: Type of executor
-            
+
         Returns:
             Dict with capacity information
         """
         hosts = DockerHost.objects.filter(executor_type=executor_type, is_active=True)
-        
+
         if not hosts.exists():
             return {
                 "total_capacity": 0,
                 "current_usage": 0,
                 "available_slots": 0
             }
-        
+
         # For cloud executors, use large default capacity
         if executor_type in ["cloudrun", "fargate"]:
             return {
@@ -219,35 +216,35 @@ class ExecutorFactory:
                 "current_usage": 0,
                 "available_slots": 1000
             }
-        
+
         # For Docker hosts, sum up the capacity
         total_capacity = sum(host.max_concurrent_jobs for host in hosts)
         current_usage = sum(host.current_job_count for host in hosts)
-        
+
         return {
             "total_capacity": total_capacity,
             "current_usage": current_usage,
             "available_slots": max(0, total_capacity - current_usage)
         }
-    
+
     def _is_executor_available(self, executor_type: str) -> bool:
         """
         Check if an executor type is available.
-        
+
         Args:
             executor_type: Type of executor to check
-            
+
         Returns:
             True if executor is available
         """
         hosts = DockerHost.objects.filter(executor_type=executor_type, is_active=True)
-        
+
         for host in hosts:
             if host.current_job_count < host.max_concurrent_jobs:
                 return True
-        
+
         return False
-    
+
     def clear_cache(self):
         """Clear the executor cache."""
         self._executor_cache.clear()

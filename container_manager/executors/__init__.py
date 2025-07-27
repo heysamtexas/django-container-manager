@@ -17,11 +17,11 @@ from .exceptions import (
 
 __all__ = [
     "ContainerExecutor",
-    "ExecutorError",
-    "ExecutorConnectionError",
-    "ExecutorConfigurationError",
-    "ExecutorResourceError",
     "ExecutorAuthenticationError",
+    "ExecutorConfigurationError",
+    "ExecutorConnectionError",
+    "ExecutorError",
+    "ExecutorResourceError",
     "ExecutorTimeoutError",
     "get_executor",
 ]

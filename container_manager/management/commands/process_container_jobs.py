@@ -8,9 +8,7 @@ using the Docker service. It runs continuously until stopped.
 import logging
 import signal
 import time
-from typing import Optional
 
-from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
@@ -92,20 +90,20 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         """Main command handler"""
         config = self._parse_and_validate_options(options)
-        
+
         self._display_startup_info(config)
         self._run_cleanup_if_requested(config)
         self._validate_host_filter(config.get("host_filter"))
-        
+
         # Run main processing loop
         processed_count, error_count = self._run_processing_loop(config)
-        
+
         self._display_completion_summary(processed_count, error_count)
 
     def _parse_and_validate_options(self, options):
         """Parse and validate command options"""
         from ...defaults import get_use_executor_factory
-        
+
         config = {
             "poll_interval": options["poll_interval"],
             "max_jobs": options["max_jobs"],
@@ -116,14 +114,14 @@ class Command(BaseCommand):
             "use_factory": options["use_factory"],
             "executor_type": options["executor_type"],
         }
-        
+
         # Determine if we should use the executor factory
         config["factory_enabled"] = (
             config["use_factory"]
             or get_use_executor_factory()
             or config["executor_type"] is not None
         )
-        
+
         return config
 
     def _display_startup_info(self, config):
@@ -168,7 +166,7 @@ class Command(BaseCommand):
                 docker_host = DockerHost.objects.get(name=host_filter, is_active=True)
                 self.stdout.write(f"Processing jobs only for host: {docker_host.name}")
             except DockerHost.DoesNotExist:
-                raise CommandError(f'Docker host "{host_filter}" not found or inactive')
+                raise CommandError(f'Docker host "{host_filter}" not found or inactive') from None
 
     def _run_processing_loop(self, config):
         """Run the main job processing loop"""
@@ -180,7 +178,7 @@ class Command(BaseCommand):
                 try:
                     cycle_launched, cycle_harvested = self._process_single_cycle(config)
                     processed_count += cycle_launched + cycle_harvested
-                    
+
                     self._report_cycle_results(
                         cycle_launched, cycle_harvested, processed_count, error_count
                     )
@@ -192,7 +190,7 @@ class Command(BaseCommand):
 
                 except Exception as e:
                     error_count += 1
-                    logger.exception(f"Error in processing cycle: {e}")
+                    logger.exception("Error in processing cycle")
                     self.stdout.write(self.style.ERROR(f"Processing error: {e}"))
                     time.sleep(config["poll_interval"] * 2)  # Sleep longer after errors
 
@@ -205,9 +203,9 @@ class Command(BaseCommand):
         """Process a single cycle of job launching and monitoring"""
         # Launch phase: Start pending jobs (non-blocking)
         jobs_launched = self.process_pending_jobs(
-            config["host_filter"], 
-            config["max_jobs"], 
-            config["factory_enabled"], 
+            config["host_filter"],
+            config["max_jobs"],
+            config["factory_enabled"],
             config["executor_type"]
         )
 
@@ -237,10 +235,10 @@ class Command(BaseCommand):
 
     def process_pending_jobs(
         self,
-        host_filter: Optional[str] = None,
+        host_filter: str | None = None,
         max_jobs: int = 10,
         use_factory: bool = False,
-        force_executor_type: Optional[str] = None,
+        force_executor_type: str | None = None,
     ) -> int:
         """Launch pending jobs and return the number launched"""
 
@@ -274,7 +272,7 @@ class Command(BaseCommand):
                     launched += 1
 
             except Exception as e:
-                logger.exception(f"Failed to launch job {job.id}: {e}")
+                logger.exception(f"Failed to launch job {job.id}")
                 self.mark_job_failed(job, str(e))
 
         return launched
@@ -283,7 +281,7 @@ class Command(BaseCommand):
         self,
         job: ContainerJob,
         use_factory: bool = False,
-        force_executor_type: Optional[str] = None,
+        force_executor_type: str | None = None,
     ) -> bool:
         """Launch a single container job (non-blocking)"""
 
@@ -293,7 +291,7 @@ class Command(BaseCommand):
             return self.launch_job_with_docker_service(job)
 
     def launch_job_with_factory(
-        self, job: ContainerJob, force_executor_type: Optional[str] = None
+        self, job: ContainerJob, force_executor_type: str | None = None
     ) -> bool:
         """Launch job using ExecutorFactory"""
         try:
@@ -339,11 +337,11 @@ class Command(BaseCommand):
             return success
 
         except ExecutorResourceError as e:
-            logger.exception(f"No available executors for job {job.id}: {e}")
+            logger.exception(f"No available executors for job {job.id}")
             self.mark_job_failed(job, f"No available executors: {e}")
             return False
         except Exception as e:
-            logger.exception(f"Job launch error for {job.id}: {e}")
+            logger.exception(f"Job launch error for {job.id}")
             self.mark_job_failed(job, str(e))
             return False
 
@@ -353,7 +351,7 @@ class Command(BaseCommand):
         try:
             docker_service.get_client(job.docker_host)
         except DockerConnectionError as e:
-            logger.exception(f"Cannot connect to Docker host {job.docker_host.name}: {e}")
+            logger.exception(f"Cannot connect to Docker host {job.docker_host.name}")
             self.mark_job_failed(job, f"Docker host connection failed: {e}")
             return False
 
@@ -375,14 +373,14 @@ class Command(BaseCommand):
             return success
 
         except Exception as e:
-            logger.exception(f"Job launch error for {job.id}: {e}")
+            logger.exception(f"Job launch error for {job.id}")
             self.mark_job_failed(job, str(e))
             return False
 
-    def monitor_running_jobs(self, host_filter: Optional[str] = None) -> int:
+    def monitor_running_jobs(self, host_filter: str | None = None) -> int:
         """Monitor running jobs and harvest completed ones"""
         running_jobs = self._get_running_jobs(host_filter)
-        
+
         if not running_jobs:
             return 0
 
@@ -395,13 +393,13 @@ class Command(BaseCommand):
                 job_harvested = self._monitor_single_job(job)
                 harvested += job_harvested
             except Exception as e:
-                logger.exception(f"Error monitoring job {job.id}: {e}")
+                logger.exception(f"Error monitoring job {job.id}")
                 self.mark_job_failed(job, str(e))
                 harvested += 1
 
         return harvested
 
-    def _get_running_jobs(self, host_filter: Optional[str] = None):
+    def _get_running_jobs(self, host_filter: str | None = None):
         """Get list of running jobs, optionally filtered by host"""
         queryset = ContainerJob.objects.filter(status="running").select_related(
             "template", "docker_host"
@@ -415,7 +413,7 @@ class Command(BaseCommand):
     def _monitor_single_job(self, job: ContainerJob) -> int:
         """Monitor a single job and return 1 if harvested, 0 if still running"""
         from django.utils import timezone
-        
+
         # Check for timeout first
         if self._job_has_timed_out(job, timezone.now()):
             self.handle_job_timeout(job)
@@ -429,7 +427,7 @@ class Command(BaseCommand):
         """Check if job has exceeded its timeout"""
         if not job.started_at:
             return False
-            
+
         running_time = (now - job.started_at).total_seconds()
         return running_time > job.template.timeout_seconds
 
@@ -465,8 +463,8 @@ class Command(BaseCommand):
                 executor = self.executor_factory.get_executor(job.docker_host)
                 execution_id = job.get_execution_identifier()
                 return executor.check_status(execution_id)
-            except Exception as e:
-                logger.exception(f"Error checking status for job {job.id}: {e}")
+            except Exception:
+                logger.exception(f"Error checking status for job {job.id}")
                 return "error"
 
     def harvest_completed_job(self, job: ContainerJob) -> bool:
@@ -479,8 +477,8 @@ class Command(BaseCommand):
             try:
                 executor = self.executor_factory.get_executor(job.docker_host)
                 return executor.harvest_job(job)
-            except Exception as e:
-                logger.exception(f"Error harvesting job {job.id}: {e}")
+            except Exception:
+                logger.exception(f"Error harvesting job {job.id}")
                 return False
 
     def handle_job_timeout(self, job: ContainerJob):
@@ -517,8 +515,8 @@ class Command(BaseCommand):
             job.completed_at = timezone.now()
             job.save()
 
-        except Exception as e:
-            logger.exception(f"Error handling timeout for job {job.id}: {e}")
+        except Exception:
+            logger.exception(f"Error handling timeout for job {job.id}")
 
     def mark_job_failed(self, job: ContainerJob, error_message: str):
         """Mark a job as failed with error message"""
@@ -535,5 +533,5 @@ class Command(BaseCommand):
                 execution.docker_log = f"ERROR: {error_message}"
                 execution.save()
 
-        except Exception as e:
-            logger.exception(f"Failed to mark job {job.id} as failed: {e}")
+        except Exception:
+            logger.exception(f"Failed to mark job {job.id} as failed")

@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 from django.contrib import admin, messages
 from django.db import models
 from django.db.models import Avg, Count
@@ -15,8 +17,6 @@ from .models import (
     EnvironmentVariableTemplate,
     NetworkAssignment,
 )
-
-
 
 
 class NetworkAssignmentInline(admin.TabularInline):
@@ -70,7 +70,7 @@ class DockerHostAdmin(admin.ModelAdmin):
         ),
     )
 
-    actions = ["test_connection"]
+    actions: ClassVar = ["test_connection"]
 
     def connection_status(self, obj):
         """Show connection status with colored indicator"""
@@ -100,12 +100,12 @@ class DockerHostAdmin(admin.ModelAdmin):
 
 @admin.register(EnvironmentVariableTemplate)
 class EnvironmentVariableTemplateAdmin(admin.ModelAdmin):
-    formfield_overrides = {
+    formfield_overrides: ClassVar = {
         models.TextField: {
             'widget': admin.widgets.AdminTextareaWidget(attrs={'rows': 10, 'cols': 80})
         },
     }
-    
+
     list_display = (
         "name",
         "description",
@@ -116,7 +116,7 @@ class EnvironmentVariableTemplateAdmin(admin.ModelAdmin):
     list_filter = ("created_at", "created_by")
     search_fields = ("name", "description")
     readonly_fields = ("created_at", "updated_at")
-    
+
     fieldsets = (
         (
             "Basic Information",
@@ -148,7 +148,7 @@ class EnvironmentVariableTemplateAdmin(admin.ModelAdmin):
 
 @admin.register(ContainerTemplate)
 class ContainerTemplateAdmin(admin.ModelAdmin):
-    formfield_overrides = {
+    formfield_overrides: ClassVar = {
         models.TextField: {
             'widget': admin.widgets.AdminTextareaWidget(attrs={'rows': 8, 'cols': 80})
         },
@@ -166,7 +166,7 @@ class ContainerTemplateAdmin(admin.ModelAdmin):
     search_fields = ("name", "docker_image", "description")
     readonly_fields = ("created_at", "updated_at")
 
-    inlines = [NetworkAssignmentInline]
+    inlines: ClassVar = [NetworkAssignmentInline]
 
     fieldsets = (
         (
@@ -189,7 +189,7 @@ class ContainerTemplateAdmin(admin.ModelAdmin):
             },
         ),
         (
-            "Environment Variables", 
+            "Environment Variables",
             {
                 "fields": ("environment_template", "override_environment_variables_text"),
                 "description": "Choose a base environment template and add overrides as needed. Overrides take precedence over template variables."
@@ -293,7 +293,7 @@ class ContainerJobAdmin(admin.ModelAdmin):
         ),
     )
 
-    actions = [
+    actions: ClassVar = [
         "create_job",
         "start_job_multi",
         "stop_job_multi",

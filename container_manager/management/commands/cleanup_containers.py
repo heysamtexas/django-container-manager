@@ -86,7 +86,7 @@ class Command(BaseCommand):
 
             except Exception as e:
                 self.stdout.write(self.style.ERROR(f"Cleanup failed: {e}"))
-                logger.exception(f"Container cleanup error: {e}")
+                logger.exception("Container cleanup error")
                 raise
 
     def _show_cleanup_preview(self, orphaned_hours: int):

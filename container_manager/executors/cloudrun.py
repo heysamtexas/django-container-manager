@@ -7,7 +7,6 @@ with automatic scaling, pay-per-use pricing, and managed infrastructure.
 
 import logging
 import time
-from typing import Dict, Optional, Tuple
 
 from django.utils import timezone
 
@@ -40,68 +39,110 @@ class CloudRunExecutor(ContainerExecutor):
     - labels: GCP resource labels
     """
 
-    def __init__(self, config: Dict):
+    def __init__(self, config: dict):
         super().__init__(config)
 
-        # Required configuration - try executor_config first, then parse connection_string
-        self.project_id = config.get("project_id")
-        if not self.project_id and "executor_config" in config:
-            self.project_id = config["executor_config"].get("project_id")
-        
-        # If still no project_id, try parsing from connection_string
-        if not self.project_id and "docker_host" in config:
-            connection_string = config["docker_host"].connection_string
-            if connection_string.startswith("cloudrun://"):
-                # Parse cloudrun://project-id/region format
-                parts = connection_string[11:].split("/")
-                if len(parts) >= 1:
-                    self.project_id = parts[0]
-        
-        if not self.project_id:
-            raise ExecutorConfigurationError(
-                "CloudRun executor requires 'project_id' configuration"
-            )
+        # Parse required configuration
+        self.project_id = self._parse_project_id(config)
+        self.region = self._parse_region(config)
 
-        # Cloud Run settings - parse region from connection string if available
-        self.region = config.get("region")
-        if not self.region and "executor_config" in config:
-            self.region = config["executor_config"].get("region")
-        
-        # Parse region from connection_string if still not set
-        if not self.region and "docker_host" in config:
-            connection_string = config["docker_host"].connection_string
-            if connection_string.startswith("cloudrun://"):
-                parts = connection_string[11:].split("/")
-                if len(parts) >= MIN_CONNECTION_STRING_PARTS:
-                    self.region = parts[1]
-        
-        # Default region if still not set
-        if not self.region:
-            self.region = "us-central1"
-            
+        # Parse optional settings
+        self._parse_service_settings(config)
+        self._parse_resource_settings(config)
+        self._parse_job_settings(config)
+        self._parse_additional_settings(config)
+
+        # Initialize client tracking
+        self._run_client = None
+        self._logging_client = None
+        self._active_jobs = {}  # job_name -> job_info
+
+    def _parse_project_id(self, config: dict) -> str:
+        """Parse and validate project_id from configuration"""
+        # Try direct config first
+        project_id = config.get("project_id")
+        if project_id:
+            return project_id
+
+        # Try executor_config
+        if "executor_config" in config:
+            project_id = config["executor_config"].get("project_id")
+            if project_id:
+                return project_id
+
+        # Try parsing from connection_string
+        project_id = self._parse_project_from_connection_string(config)
+        if project_id:
+            return project_id
+
+        raise ExecutorConfigurationError("project_id required")
+
+    def _parse_project_from_connection_string(self, config: dict) -> str | None:
+        """Extract project_id from cloudrun:// connection string"""
+        if "docker_host" not in config:
+            return None
+
+        connection_string = config["docker_host"].connection_string
+        if not connection_string.startswith("cloudrun://"):
+            return None
+
+        parts = connection_string[11:].split("/")
+        return parts[0] if parts else None
+
+    def _parse_region(self, config: dict) -> str:
+        """Parse region with fallbacks to default"""
+        # Try direct config first
+        region = config.get("region")
+        if region:
+            return region
+
+        # Try executor_config
+        if "executor_config" in config:
+            region = config["executor_config"].get("region")
+            if region:
+                return region
+
+        # Try parsing from connection_string
+        region = self._parse_region_from_connection_string(config)
+        if region:
+            return region
+
+        # Default region
+        return "us-central1"
+
+    def _parse_region_from_connection_string(self, config: dict) -> str | None:
+        """Extract region from cloudrun:// connection string"""
+        if "docker_host" not in config:
+            return None
+
+        connection_string = config["docker_host"].connection_string
+        if not connection_string.startswith("cloudrun://"):
+            return None
+
+        parts = connection_string[11:].split("/")
+        return parts[1] if len(parts) >= MIN_CONNECTION_STRING_PARTS else None
+
+    def _parse_service_settings(self, config: dict) -> None:
+        """Parse service account and VPC settings"""
         self.service_account = config.get("service_account")
         self.vpc_connector = config.get("vpc_connector")
 
-        # Resource settings
+    def _parse_resource_settings(self, config: dict) -> None:
+        """Parse resource limit settings"""
         self.memory_limit = config.get("memory_limit", 512)  # MB
         self.cpu_limit = config.get("cpu_limit", 1.0)  # cores
         self.timeout_seconds = config.get("timeout_seconds", 600)  # seconds
 
-        # Job settings
+    def _parse_job_settings(self, config: dict) -> None:
+        """Parse job execution settings"""
         self.max_retries = config.get("max_retries", 3)
         self.parallelism = config.get("parallelism", 1)
         self.task_count = config.get("task_count", 1)
 
-        # Additional settings
+    def _parse_additional_settings(self, config: dict) -> None:
+        """Parse environment variables and labels"""
         self.env_vars = config.get("env_vars", {})
         self.labels = config.get("labels", {})
-
-        # GCP client (will be initialized when needed)
-        self._run_client = None
-        self._logging_client = None
-
-        # Job tracking
-        self._active_jobs = {}  # job_name -> job_info
 
     def _get_run_client(self):
         """Get or create Cloud Run client."""
@@ -110,15 +151,14 @@ class CloudRunExecutor(ContainerExecutor):
                 from google.cloud import run_v2
 
                 self._run_client = run_v2.JobsClient()
-            except ImportError:
+            except ImportError as e:
                 raise ExecutorConfigurationError(
-                    "Google Cloud Run client not available. "
-                    "Install with: pip install google-cloud-run"
-                )
+                    "google-cloud-run not installed"
+                ) from e
             except Exception as e:
                 raise ExecutorConfigurationError(
                     f"Failed to initialize Cloud Run client: {e}"
-                )
+                ) from e
 
         return self._run_client
 
@@ -129,18 +169,18 @@ class CloudRunExecutor(ContainerExecutor):
                 from google.cloud import logging
 
                 self._logging_client = logging.Client(project=self.project_id)
-            except ImportError:
+            except ImportError as e:
                 raise ExecutorConfigurationError(
-                    "Google Cloud Logging client not available. Install with: pip install google-cloud-logging"
-                )
+                    "google-cloud-logging not installed"
+                ) from e
             except Exception as e:
                 raise ExecutorConfigurationError(
                     f"Failed to initialize Cloud Logging client: {e}"
-                )
+                ) from e
 
         return self._logging_client
 
-    def launch_job(self, job: ContainerJob) -> Tuple[bool, str]:
+    def launch_job(self, job: ContainerJob) -> tuple[bool, str]:
         """
         Launch a job using Cloud Run Jobs API.
 
@@ -205,7 +245,7 @@ class CloudRunExecutor(ContainerExecutor):
                 job.save()
 
                 # Create execution record
-                execution = ContainerExecution.objects.create(
+                ContainerExecution.objects.create(
                     job=job,
                     stdout_log=f"Cloud Run job {job_name} created and started\n",
                     stderr_log="",
@@ -214,18 +254,17 @@ class CloudRunExecutor(ContainerExecutor):
                     f"Region: {self.region}\n"
                     f"Project: {self.project_id}\n",
                 )
-
+            except Exception as e:
+                logger.exception("Failed to create/run Cloud Run job")
+                return False, f"Cloud Run API error: {e}"
+            else:
                 logger.info(
                     f"CloudRun job {job.id} launched successfully as {job_name}"
                 )
                 return True, job_name
 
-            except Exception as e:
-                logger.exception(f"Failed to create/run Cloud Run job: {e}")
-                return False, f"Cloud Run API error: {e}"
-
         except Exception as e:
-            logger.exception(f"CloudRun executor failed to launch job {job.id}: {e}")
+            logger.exception(f"CloudRun executor failed to launch job {job.id}")
             return False, str(e)
 
     def check_status(self, execution_id: str) -> str:
@@ -239,64 +278,87 @@ class CloudRunExecutor(ContainerExecutor):
             Status string ('running', 'completed', 'failed', 'not-found')
         """
         try:
-            job_info = self._active_jobs.get(execution_id)
+            job_info = self._get_job_info_with_validation(execution_id)
             if not job_info:
                 return "not-found"
 
-            # Check cached status first
+            # Return cached status if not running
             if job_info["status"] != "running":
                 return job_info["status"]
 
-            client = self._get_run_client()
+            # Get fresh status from Cloud Run
+            return self._get_fresh_status_from_cloudrun(job_info)
 
-            try:
-                # Get the latest execution status
-                executions = client.list_executions(
-                    parent=job_info["job_resource_name"]
-                )
-
-                # Find the most recent execution
-                latest_execution = None
-                for execution in executions:
-                    if (
-                        latest_execution is None
-                        or execution.create_time > latest_execution.create_time
-                    ):
-                        latest_execution = execution
-
-                if not latest_execution:
-                    job_info["status"] = "failed"
-                    return "failed"
-
-                # Map Cloud Run status to our status
-                conditions = latest_execution.status.conditions
-                for condition in conditions:
-                    if condition.type_ == "Completed":
-                        if condition.state.name == "CONDITION_SUCCEEDED":
-                            job_info["status"] = "completed"
-                            return "completed"
-                        elif condition.state.name == "CONDITION_FAILED":
-                            job_info["status"] = "failed"
-                            return "failed"
-
-                # Check if still running or pending
-                if latest_execution.status.phase.name in [
-                    "PHASE_PENDING",
-                    "PHASE_RUNNING",
-                ]:
-                    return "running"
-
-                # Default to failed for unknown states
-                job_info["status"] = "failed"
-                return "failed"
-
-            except Exception as e:
-                logger.exception(f"Error checking Cloud Run job status: {e}")
-                return "running"  # Assume still running on API errors
-
-        except Exception as e:
-            logger.exception(f"Error checking status for execution {execution_id}: {e}")
+        except Exception:
+            logger.exception(f"Error checking status for execution {execution_id}")
             return "not-found"
+
+    def _get_job_info_with_validation(self, execution_id: str):
+        """Get job info and validate it exists"""
+        return self._active_jobs.get(execution_id)
+
+    def _get_fresh_status_from_cloudrun(self, job_info: dict) -> str:
+        """Get current status from Cloud Run API"""
+        try:
+            client = self._get_run_client()
+            latest_execution = self._get_latest_execution_from_api(client, job_info)
+
+            if not latest_execution:
+                return self._update_job_status_and_return(job_info, "failed")
+
+            return self._map_execution_status(job_info, latest_execution)
+
+        except Exception:
+            logger.exception("Error checking Cloud Run job status")
+            return "running"  # Assume still running on API errors
+
+    def _get_latest_execution_from_api(self, client, job_info: dict):
+        """Get the most recent execution from Cloud Run API"""
+        executions = client.list_executions(parent=job_info["job_resource_name"])
+
+        latest_execution = None
+        for execution in executions:
+            if (
+                latest_execution is None
+                or execution.create_time > latest_execution.create_time
+            ):
+                latest_execution = execution
+
+        return latest_execution
+
+    def _map_execution_status(self, job_info: dict, execution) -> str:
+        """Map Cloud Run execution status to our standard status"""
+        # Check completion conditions first
+        completion_status = self._check_completion_conditions(execution)
+        if completion_status:
+            return self._update_job_status_and_return(job_info, completion_status)
+
+        # Check if still running or pending
+        if self._is_execution_active(execution):
+            return "running"
+
+        # Default to failed for unknown states
+        return self._update_job_status_and_return(job_info, "failed")
+
+    def _check_completion_conditions(self, execution):
+        """Check Cloud Run completion conditions"""
+        conditions = execution.status.conditions
+        for condition in conditions:
+            if condition.type_ == "Completed":
+                if condition.state.name == "CONDITION_SUCCEEDED":
+                    return "completed"
+                elif condition.state.name == "CONDITION_FAILED":
+                    return "failed"
+        return None
+
+    def _is_execution_active(self, execution) -> bool:
+        """Check if execution is still active (running or pending)"""
+        return execution.status.phase.name in ["PHASE_PENDING", "PHASE_RUNNING"]
+
+    def _update_job_status_and_return(self, job_info: dict, status: str) -> str:
+        """Update cached job status and return it"""
+        job_info["status"] = status
+        return status
 
     def harvest_job(self, job: ContainerJob) -> bool:
         """
@@ -310,7 +372,7 @@ class CloudRunExecutor(ContainerExecutor):
         """
         try:
             logger.info(f"Harvesting CloudRun job {job.id}")
-            
+
             execution_id = job.get_execution_identifier()
             job_info = self._active_jobs.get(execution_id)
 
@@ -320,17 +382,17 @@ class CloudRunExecutor(ContainerExecutor):
 
             try:
                 self._harvest_job_with_details(job, job_info)
-            except Exception as e:
-                logger.exception(f"Error harvesting Cloud Run job details: {e}")
+            except Exception:
+                logger.exception("Error harvesting Cloud Run job details")
                 self._fallback_job_completion(job)
 
             self._cleanup_job_tracking(execution_id)
+        except Exception:
+            logger.exception(f"Failed to harvest CloudRun job {job.id}")
+            return False
+        else:
             logger.info(f"Successfully harvested CloudRun job {job.id}")
             return True
-
-        except Exception as e:
-            logger.exception(f"Failed to harvest CloudRun job {job.id}: {e}")
-            return False
 
     def _handle_missing_job_info(self, job: ContainerJob) -> None:
         """Handle job harvest when no job info is found"""
@@ -343,11 +405,11 @@ class CloudRunExecutor(ContainerExecutor):
     def _harvest_job_with_details(self, job: ContainerJob, job_info: dict) -> None:
         """Harvest job with full Cloud Run execution details"""
         latest_execution = self._get_latest_execution(job_info)
-        
+
         if latest_execution:
             exit_code, status = self._determine_job_outcome(latest_execution)
             self._update_job_status(job, exit_code, status)
-            
+
             logs = self._collect_logs(job_info)
             self._update_execution_record(job, logs, exit_code)
 
@@ -363,7 +425,7 @@ class CloudRunExecutor(ContainerExecutor):
                 or execution.create_time > latest_execution.create_time
             ):
                 latest_execution = execution
-        
+
         return latest_execution
 
     def _determine_job_outcome(self, execution) -> tuple:
@@ -373,11 +435,10 @@ class CloudRunExecutor(ContainerExecutor):
 
         conditions = execution.status.conditions
         for condition in conditions:
-            if condition.type_ == "Completed":
-                if condition.state.name == "CONDITION_FAILED":
-                    exit_code = 1
-                    status = "failed"
-                    break
+            if condition.type_ == "Completed" and condition.state.name == "CONDITION_FAILED":
+                exit_code = 1
+                status = "failed"
+                break
 
         return exit_code, status
 
@@ -402,7 +463,7 @@ class CloudRunExecutor(ContainerExecutor):
         execution.stderr_log = logs.get("stderr", "")
         execution.docker_log += f"Job completed with exit code {exit_code}\n"
         execution.docker_log += logs.get("cloud_run", "")
-        
+
         # Estimate resource usage (Cloud Run doesn't provide detailed metrics)
         execution.max_memory_usage = self.memory_limit * 1024 * 1024  # Convert MB to bytes
         execution.cpu_usage_percent = min(self.cpu_limit * 100, 100)  # Estimate CPU usage
@@ -469,14 +530,13 @@ class CloudRunExecutor(ContainerExecutor):
 
                 # Remove from tracking
                 del self._active_jobs[execution_id]
-
+        except Exception:
+            logger.exception(f"Error cleaning up execution {execution_id}")
+            return False
+        else:
             return True
 
-        except Exception as e:
-            logger.exception(f"Error cleaning up execution {execution_id}: {e}")
-            return False
-
-    def get_logs(self, execution_id: str) -> Optional[str]:
+    def get_logs(self, execution_id: str) -> str | None:
         """
         Get logs from Cloud Run job execution.
 
@@ -498,7 +558,7 @@ class CloudRunExecutor(ContainerExecutor):
             f"=== CLOUD RUN ===\n{logs.get('cloud_run', 'No Cloud Run logs')}\n"
         )
 
-    def get_resource_usage(self, execution_id: str) -> Optional[Dict]:
+    def get_resource_usage(self, execution_id: str) -> dict | None:
         """
         Get resource usage stats for Cloud Run execution.
 
@@ -520,7 +580,20 @@ class CloudRunExecutor(ContainerExecutor):
         """Create Cloud Run job specification."""
         from google.cloud import run_v2
 
-        # Build environment variables
+        env_vars = self._build_environment_variables(job)
+        command, args = self._parse_command(job)
+        container = self._create_container_spec(job, env_vars, command, args)
+        task_template = self._create_task_template(container, job)
+        labels = self._build_job_labels(job)
+
+        return run_v2.Job(
+            spec=run_v2.JobSpec(template=task_template), labels=labels
+        )
+
+    def _build_environment_variables(self, job: ContainerJob) -> list:
+        """Build complete list of environment variables"""
+        from google.cloud import run_v2
+
         env_vars = []
 
         # Add template environment variables
@@ -536,26 +609,27 @@ class CloudRunExecutor(ContainerExecutor):
         for key, value in self.env_vars.items():
             env_vars.append(run_v2.EnvVar(name=key, value=value))
 
-        # Determine command
-        command = None
-        args = None
-        if job.override_command:
-            command_parts = job.override_command.split()
-            if command_parts:
-                command = [command_parts[0]]
-                args = command_parts[1:]
-        elif job.template.command:
-            command_parts = job.template.command.split()
-            if command_parts:
-                command = [command_parts[0]]
-                args = command_parts[1:]
+        return env_vars
 
-        # Build resource requirements
+    def _parse_command(self, job: ContainerJob) -> tuple:
+        """Parse command and arguments from job configuration"""
+        command_string = job.override_command or job.template.command
+        if not command_string:
+            return None, None
+
+        command_parts = command_string.split()
+        if not command_parts:
+            return None, None
+
+        return [command_parts[0]], command_parts[1:]
+
+    def _create_container_spec(self, job: ContainerJob, env_vars: list, command: list, args: list):
+        """Create Cloud Run container specification"""
+        from google.cloud import run_v2
+
         memory_mb = min(job.template.memory_limit, 32768)  # Cloud Run max
         cpu_cores = min(job.template.cpu_limit, 8.0)  # Cloud Run max
-        timeout = min(job.template.timeout_seconds, 3600)  # Cloud Run max
 
-        # Create container spec
         container = run_v2.Container(
             image=job.template.docker_image,
             env=env_vars,
@@ -569,8 +643,15 @@ class CloudRunExecutor(ContainerExecutor):
         if args:
             container.args = args
 
-        # Create task template
-        task_template = run_v2.TaskTemplate(
+        return container
+
+    def _create_task_template(self, container, job: ContainerJob):
+        """Create Cloud Run task template"""
+        from google.cloud import run_v2
+
+        timeout = min(job.template.timeout_seconds, 3600)  # Cloud Run max
+
+        return run_v2.TaskTemplate(
             template=run_v2.ExecutionTemplate(
                 template=run_v2.TaskTemplate(
                     template=run_v2.ContainerTemplate(
@@ -588,22 +669,17 @@ class CloudRunExecutor(ContainerExecutor):
             )
         )
 
-        # Build labels
+    def _build_job_labels(self, job: ContainerJob) -> dict:
+        """Build labels for Cloud Run job"""
         labels = {
             "managed-by": "django-docker-manager",
             "job-id": str(job.id),
             "template": job.template.name.replace("_", "-").lower(),
         }
         labels.update(self.labels)
+        return labels
 
-        # Create job spec
-        job_spec = run_v2.Job(
-            spec=run_v2.JobSpec(template=task_template), labels=labels
-        )
-
-        return job_spec
-
-    def _collect_logs(self, job_info: Dict) -> Dict[str, str]:
+    def _collect_logs(self, job_info: dict) -> dict[str, str]:
         """Collect logs from Cloud Logging."""
         try:
             logging_client = self._get_logging_client()
@@ -619,8 +695,8 @@ class CloudRunExecutor(ContainerExecutor):
             # Get logs from the last hour
             import datetime
 
-            end_time = datetime.datetime.now(datetime.timezone.utc)
-            start_time = end_time - datetime.timedelta(hours=1)
+            datetime.datetime.now(datetime.timezone.utc)
+            # We'll get all entries from the last hour, but don't need start_time
 
             entries = logging_client.list_entries(
                 filter_=filter_str, page_size=1000, max_results=1000
@@ -656,14 +732,14 @@ class CloudRunExecutor(ContainerExecutor):
             }
 
         except Exception as e:
-            logger.exception(f"Failed to collect logs: {e}")
+            logger.exception("Failed to collect logs")
             return {
                 "stdout": f"Failed to collect logs: {e}\n",
                 "stderr": "",
                 "cloud_run": f"Log collection error: {e}\n",
             }
 
-    def get_cost_estimate(self, job: ContainerJob) -> Dict[str, float]:
+    def get_cost_estimate(self, job: ContainerJob) -> dict[str, float]:
         """
         Estimate the cost of running this job on Cloud Run.
 

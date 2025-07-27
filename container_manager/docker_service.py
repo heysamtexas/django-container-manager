@@ -6,8 +6,9 @@ interface while delegating to the new DockerExecutor implementation.
 """
 
 import logging
+from collections.abc import Generator
 from datetime import timedelta
-from typing import Any, Dict, Generator, Optional
+from typing import Any
 
 import docker
 from django.utils import timezone as django_timezone
@@ -24,13 +25,11 @@ logger = logging.getLogger(__name__)
 class DockerConnectionError(ExecutorConnectionError):
     """Raised when unable to connect to Docker host - legacy alias"""
 
-    pass
 
 
 class ContainerExecutionError(ExecutorError):
     """Raised when container execution fails - legacy alias"""
 
-    pass
 
 
 class DockerService:
@@ -42,7 +41,7 @@ class DockerService:
     """
 
     def __init__(self):
-        self._executors: Dict[str, DockerExecutor] = {}
+        self._executors: dict[str, DockerExecutor] = {}
 
     def _get_executor(self, docker_host: DockerHost) -> DockerExecutor:
         """Get or create DockerExecutor for host"""
@@ -70,28 +69,28 @@ class DockerService:
             executor = self._get_executor(docker_host)
             return executor._get_client(docker_host)
         except ExecutorConnectionError as e:
-            raise DockerConnectionError(str(e))
+            raise DockerConnectionError(str(e)) from e
 
     def create_container(
-        self, job: ContainerJob, environment: Optional[Dict] = None
+        self, job: ContainerJob, environment: dict | None = None
     ) -> str:
         """Create a container for the given job - legacy interface"""
         try:
             executor = self._get_executor(job.docker_host)
             return executor._create_container(job)
         except ExecutorError as e:
-            raise ContainerExecutionError(str(e))
+            raise ContainerExecutionError(str(e)) from e
 
     def start_container(self, job: ContainerJob) -> bool:
         """Start a container for the given job - legacy interface"""
         if not job.container_id:
-            raise ContainerExecutionError("No container ID found for job")
+            raise ContainerExecutionError("No container ID")
 
         try:
             executor = self._get_executor(job.docker_host)
             return executor._start_container(job, job.container_id)
-        except ExecutorError as e:
-            logger.exception(f"Failed to start container for job {job.id}: {e}")
+        except ExecutorError:
+            logger.exception(f"Failed to start container for job {job.id}")
             job.status = "failed"
             job.save()
             return False
@@ -105,16 +104,15 @@ class DockerService:
             client = self.get_client(job.docker_host)
             container = client.containers.get(job.container_id)
             container.stop(timeout=timeout)
-
-            logger.info(f"Stopped container {job.container_id} for job {job.id}")
-            return True
-
         except NotFound:
             logger.warning(f"Container {job.container_id} not found")
             return False
-        except Exception as e:
-            logger.exception(f"Failed to stop container for job {job.id}: {e}")
+        except Exception:
+            logger.exception(f"Failed to stop container for job {job.id}")
             return False
+        else:
+            logger.info(f"Stopped container {job.container_id} for job {job.id}")
+            return True
 
     def remove_container(self, job: ContainerJob, force: bool = False) -> bool:
         """Remove a container"""
@@ -124,8 +122,8 @@ class DockerService:
         try:
             executor = self._get_executor(job.docker_host)
             return executor.cleanup(job.container_id)
-        except Exception as e:
-            logger.exception(f"Failed to remove container for job {job.id}: {e}")
+        except Exception:
+            logger.exception(f"Failed to remove container for job {job.id}")
             return False
 
     def get_container_logs(
@@ -152,21 +150,20 @@ class DockerService:
                         yield log_line.decode("utf-8", errors="replace")
                     else:
                         yield str(log_line)
+            # Non-streaming mode returns bytes directly
+            elif isinstance(logs, bytes):
+                yield logs.decode("utf-8", errors="replace")
             else:
-                # Non-streaming mode returns bytes directly
-                if isinstance(logs, bytes):
-                    yield logs.decode("utf-8", errors="replace")
-                else:
-                    yield str(logs)
+                yield str(logs)
 
         except NotFound:
             logger.warning(f"Container {job.container_id} not found")
             return
-        except Exception as e:
-            logger.exception(f"Failed to get logs for job {job.id}: {e}")
+        except Exception:
+            logger.exception(f"Failed to get logs for job {job.id}")
             return
 
-    def get_container_stats(self, job: ContainerJob) -> Optional[Dict[str, Any]]:
+    def get_container_stats(self, job: ContainerJob) -> dict[str, Any] | None:
         """Get container resource usage statistics"""
         if not job.container_id:
             return None
@@ -176,16 +173,16 @@ class DockerService:
         try:
             container = client.containers.get(job.container_id)
             stats = container.stats(stream=False)
-            return stats
-
         except NotFound:
             logger.warning(f"Container {job.container_id} not found")
             return None
-        except Exception as e:
-            logger.exception(f"Failed to get stats for job {job.id}: {e}")
+        except Exception:
+            logger.exception(f"Failed to get stats for job {job.id}")
             return None
+        else:
+            return stats
 
-    def wait_for_container(self, job: ContainerJob) -> Optional[int]:
+    def wait_for_container(self, job: ContainerJob) -> int | None:
         """Wait for container to complete and return exit code"""
         if not job.container_id:
             return None
@@ -206,34 +203,33 @@ class DockerService:
 
             # Collect final logs and stats
             self._collect_execution_data(job)
-
+        except NotFound:
+            logger.warning(f"Container {job.container_id} not found")
+            return None
+        except Exception:
+            logger.exception(f"Failed to wait for container {job.id}")
+            return None
+        else:
             logger.info(
                 f"Container {job.container_id} completed with exit code {exit_code}"
             )
             return exit_code
-
-        except NotFound:
-            logger.warning(f"Container {job.container_id} not found")
-            return None
-        except Exception as e:
-            logger.exception(f"Failed to wait for container {job.id}: {e}")
-            return None
 
     def _collect_execution_data(self, job: ContainerJob):
         """Collect execution logs and statistics - delegates to executor"""
         try:
             executor = self._get_executor(job.docker_host)
             executor._collect_data(job)
-        except Exception as e:
-            logger.exception(f"Failed to collect execution data for job {job.id}: {e}")
+        except Exception:
+            logger.exception(f"Failed to collect execution data for job {job.id}")
 
     def _cleanup_container_after_execution(self, job: ContainerJob):
         """Remove container immediately after execution data is collected"""
         try:
             executor = self._get_executor(job.docker_host)
             executor._immediate_cleanup(job)
-        except Exception as e:
-            logger.exception(f"Failed to cleanup container for job {job.id}: {e}")
+        except Exception:
+            logger.exception(f"Failed to cleanup container for job {job.id}")
 
     def launch_job(self, job: ContainerJob) -> bool:
         """Launch a job container in the background (non-blocking)"""
@@ -249,8 +245,8 @@ class DockerService:
                 logger.error(f"Failed to launch job {job.id}: {execution_id}")
                 return False
 
-        except Exception as e:
-            logger.exception(f"Failed to launch job {job.id}: {e}")
+        except Exception:
+            logger.exception(f"Failed to launch job {job.id}")
             job.status = "failed"
             job.completed_at = django_timezone.now()
             job.save()
@@ -263,11 +259,11 @@ class DockerService:
             containers = client.containers.list(
                 filters={"label": "django.container_manager.job_id"}
             )
-            return containers
-
-        except Exception as e:
-            logger.exception(f"Failed to discover containers on {docker_host.name}: {e}")
+        except Exception:
+            logger.exception(f"Failed to discover containers on {docker_host.name}")
             return []
+        else:
+            return containers
 
     def check_container_status(self, job: ContainerJob) -> str:
         """Check the current status of a job's container"""
@@ -286,8 +282,8 @@ class DockerService:
             else:
                 return status
 
-        except Exception as e:
-            logger.exception(f"Failed to check container status for job {job.id}: {e}")
+        except Exception:
+            logger.exception(f"Failed to check container status for job {job.id}")
             return "error"
 
     def harvest_completed_job(self, job: ContainerJob) -> bool:
@@ -295,8 +291,8 @@ class DockerService:
         try:
             executor = self._get_executor(job.docker_host)
             return executor.harvest_job(job)
-        except Exception as e:
-            logger.exception(f"Failed to harvest job {job.id}: {e}")
+        except Exception:
+            logger.exception(f"Failed to harvest job {job.id}")
             return False
 
     def cleanup_old_containers(self, orphaned_hours: int = 24) -> int:
@@ -325,8 +321,8 @@ class DockerService:
                         total_cleaned += 1
                         logger.debug(f"Cleaned up container for job {job.id}")
 
-                except Exception as e:
-                    logger.exception(f"Failed to cleanup container for job {job.id}: {e}")
+                except Exception:
+                    logger.exception(f"Failed to cleanup container for job {job.id}")
 
         logger.info(f"Cleaned up {total_cleaned} orphaned containers")
         return total_cleaned

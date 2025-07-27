@@ -2,8 +2,8 @@
 Tests for CloudRunExecutor with mocked GCP APIs.
 """
 
-from unittest.mock import MagicMock, patch
 import unittest
+from unittest.mock import MagicMock, patch
 
 from django.contrib.auth.models import User
 from django.test import TestCase

@@ -6,7 +6,6 @@ import logging
 import random
 import time
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
 
 from django.conf import settings
 from django.utils import timezone
@@ -16,7 +15,7 @@ from .base import ContainerExecutor
 
 logger = logging.getLogger(__name__)
 
-# Constants  
+# Constants
 HIGH_MEMORY_THRESHOLD_MB = 1024  # 1GB threshold for high memory jobs
 
 
@@ -36,8 +35,8 @@ class ExecutorFallbackManager:
         self,
         job: ContainerJob,
         primary_executor: ContainerExecutor,
-        fallback_executors: List[ContainerExecutor],
-    ) -> Tuple[bool, str]:
+        fallback_executors: list[ContainerExecutor],
+    ) -> tuple[bool, str]:
         """
         Execute job with fallback logic.
 
@@ -97,7 +96,7 @@ class ExecutorFallbackManager:
             except Exception as e:
                 logger.exception(
                     f"Exception executing job {job.id} on "
-                    f"{executor.__class__.__name__}: {e}"
+                    f"{executor.__class__.__name__}"
                 )
                 last_error = str(e)
 
@@ -118,8 +117,8 @@ class ExecutorFallbackManager:
         self,
         job: ContainerJob,
         executor: ContainerExecutor,
-        max_attempts: Optional[int] = None,
-    ) -> Tuple[bool, str]:
+        max_attempts: int | None = None,
+    ) -> tuple[bool, str]:
         """
         Retry job execution with exponential backoff.
 
@@ -165,7 +164,7 @@ class ExecutorFallbackManager:
 
             except Exception as e:
                 logger.exception(
-                    f"Exception on retry attempt {attempt + 1} for job {job.id}: {e}"
+                    f"Exception on retry attempt {attempt + 1} for job {job.id}"
                 )
                 last_error = str(e)
 
@@ -238,18 +237,16 @@ class HealthChecker:
                 return False
 
             # Check recent failure count
-            if host.health_check_failures >= self.failure_threshold:
-                # Check if enough time has passed for recovery attempt
-                if host.last_health_check:
-                    time_since_check = timezone.now() - host.last_health_check
-                    if time_since_check.total_seconds() < self.health_check_interval:
-                        return False
+            if host.health_check_failures >= self.failure_threshold and host.last_health_check:
+                time_since_check = timezone.now() - host.last_health_check
+                if time_since_check.total_seconds() < self.health_check_interval:
+                    return False
 
             # Perform actual health check
             return self._perform_health_check(host)
 
-        except Exception as e:
-            logger.exception(f"Error checking health for host {host.name}: {e}")
+        except Exception:
+            logger.exception(f"Error checking health for host {host.name}")
             return False
 
     def _perform_health_check(self, host: DockerHost) -> bool:
@@ -280,16 +277,16 @@ class HealthChecker:
             logger.debug(f"Health check passed for host {host.name}")
             return True
 
-        except Exception as e:
+        except Exception:
             # Update failure state
             host.health_check_failures += 1
             host.last_health_check = timezone.now()
             host.save()
 
-            logger.warning(f"Health check failed for host {host.name}: {e}")
+            logger.warning(f"Health check failed for host {host.name}")
             return False
 
-    def get_healthy_hosts(self, executor_type: str = None) -> List[DockerHost]:
+    def get_healthy_hosts(self, executor_type: str = None) -> list[DockerHost]:
         """
         Get list of healthy hosts, optionally filtered by executor type.
 
@@ -320,9 +317,9 @@ class CircuitBreaker:
     def __init__(self, failure_threshold: int = 5, recovery_timeout: int = 60):
         self.failure_threshold = failure_threshold
         self.recovery_timeout = recovery_timeout
-        self._failure_counts: Dict[str, int] = {}
-        self._last_failures: Dict[str, datetime] = {}
-        self._circuit_states: Dict[str, str] = {}  # "closed", "open", "half-open"
+        self._failure_counts: dict[str, int] = {}
+        self._last_failures: dict[str, datetime] = {}
+        self._circuit_states: dict[str, str] = {}  # "closed", "open", "half-open"
 
     def call(self, executor_name: str, func, *args, **kwargs):
         """
@@ -390,7 +387,6 @@ class CircuitBreaker:
 class CircuitBreakerOpenError(Exception):
     """Raised when circuit breaker is open."""
 
-    pass
 
 
 class GracefulDegradationManager:
@@ -407,8 +403,8 @@ class GracefulDegradationManager:
         }
 
     def apply_degradation(
-        self, job: ContainerJob, available_executors: List[ContainerExecutor]
-    ) -> Tuple[bool, str]:
+        self, job: ContainerJob, available_executors: list[ContainerExecutor]
+    ) -> tuple[bool, str]:
         """
         Apply degradation strategy for job execution.
 
@@ -433,15 +429,15 @@ class GracefulDegradationManager:
                             f"job {job.id}: {message}"
                         )
                         return True, message
-                except Exception as e:
+                except Exception:
                     logger.exception(
                         f"Degradation strategy '{strategy_name}' failed for "
-                        f"job {job.id}: {e}"
+                        f"job {job.id}"
                     )
 
         return False, "All degradation strategies failed"
 
-    def _get_prioritized_strategies(self, job: ContainerJob) -> List[str]:
+    def _get_prioritized_strategies(self, job: ContainerJob) -> list[str]:
         """
         Get prioritized list of degradation strategies based on job characteristics.
 
@@ -470,8 +466,8 @@ class GracefulDegradationManager:
         return strategies
 
     def _reduce_resource_limits(
-        self, job: ContainerJob, available_executors: List[ContainerExecutor]
-    ) -> Tuple[bool, str]:
+        self, job: ContainerJob, available_executors: list[ContainerExecutor]
+    ) -> tuple[bool, str]:
         """
         Reduce resource limits to fit available capacity.
 
@@ -511,8 +507,8 @@ class GracefulDegradationManager:
         return True, f"Reduced resource limits: memory {original_memory}→{new_memory}MB"
 
     def _delay_non_critical_jobs(
-        self, job: ContainerJob, available_executors: List[ContainerExecutor]
-    ) -> Tuple[bool, str]:
+        self, job: ContainerJob, available_executors: list[ContainerExecutor]
+    ) -> tuple[bool, str]:
         """
         Delay non-critical jobs.
 
@@ -537,8 +533,8 @@ class GracefulDegradationManager:
         return True, "Job delayed for later execution"
 
     def _queue_jobs_for_later(
-        self, job: ContainerJob, available_executors: List[ContainerExecutor]
-    ) -> Tuple[bool, str]:
+        self, job: ContainerJob, available_executors: list[ContainerExecutor]
+    ) -> tuple[bool, str]:
         """
         Queue jobs for later execution.
 
@@ -563,8 +559,8 @@ class GracefulDegradationManager:
         return True, "Job queued for later execution"
 
     def _redirect_to_fallback_executor(
-        self, job: ContainerJob, available_executors: List[ContainerExecutor]
-    ) -> Tuple[bool, str]:
+        self, job: ContainerJob, available_executors: list[ContainerExecutor]
+    ) -> tuple[bool, str]:
         """
         Redirect to fallback executor.
 

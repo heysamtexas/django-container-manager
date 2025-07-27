@@ -7,10 +7,9 @@ providing multi-host Docker support with comprehensive lifecycle management.
 
 import logging
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import docker
-from django.conf import settings
 from django.utils import timezone as django_timezone
 from docker.errors import NotFound
 
@@ -27,12 +26,12 @@ logger = logging.getLogger(__name__)
 class DockerExecutor(ContainerExecutor):
     """Docker-based container executor"""
 
-    def __init__(self, config: Dict):
+    def __init__(self, config: dict):
         super().__init__(config)
-        self._clients: Dict[str, docker.DockerClient] = {}
+        self._clients: dict[str, docker.DockerClient] = {}
         self.docker_host = config.get("docker_host")
 
-    def launch_job(self, job: ContainerJob) -> Tuple[bool, str]:
+    def launch_job(self, job: ContainerJob) -> tuple[bool, str]:
         """Launch a container job in the background"""
         try:
             # Validate job can be executed
@@ -47,14 +46,13 @@ class DockerExecutor(ContainerExecutor):
             success = self._start_container(job, container_id)
             if not success:
                 return False, "Failed to start container"
-
-            return True, container_id
-
         except ExecutorError as e:
             return False, str(e)
         except Exception as e:
-            logger.exception(f"Unexpected error launching job {job.id}: {e}")
+            logger.exception(f"Unexpected error launching job {job.id}")
             return False, f"Unexpected error: {e}"
+        else:
+            return True, container_id
 
     def check_status(self, execution_id: str) -> str:
         """Check the status of a running execution"""
@@ -84,11 +82,11 @@ class DockerExecutor(ContainerExecutor):
 
         except NotFound:
             return "not-found"
-        except Exception as e:
-            logger.exception(f"Error checking container status {execution_id}: {e}")
+        except Exception:
+            logger.exception(f"Error checking container status {execution_id}")
             return "failed"
 
-    def get_logs(self, execution_id: str) -> Tuple[str, str]:
+    def get_logs(self, execution_id: str) -> tuple[str, str]:
         """Retrieve logs from completed or running execution"""
         if not execution_id:
             return "", ""
@@ -108,15 +106,15 @@ class DockerExecutor(ContainerExecutor):
 
             # Split logs into stdout/stderr
             stdout, stderr = self._split_docker_logs(logs_str)
-            return stdout, stderr
-
         except NotFound:
             return "", ""
-        except Exception as e:
-            logger.exception(f"Error getting logs for {execution_id}: {e}")
+        except Exception:
+            logger.exception(f"Error getting logs for {execution_id}")
             return "", ""
+        else:
+            return stdout, stderr
 
-    def _split_docker_logs(self, logs_str: str) -> Tuple[str, str]:
+    def _split_docker_logs(self, logs_str: str) -> tuple[str, str]:
         """Split combined Docker logs into stdout and stderr based on content heuristics"""
         stdout_lines = []
         stderr_lines = []
@@ -158,19 +156,18 @@ class DockerExecutor(ContainerExecutor):
 
             # Immediate cleanup if configured
             self._immediate_cleanup(job)
-
-            logger.info(f"Harvested job {job.id} with exit code {exit_code}")
-            return True
-
         except NotFound:
             logger.warning(f"Container {job.container_id} not found during harvest")
             job.status = "failed"
             job.completed_at = django_timezone.now()
             job.save()
             return False
-        except Exception as e:
-            logger.exception(f"Error harvesting job {job.id}: {e}")
+        except Exception:
+            logger.exception(f"Error harvesting job {job.id}")
             return False
+        else:
+            logger.info(f"Harvested job {job.id} with exit code {exit_code}")
+            return True
 
     def cleanup(self, execution_id: str) -> bool:
         """Force cleanup of execution resources"""
@@ -195,11 +192,11 @@ class DockerExecutor(ContainerExecutor):
         except NotFound:
             # Already cleaned up
             return True
-        except Exception as e:
-            logger.exception(f"Error cleaning up container {execution_id}: {e}")
+        except Exception:
+            logger.exception(f"Error cleaning up container {execution_id}")
             return False
 
-    def get_capabilities(self) -> Dict[str, bool]:
+    def get_capabilities(self) -> dict[str, bool]:
         """Return Docker executor capabilities"""
         return {
             "supports_resource_limits": True,
@@ -210,19 +207,20 @@ class DockerExecutor(ContainerExecutor):
             "supports_scaling": False,
         }
 
-    def validate_job(self, job: ContainerJob) -> Tuple[bool, str]:
+    def validate_job(self, job: ContainerJob) -> tuple[bool, str]:
         """Validate that a job can be executed by Docker"""
         try:
             self._validate_job(job)
-            return True, ""
         except ExecutorError as e:
             return False, str(e)
+        else:
+            return True, ""
 
-    def estimate_cost(self, job: ContainerJob) -> Optional[float]:
+    def estimate_cost(self, job: ContainerJob) -> float | None:
         """Docker doesn't have direct cost estimation"""
         return None
 
-    def get_health_status(self) -> Dict[str, Any]:
+    def get_health_status(self) -> dict[str, Any]:
         """Get health status of Docker daemon"""
         try:
             if self.docker_host:
@@ -253,16 +251,16 @@ class DockerExecutor(ContainerExecutor):
     def _validate_job(self, job: ContainerJob) -> None:
         """Validate job can be executed"""
         if not job:
-            raise ExecutorError("Job cannot be None")
+            raise ExecutorError("Job is None")
 
         if job.status != "pending":
-            raise ExecutorError(f"Job must be pending, got {job.status}")
+            raise ExecutorError(f"Invalid status: {job.status}")
 
         if not job.template:
-            raise ExecutorError("Job must have a template")
+            raise ExecutorError("No template")
 
         if not job.docker_host:
-            raise ExecutorError("Job must have a docker_host")
+            raise ExecutorError("No docker_host")
 
     def _get_client(self, docker_host: DockerHost) -> docker.DockerClient:
         """Get or create Docker client for host"""
@@ -276,7 +274,7 @@ class DockerExecutor(ContainerExecutor):
         # Create new client
         try:
             client = self._create_docker_client(docker_host)
-            
+
             # Test connection only if not in testing mode
             if not getattr(self, "_skip_ping_for_tests", False):
                 client.ping()
@@ -288,13 +286,13 @@ class DockerExecutor(ContainerExecutor):
         except Exception as e:
             raise ExecutorConnectionError(
                 f"Cannot connect to Docker host {docker_host.name}: {e}"
-            )
+            ) from e
 
-    def _get_cached_client(self, host_key: str) -> Optional[docker.DockerClient]:
+    def _get_cached_client(self, host_key: str) -> docker.DockerClient | None:
         """Get cached client if available and working"""
         if host_key not in self._clients:
             return None
-            
+
         try:
             # Test connection only if not in testing mode
             if not getattr(self, "_skip_ping_for_tests", False):
@@ -320,42 +318,42 @@ class DockerExecutor(ContainerExecutor):
         else:
             raise ExecutorConnectionError(
                 f"Unsupported host type: {docker_host.host_type}"
-            )
+            ) from None
 
     def _create_container(self, job: ContainerJob) -> str:
         """Create Docker container for job"""
         client = self._get_client(job.docker_host)
-        
+
         try:
             self._ensure_image_available(client, job)
             container_config = self._build_container_config(job)
             container = client.containers.create(**container_config)
             self._setup_additional_networks(client, job, container)
-            
+
             logger.info(f"Created container {container.id} for job {job.id}")
             return container.id
 
         except Exception as e:
-            logger.exception(f"Failed to create container for job {job.id}: {e}")
-            raise ExecutorError(f"Container creation failed: {e}")
+            logger.exception(f"Failed to create container for job {job.id}")
+            raise ExecutorError(f"Container creation failed: {e}") from e
 
     def _build_container_environment(self, job: ContainerJob) -> dict:
         """Build environment variables for container"""
         environment = {}
-        
+
         # Add template environment variables
         environment.update(job.template.get_all_environment_variables())
-        
+
         # Add job override environment variables
         if job.override_environment:
             environment.update(job.override_environment)
-            
+
         return environment
 
     def _build_container_config(self, job: ContainerJob) -> dict:
         """Build complete container configuration"""
         template = job.template
-        
+
         container_config = {
             "image": template.docker_image,
             "command": job.override_command or template.command,
@@ -363,13 +361,13 @@ class DockerExecutor(ContainerExecutor):
             "labels": self._build_labels(job),
             "detach": True,
         }
-        
+
         # Add resource limits
         self._add_resource_limits(container_config, template)
-        
+
         # Add primary network
         self._add_primary_network(container_config, template)
-        
+
         return container_config
 
     def _add_resource_limits(self, container_config: dict, template) -> None:
@@ -397,7 +395,7 @@ class DockerExecutor(ContainerExecutor):
     def _ensure_image_available(self, client, job: ContainerJob) -> None:
         """Ensure Docker image is available locally"""
         template = job.template
-        
+
         try:
             client.images.get(template.docker_image)
             logger.debug(f"Image {template.docker_image} already exists locally")
@@ -410,12 +408,12 @@ class DockerExecutor(ContainerExecutor):
                 raise ExecutorError(
                     f"Image {template.docker_image} not found locally and "
                     "auto-pull is disabled"
-                )
+                ) from None
 
     def _setup_additional_networks(self, client, job: ContainerJob, container) -> None:
         """Connect container to additional networks beyond the primary"""
         networks = self._get_network_names(job.template)
-        
+
         # Connect to additional networks (skip first one as it's already set as primary)
         for network_name in networks[1:]:
             try:
@@ -445,13 +443,13 @@ class DockerExecutor(ContainerExecutor):
             logger.info(f"Started container {container_id} for job {job.id}")
             return True
 
-        except Exception as e:
-            logger.exception(f"Failed to start container {container_id}: {e}")
+        except Exception:
+            logger.exception(f"Failed to start container {container_id}")
             job.status = "failed"
             job.save()
             return False
 
-    def _build_labels(self, job: ContainerJob) -> Dict[str, str]:
+    def _build_labels(self, job: ContainerJob) -> dict[str, str]:
         """Build comprehensive labels for container discovery and management"""
         template = job.template
 
@@ -527,8 +525,8 @@ class DockerExecutor(ContainerExecutor):
 
             execution.save()
 
-        except Exception as e:
-            logger.exception(f"Failed to collect execution data for job {job.id}: {e}")
+        except Exception:
+            logger.exception(f"Failed to collect execution data for job {job.id}")
 
     def _immediate_cleanup(self, job: ContainerJob) -> None:
         """Immediately cleanup container if configured"""
@@ -559,7 +557,7 @@ class DockerExecutor(ContainerExecutor):
 
         return "\n".join(clean_lines)
 
-    def _calculate_cpu_percent(self, stats: Dict[str, Any]) -> float:
+    def _calculate_cpu_percent(self, stats: dict[str, Any]) -> float:
         """Calculate CPU usage percentage from Docker stats"""
         try:
             cpu_stats = stats.get("cpu_stats", {})

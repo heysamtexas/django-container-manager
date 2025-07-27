@@ -6,7 +6,7 @@ of container jobs across multiple executors and hosts.
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 from uuid import uuid4
 
 from django.contrib.auth.models import User
@@ -36,12 +36,12 @@ class BulkJobManager:
         template: ContainerTemplate,
         count: int,
         user: User,
-        host: Optional[DockerHost] = None,
+        host: DockerHost | None = None,
         name_pattern: str = None,
-        environment_overrides: Optional[List[Dict[str, Any]]] = None,
-        command_overrides: Optional[List[str]] = None,
+        environment_overrides: list[dict[str, Any]] | None = None,
+        command_overrides: list[str] | None = None,
         batch_size: int = 100,
-    ) -> Tuple[List[ContainerJob], List[str]]:
+    ) -> tuple[list[ContainerJob], list[str]]:
         """
         Create multiple jobs in bulk.
 
@@ -107,11 +107,11 @@ class BulkJobManager:
         start_index: int,
         end_index: int,
         user: User,
-        host: Optional[DockerHost],
-        name_pattern: Optional[str],
-        env_overrides: List[Dict[str, Any]],
-        cmd_overrides: List[str],
-    ) -> Tuple[List[ContainerJob], List[str]]:
+        host: DockerHost | None,
+        name_pattern: str | None,
+        env_overrides: list[dict[str, Any]],
+        cmd_overrides: list[str],
+    ) -> tuple[list[ContainerJob], list[str]]:
         """Create a batch of jobs within a single transaction."""
         jobs = []
         errors = []
@@ -176,7 +176,7 @@ class BulkJobManager:
 
 
     def _select_best_host(
-        self, hosts: List[DockerHost], job: ContainerJob
+        self, hosts: list[DockerHost], job: ContainerJob
     ) -> DockerHost:
         """Select the best host for a job based on capacity and requirements."""
         # Simple load balancing - select host with lowest current job count
@@ -184,8 +184,8 @@ class BulkJobManager:
         return best_host
 
     def bulk_start_jobs(
-        self, jobs: List[ContainerJob], batch_size: int = 50
-    ) -> Tuple[List[ContainerJob], List[str]]:
+        self, jobs: list[ContainerJob], batch_size: int = 50
+    ) -> tuple[list[ContainerJob], list[str]]:
         """
         Start multiple jobs in bulk.
 
@@ -238,8 +238,8 @@ class BulkJobManager:
         return started_jobs, errors
 
     def bulk_stop_jobs(
-        self, jobs: List[ContainerJob], batch_size: int = 50
-    ) -> Tuple[List[ContainerJob], List[str]]:
+        self, jobs: list[ContainerJob], batch_size: int = 50
+    ) -> tuple[list[ContainerJob], list[str]]:
         """
         Stop multiple jobs in bulk.
 
@@ -289,8 +289,8 @@ class BulkJobManager:
         return stopped_jobs, errors
 
     def bulk_cancel_jobs(
-        self, jobs: List[ContainerJob]
-    ) -> Tuple[List[ContainerJob], List[str]]:
+        self, jobs: list[ContainerJob]
+    ) -> tuple[list[ContainerJob], list[str]]:
         """
         Cancel multiple jobs in bulk.
 
@@ -336,8 +336,8 @@ class BulkJobManager:
         return cancelled_jobs, errors
 
     def bulk_restart_jobs(
-        self, jobs: List[ContainerJob], batch_size: int = 50
-    ) -> Tuple[List[ContainerJob], List[str]]:
+        self, jobs: list[ContainerJob], batch_size: int = 50
+    ) -> tuple[list[ContainerJob], list[str]]:
         """
         Restart multiple jobs in bulk.
 
@@ -410,7 +410,7 @@ class BulkJobManager:
         )
         return restarted_jobs, errors
 
-    def get_bulk_status(self, jobs: List[ContainerJob]) -> Dict[str, Any]:
+    def get_bulk_status(self, jobs: list[ContainerJob]) -> dict[str, Any]:
         """
         Get aggregated status information for a list of jobs.
 

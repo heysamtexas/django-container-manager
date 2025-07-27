@@ -23,7 +23,7 @@ MAX_NAME_DISPLAY_LENGTH = 19  # Maximum job name length for display before trunc
 
 class Command(BaseCommand):
     help = "Manage individual container jobs"
-    
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.executor_factory = ExecutorFactory()
@@ -106,17 +106,17 @@ class Command(BaseCommand):
         job_name = options.get("name", "")
         override_command = options.get("command", "")
         env_vars = options.get("env", [])
-        executor_type = options.get("executor_type", "")
+        # executor_type is captured but not used in current implementation
 
         try:
             template = ContainerTemplate.objects.get(name=template_name)
         except ContainerTemplate.DoesNotExist:
-            raise CommandError(f'Template "{template_name}" not found')
+            raise CommandError(f'Template "{template_name}" not found') from None
 
         try:
             docker_host = DockerHost.objects.get(name=host_name, is_active=True)
         except DockerHost.DoesNotExist:
-            raise CommandError(f'Docker host "{host_name}" not found or inactive')
+            raise CommandError(f'Docker host "{host_name}" not found or inactive') from None
 
         # Parse environment variables
         override_environment = {}
@@ -153,22 +153,22 @@ class Command(BaseCommand):
         try:
             self._ensure_job_has_host(job)
             executor = self.executor_factory.get_executor(job.docker_host)
-            
+
             self._display_execution_info(job)
             self._execute_and_wait_for_job(job, executor)
-            
+
             job.refresh_from_db()
             self.show_job_summary(job)
 
         except Exception as e:
-            raise CommandError(f"Failed to run job: {e}")
+            raise CommandError(f"Failed to run job: {e}") from e
 
     def _validate_job_for_run(self, job_id):
         """Validate job exists and is in pending status"""
         try:
             job = ContainerJob.objects.get(id=job_id)
         except (ContainerJob.DoesNotExist, ValueError):
-            raise CommandError(f'Job "{job_id}" not found')
+            raise CommandError(f'Job "{job_id}" not found') from None
 
         if job.status != "pending":
             raise CommandError(
@@ -214,7 +214,7 @@ class Command(BaseCommand):
     def _wait_for_job_completion(self, job):
         """Wait for job to complete using simple polling"""
         import time
-        
+
         while job.status == "running":
             time.sleep(1)
             job.refresh_from_db()
@@ -287,7 +287,7 @@ class Command(BaseCommand):
                 id=job_id
             )
         except (ContainerJob.DoesNotExist, ValueError):
-            raise CommandError(f'Job "{job_id}" not found')
+            raise CommandError(f'Job "{job_id}" not found') from None
 
         self.show_job_details(job, show_logs)
 
@@ -298,7 +298,7 @@ class Command(BaseCommand):
         try:
             job = ContainerJob.objects.get(id=job_id)
         except (ContainerJob.DoesNotExist, ValueError):
-            raise CommandError(f'Job "{job_id}" not found')
+            raise CommandError(f'Job "{job_id}" not found') from None
 
         if job.status not in ["pending", "running"]:
             raise CommandError(f"Cannot cancel job in status: {job.status}")
@@ -318,7 +318,7 @@ class Command(BaseCommand):
             )
 
         except Exception as e:
-            raise CommandError(f"Failed to cancel job: {e}")
+            raise CommandError(f"Failed to cancel job: {e}") from e
 
     def handle_cleanup(self, options):
         """Cleanup old containers"""
@@ -330,7 +330,7 @@ class Command(BaseCommand):
             docker_service.cleanup_old_containers(orphaned_hours=hours)
             self.stdout.write(self.style.SUCCESS("Cleanup completed"))
         except Exception as e:
-            raise CommandError(f"Cleanup failed: {e}")
+            raise CommandError(f"Cleanup failed: {e}") from e
 
     def show_job_summary(self, job):
         """Show a brief job summary"""
@@ -422,7 +422,7 @@ class Command(BaseCommand):
                     if parsed is not None and parsed != clean_output:
                         self.stdout.write("\nParsed Output (JSON):")
                         self.stdout.write("-" * 25)
-                        if isinstance(parsed, (dict, list)):
+                        if isinstance(parsed, dict | list):
                             import json
 
                             self.stdout.write(json.dumps(parsed, indent=2))

@@ -3,10 +3,11 @@
 Simple test to validate django-container-manager package functionality
 """
 import os
+import subprocess
 import sys
 import tempfile
-import subprocess
 from pathlib import Path
+
 
 def run_command(cmd, cwd=None):
     """Run a command and return result"""
@@ -20,26 +21,26 @@ def run_command(cmd, cwd=None):
 
 def test_package_locally():
     """Test the package in the current environment"""
-    
+
     print("🧪 Testing django-container-manager package locally...")
-    
+
     # Get the path to our built package
     project_dir = Path(__file__).parent
     wheel_file = next(project_dir.glob("dist/*.whl"))
-    
+
     print(f"📦 Installing package from {wheel_file}...")
     if not run_command([sys.executable, "-m", "pip", "install", str(wheel_file), "--force-reinstall"]):
         return False
-    
+
     with tempfile.TemporaryDirectory() as temp_dir:
         print(f"📁 Working in temporary directory: {temp_dir}")
         os.chdir(temp_dir)
-        
+
         # Create minimal Django project
         print("\n🏗️ Creating Django project...")
         if not run_command([sys.executable, "-m", "django", "startproject", "testproject", "."]):
             return False
-        
+
         # Create test settings
         settings_content = '''
 import os
@@ -70,35 +71,35 @@ CONTAINER_MANAGER = {
     "MAX_CONCURRENT_JOBS": 5,
 }
 '''
-        
+
         with open('testproject/settings.py', 'w') as f:
             f.write(settings_content)
-        
+
         print("\n🗄️ Testing Django functionality...")
-        
+
         # Test Django check
         print("  ✓ Running Django check...")
         if not run_command([sys.executable, "manage.py", "check"]):
             return False
-        
+
         # Test migrations
         print("  ✓ Running migrations...")
         if not run_command([sys.executable, "manage.py", "migrate"]):
             return False
-        
+
         # Test management commands
         print("  ✓ Testing management commands...")
-        result = subprocess.run([sys.executable, "manage.py", "help"], 
+        result = subprocess.run([sys.executable, "manage.py", "help"],
                               capture_output=True, text=True)
-        
+
         if "process_container_jobs" not in result.stdout:
             print("ERROR: process_container_jobs command not found")
             return False
-        
+
         if "manage_container_job" not in result.stdout:
             print("ERROR: manage_container_job command not found")
             return False
-        
+
         # Test imports
         print("  ✓ Testing imports...")
         test_script = '''
@@ -112,13 +113,13 @@ from container_manager.defaults import get_container_manager_setting
 print("Models imported successfully")
 print(f"MAX_CONCURRENT_JOBS setting: {get_container_manager_setting('MAX_CONCURRENT_JOBS')}")
 '''
-        
+
         with open('test_imports.py', 'w') as f:
             f.write(test_script)
-        
+
         if not run_command([sys.executable, "test_imports.py"]):
             return False
-        
+
         print("\n🎉 All tests passed!")
         return True
 

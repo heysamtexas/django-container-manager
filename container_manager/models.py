@@ -2,6 +2,7 @@ import json
 import re
 import uuid
 from functools import cached_property
+from typing import ClassVar
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
@@ -14,7 +15,7 @@ MAX_PERCENTAGE = 100  # Maximum percentage value for A/B testing
 
 class EnvironmentVariableTemplate(models.Model):
     """Reusable environment variable templates"""
-    
+
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True)
     environment_variables_text = models.TextField(
@@ -22,7 +23,7 @@ class EnvironmentVariableTemplate(models.Model):
         help_text="Environment variables, one per line in KEY=value format. Example:\nDEBUG=true\nAPI_KEY=secret123\nTIMEOUT=300",
         verbose_name="Environment Variables"
     )
-    
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
@@ -30,31 +31,31 @@ class EnvironmentVariableTemplate(models.Model):
     class Meta:
         verbose_name = "Environment Variable Template"
         verbose_name_plural = "Environment Variable Templates"
-        ordering = ['name']
+        ordering: ClassVar = ['name']
 
     def __str__(self):
         return self.name
-    
+
     def get_environment_variables_dict(self):
         """
         Parse environment_variables_text into a dictionary.
-        
+
         Returns:
             dict: Environment variables as key-value pairs
         """
         env_vars = {}
         if not self.environment_variables_text:
             return env_vars
-            
+
         for line in self.environment_variables_text.strip().split('\n'):
             line = line.strip()
             if not line or line.startswith('#'):
                 continue  # Skip empty lines and comments
-                
+
             if '=' in line:
                 key, value = line.split('=', 1)  # Split only on first =
                 env_vars[key.strip()] = value.strip()
-                
+
         return env_vars
 
 
@@ -200,7 +201,7 @@ class ContainerTemplate(models.Model):
         blank=True,
         help_text="Optional environment variable template to use as base configuration"
     )
-    
+
     # Environment variable overrides (simple key=value format)
     override_environment_variables_text = models.TextField(
         blank=True,
@@ -224,47 +225,47 @@ class ContainerTemplate(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.docker_image})"
-    
+
     def get_override_environment_variables_dict(self):
         """
         Parse override_environment_variables_text into a dictionary.
-        
+
         Returns:
             dict: Override environment variables as key-value pairs
         """
         env_vars = {}
         if not self.override_environment_variables_text:
             return env_vars
-            
+
         for line in self.override_environment_variables_text.strip().split('\n'):
             line = line.strip()
             if not line or line.startswith('#'):
                 continue  # Skip empty lines and comments
-                
+
             if '=' in line:
                 key, value = line.split('=', 1)  # Split only on first =
                 env_vars[key.strip()] = value.strip()
-                
+
         return env_vars
-    
+
     def get_all_environment_variables(self):
         """
         Get merged environment variables from template and overrides.
-        
+
         Precedence: Template → Container Overrides → Job Overrides
-        
+
         Returns:
             dict: Merged environment variables as key-value pairs
         """
         env_vars = {}
-        
+
         # Start with template variables (if linked)
         if self.environment_template:
             env_vars.update(self.environment_template.get_environment_variables_dict())
-        
+
         # Override with container-specific variables
         env_vars.update(self.get_override_environment_variables_dict())
-        
+
         return env_vars
 
 
@@ -284,7 +285,7 @@ class NetworkAssignment(models.Model):
     class Meta:
         verbose_name = "Network Assignment"
         verbose_name_plural = "Network Assignments"
-        unique_together = ["template", "network_name"]
+        unique_together: ClassVar = ["template", "network_name"]
 
     def __str__(self):
         return f"{self.template.name} -> {self.network_name}"
@@ -293,7 +294,7 @@ class NetworkAssignment(models.Model):
 class ContainerJob(models.Model):
     """Individual container job instances"""
 
-    STATUS_CHOICES = [
+    STATUS_CHOICES: ClassVar = [
         ("pending", "Pending"),
         ("running", "Running"),
         ("completed", "Completed"),
@@ -410,7 +411,7 @@ class ContainerJob(models.Model):
     class Meta:
         verbose_name = "Container Job"
         verbose_name_plural = "Container Jobs"
-        ordering = ["-created_at"]
+        ordering: ClassVar = ["-created_at"]
 
     def __str__(self):
         executor_info = (
@@ -560,7 +561,7 @@ class RoutingRuleSet(models.Model):
     )
 
     class Meta:
-        ordering = ["name"]
+        ordering: ClassVar = ["name"]
         verbose_name = "Routing Rule Set"
         verbose_name_plural = "Routing Rule Sets"
 
@@ -571,9 +572,8 @@ class RoutingRuleSet(models.Model):
         """Validate the ruleset"""
         from django.core.exceptions import ValidationError
 
-        if self.ab_test_enabled:
-            if not (0 <= self.ab_test_percentage <= MAX_PERCENTAGE):
-                raise ValidationError(f"A/B test percentage must be between 0 and {MAX_PERCENTAGE}")
+        if self.ab_test_enabled and not (0 <= self.ab_test_percentage <= MAX_PERCENTAGE):
+            raise ValidationError(f"A/B test percentage must be between 0 and {MAX_PERCENTAGE}")
 
 
 class RoutingRule(models.Model):
@@ -581,7 +581,7 @@ class RoutingRule(models.Model):
     Individual routing rule with condition and target executor.
     """
 
-    EXECUTOR_CHOICES = [
+    EXECUTOR_CHOICES: ClassVar = [
         ("docker", "Docker"),
         ("cloudrun", "Cloud Run"),
         ("fargate", "AWS Fargate"),
@@ -615,8 +615,8 @@ class RoutingRule(models.Model):
     last_executed = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        ordering = ["priority", "created_at"]
-        unique_together = ["ruleset", "name"]
+        ordering: ClassVar = ["priority", "created_at"]
+        unique_together: ClassVar = ["ruleset", "name"]
         verbose_name = "Routing Rule"
         verbose_name_plural = "Routing Rules"
 
@@ -726,10 +726,10 @@ class RoutingDecision(models.Model):
     ab_test_group = models.CharField(max_length=50, blank=True)
 
     class Meta:
-        ordering = ["-timestamp"]
+        ordering: ClassVar = ["-timestamp"]
         verbose_name = "Routing Decision"
         verbose_name_plural = "Routing Decisions"
-        indexes = [
+        indexes: ClassVar = [
             models.Index(fields=["job_id"]),
             models.Index(fields=["selected_executor"]),
             models.Index(fields=["timestamp"]),
@@ -753,7 +753,7 @@ class RuleValidationResult(models.Model):
     tested_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ["-tested_at"]
+        ordering: ClassVar = ["-tested_at"]
         verbose_name = "Rule Validation Result"
         verbose_name_plural = "Rule Validation Results"
 

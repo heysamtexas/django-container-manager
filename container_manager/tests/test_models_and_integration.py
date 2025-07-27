@@ -4,8 +4,7 @@ from unittest.mock import Mock, patch
 
 from django.contrib.auth.models import User
 from django.core.management import call_command
-from django.test import Client, TestCase
-from django.urls import reverse
+from django.test import TestCase
 from django.utils import timezone
 from docker.errors import NotFound
 
@@ -18,7 +17,6 @@ from ..models import (
     ContainerJob,
     ContainerTemplate,
     DockerHost,
-    EnvironmentVariableTemplate,
     NetworkAssignment,
 )
 
