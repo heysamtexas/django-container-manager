@@ -79,8 +79,60 @@ uv run python manage.py manage_container_job cancel JOB-UUID
 
 ## Code Quality Notes
 
+### Testing Strategy (CRITICAL)
+- **MANDATORY**: Run `uv run python manage.py test` before EVERY commit
+- **No exceptions**: If any test fails, fix ALL failures before committing
+- Use `--failfast` flag during development to tackle failures one by one
+- **Test organization**: Always use `tests/` module structure, never single `tests.py` files
+- **Admin interface**: Never write tests for Django admin interface functionality
+- **Optional dependencies**: Use `@unittest.skipUnless()` for tests requiring optional packages
+- **Strongly prefer writing tests for the Django suite rather than doing inlines or shells**
+
+### Pre-Commit Checklist
+**Required sequence before any commit:**
+```bash
+1. uv run python manage.py test          # ALL tests must pass
+2. uv run ruff check .                   # Linting must pass  
+3. uv run ruff format .                  # Code formatting
+4. git add <files>                       # Stage changes
+5. git commit -m "message"               # Only then commit
+```
+
+### Development Process
+- **Test-driven approach**: Every feature change must have passing tests
+- **Incremental commits**: Commit working states frequently, but only when tests pass
+- **Failure handling**: When tests fail, treat it as highest priority to fix
+- **No partial commits**: Don't commit "work in progress" with failing tests
+- **Dependencies**: Mock optional dependencies in tests rather than requiring installation
+
+### Test Development Guidelines
+- When adding new functionality, write tests first or alongside implementation
+- Fix test infrastructure issues immediately when discovered
+- Mock external dependencies (cloud services, APIs) properly
+- Test files should import from parent modules using `..` relative imports
+- Remove obsolete tests when refactoring rather than trying to fix them
+- **Testing is non-negotiable**: All code must have passing tests before commit
+- **Test maintenance**: Keep tests current with code changes
+- **Mock appropriately**: External services should be mocked, not stubbed
+- **Test coverage**: Focus on core functionality, skip admin interface testing
+
+### Common Issues and Fixes
+
+**Test Import Conflicts:**
+- Use `tests/` directory structure, not `tests.py` files
+- Update `tests/__init__.py` to import all test modules
+- Use relative imports: `from ..models import MyModel`
+
+**Missing Model Fields in Tests:**
+- Check test failures for field expectations
+- Add missing fields with appropriate defaults and migrations
+- Don't ignore "field does not exist" errors
+
+**Cloud Service Testing:**
+- Mock cloud APIs at the import level: `@patch("google.cloud.service")`
+- Use `@unittest.skipUnless()` for optional dependency tests
+- Never require actual cloud credentials for basic test runs
+
 ### Version Control Best Practices
 - Remember to commit often as a means of checkpointing your progress. Do not be shy to rollback, branch, or use git to its fullest potential.
-- **Always run a full suite of tests before committing any changes. Use the standard Django test runner to do that.**
-
-[Rest of the file remains the same...]
+- **Testing discipline must be as rigorous as code quality standards**
