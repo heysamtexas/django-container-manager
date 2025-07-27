@@ -14,7 +14,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from .executors.factory import ExecutorFactory
-from .models import ContainerJob, ContainerTemplate, DockerHost
+from .models import ContainerJob, ContainerTemplate, ExecutorHost
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ class BulkJobManager:
         template: ContainerTemplate,
         count: int,
         user: User,
-        host: DockerHost | None = None,
+        host: ExecutorHost | None = None,
         name_pattern: str | None = None,
         environment_overrides: list[dict[str, Any]] | None = None,
         command_overrides: list[str] | None = None,
@@ -107,7 +107,7 @@ class BulkJobManager:
         start_index: int,
         end_index: int,
         user: User,
-        host: DockerHost | None,
+        host: ExecutorHost | None,
         name_pattern: str | None,
         env_overrides: list[dict[str, Any]],
         cmd_overrides: list[str],
@@ -136,12 +136,12 @@ class BulkJobManager:
                                 executor_type = self.executor_factory.route_job_dry_run(
                                     template
                                 )
-                                job_host = DockerHost.objects.filter(
+                                job_host = ExecutorHost.objects.filter(
                                     executor_type=executor_type, is_active=True
                                 ).first()
                             except Exception as e:
                                 logger.warning(f"Auto-routing failed for job {i}: {e}")
-                                job_host = DockerHost.objects.filter(
+                                job_host = ExecutorHost.objects.filter(
                                     is_active=True
                                 ).first()
 
@@ -176,8 +176,8 @@ class BulkJobManager:
 
 
     def _select_best_host(
-        self, hosts: list[DockerHost], job: ContainerJob
-    ) -> DockerHost:
+        self, hosts: list[ExecutorHost], job: ContainerJob
+    ) -> ExecutorHost:
         """Select the best host for a job based on capacity and requirements."""
         # Simple load balancing - select host with lowest current job count
         best_host = min(hosts, key=lambda h: h.current_job_count or 0)

@@ -6,7 +6,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 
 from container_manager.executors.factory import ExecutorFactory
-from container_manager.models import ContainerJob, ContainerTemplate, DockerHost
+from container_manager.models import ContainerJob, ContainerTemplate, ExecutorHost
 
 
 class SimpleExecutorFactoryTest(TestCase):
@@ -18,8 +18,8 @@ class SimpleExecutorFactoryTest(TestCase):
             username="testuser", email="test@example.com"
         )
 
-        # Create test Docker hosts with different weights
-        self.host1 = DockerHost.objects.create(
+        # Create test executor hosts with different weights
+        self.host1 = ExecutorHost.objects.create(
             name="host-1",
             executor_type="docker",
             connection_string="unix:///var/run/docker.sock",
@@ -27,7 +27,7 @@ class SimpleExecutorFactoryTest(TestCase):
             weight=100
         )
 
-        self.host2 = DockerHost.objects.create(
+        self.host2 = ExecutorHost.objects.create(
             name="host-2",
             executor_type="docker",
             connection_string="tcp://localhost:2376",
@@ -54,17 +54,17 @@ class SimpleExecutorFactoryTest(TestCase):
             created_by=self.user
         )
 
-        # Route the job - should return a DockerHost
+        # Route the job - should return a ExecutorHost
         selected_host = self.factory.route_job(job)
 
         self.assertIsNotNone(selected_host)
-        self.assertIsInstance(selected_host, DockerHost)
+        self.assertIsInstance(selected_host, ExecutorHost)
         self.assertIn(selected_host, [self.host1, self.host2])
 
     def test_route_job_no_active_hosts(self):
         """Test routing when no hosts are active."""
         # Deactivate all hosts
-        DockerHost.objects.all().update(is_active=False)
+        ExecutorHost.objects.all().update(is_active=False)
 
         job = ContainerJob.objects.create(
             template=self.template,

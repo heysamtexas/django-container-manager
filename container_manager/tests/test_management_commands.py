@@ -8,12 +8,11 @@ import signal
 from io import StringIO
 from unittest.mock import Mock, call, patch
 
-from django.core.management import call_command
 from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 
 from container_manager.management.commands.process_container_jobs import Command
-from container_manager.models import ContainerJob, ContainerTemplate, DockerHost
+from container_manager.models import ContainerJob, ContainerTemplate, ExecutorHost
 
 
 @patch('time.sleep')  # Prevent any time delays
@@ -24,7 +23,7 @@ class ProcessContainerJobsTest(TransactionTestCase):
 
     def setUp(self):
         # Create minimal test data
-        self.host = DockerHost.objects.create(
+        self.host = ExecutorHost.objects.create(
             name="test-host",
             connection_string="tcp://localhost:2376",
             host_type="tcp",
@@ -108,7 +107,7 @@ class ProcessContainerJobsTest(TransactionTestCase):
         """Test that signal handler setup completes without error."""
         with patch('signal.signal') as mock_signal:
             command = Command()
-            
+
             # Verify signal handlers were registered
             self.assertEqual(mock_signal.call_count, 2)
 
@@ -143,7 +142,7 @@ class ProcessContainerJobsTest(TransactionTestCase):
     def test_process_pending_jobs_filters_by_host(self, mock_factory, mock_docker, mock_sleep):
         """Test that process_pending_jobs filters by host when specified."""
         # Create another host
-        other_host = DockerHost.objects.create(
+        other_host = ExecutorHost.objects.create(
             name="other-host",
             connection_string="tcp://other:2376",
             host_type="tcp",
@@ -191,7 +190,7 @@ class ProcessContainerJobsTest(TransactionTestCase):
             test_passed = True
         except Exception:
             test_passed = False
-            
+
         self.assertTrue(test_passed, "monitor_running_jobs should not crash")
 
     def test_monitor_running_jobs_handles_status_check_errors(self, mock_factory, mock_docker, mock_sleep):
@@ -217,16 +216,16 @@ class ProcessContainerJobsTest(TransactionTestCase):
             with patch.object(self.command, '_run_cleanup_if_requested'):
                 # Should not crash with basic options
                 self.command.handle(
-                    poll_interval=1, 
-                    max_jobs=5, 
-                    host=None, 
+                    poll_interval=1,
+                    max_jobs=5,
+                    host=None,
                     single_run=True,
-                    cleanup=False, 
+                    cleanup=False,
                     cleanup_hours=48,
                     use_factory=True,
                     executor_type=None
                 )
-                
+
                 # If we get here, option parsing worked
 
 
@@ -237,9 +236,9 @@ class ProcessContainerJobsIntegrationTest(TestCase):
         """Test that command class can be instantiated without errors."""
         # This test verifies the command can be imported and instantiated
         from container_manager.management.commands.process_container_jobs import Command
-        
+
         command = Command()
-        
+
         # Verify basic attributes exist
         self.assertIsNotNone(command.help)
         self.assertFalse(command.should_stop)
@@ -316,13 +315,13 @@ class ProcessContainerJobsBusinessLogicTest(TestCase):
         self.command = Command()
 
         # Create test data
-        self.host = DockerHost.objects.create(
+        self.host = ExecutorHost.objects.create(
             name="test-host",
             connection_string="tcp://localhost:2376",
             host_type="tcp",
             is_active=True
         )
-        
+
         self.template = ContainerTemplate.objects.create(
             name="test-template",
             docker_image="python:3.11"
@@ -355,7 +354,7 @@ class ProcessContainerJobsBusinessLogicTest(TestCase):
         """Test _validate_host_filter with non-existent host."""
         # Should raise CommandError for invalid host
         from django.core.management.base import CommandError
-        
+
         with self.assertRaises(CommandError):
             self.command._validate_host_filter("non-existent-host")
 
@@ -367,7 +366,7 @@ class ProcessContainerJobsBusinessLogicTest(TestCase):
             validation_passed = True
         except Exception:
             validation_passed = False
-        
+
         self.assertTrue(validation_passed)
 
     def test_validate_host_filter_with_none(self):
@@ -378,29 +377,29 @@ class ProcessContainerJobsBusinessLogicTest(TestCase):
             validation_passed = True
         except Exception:
             validation_passed = False
-        
+
         self.assertTrue(validation_passed)
 
     def test_run_cleanup_if_requested_with_cleanup_disabled(self):
         """Test _run_cleanup_if_requested when cleanup is disabled."""
         config = {'cleanup': False, 'cleanup_hours': 24}
-        
+
         with patch('container_manager.management.commands.process_container_jobs.docker_service') as mock_service:
             self.command._run_cleanup_if_requested(config)
-            
+
             # Should not call cleanup when disabled
             mock_service.cleanup_old_containers.assert_not_called()
 
     def test_run_cleanup_if_requested_with_cleanup_enabled(self):
         """Test _run_cleanup_if_requested when cleanup is enabled."""
         config = {'cleanup': True, 'cleanup_hours': 48}
-        
+
         with patch('container_manager.management.commands.process_container_jobs.docker_service') as mock_service:
             mock_service.cleanup_old_containers.return_value = 3
-            
+
             self.command._run_cleanup_if_requested(config)
-            
-            # Should call cleanup with correct parameters  
+
+            # Should call cleanup with correct parameters
             mock_service.cleanup_old_containers.assert_called_once_with(orphaned_hours=48)
 
     def test_display_executor_info_with_available_hosts(self):
@@ -408,19 +407,19 @@ class ProcessContainerJobsBusinessLogicTest(TestCase):
         from io import StringIO
         out = StringIO()
         self.command.stdout = out
-        
+
         # Create hosts with different executor types
-        DockerHost.objects.create(
+        ExecutorHost.objects.create(
             name="cloud-host",
             connection_string="https://cloudrun.googleapis.com",
             host_type="tcp",
             executor_type="cloudrun",
             is_active=True
         )
-        
+
         self.command._display_executor_info('docker')
         output = out.getvalue()
-        
+
         self.assertIn("Available executors:", output)
         self.assertIn("Forcing executor type: docker", output)
 
@@ -461,10 +460,10 @@ class ProcessContainerJobsBusinessLogicTest(TestCase):
             'factory_enabled': False,
             'executor_type': None
         }
-        
+
         with patch.object(self.command, '_process_single_cycle', return_value=(1, 0)) as mock_cycle:
             processed, errors = self.command._run_processing_loop(config)
-            
+
             # Single run should process once and exit
             self.assertEqual(processed, 1)
             self.assertEqual(errors, 0)
@@ -476,11 +475,11 @@ class ProcessContainerJobsBusinessLogicTest(TestCase):
         from io import StringIO
         out = StringIO()
         self.command.stdout = out
-        
+
         # Test with activity (should produce output)
         self.command._report_cycle_results(2, 1, 10, 0)
         output = out.getvalue()
-        
+
         self.assertIn("Launched 2 jobs", output)
         self.assertIn("harvested 1 jobs", output)
         self.assertIn("total processed: 10", output)
@@ -490,11 +489,11 @@ class ProcessContainerJobsBusinessLogicTest(TestCase):
         from io import StringIO
         out = StringIO()
         self.command.stdout = out
-        
+
         # Test with no activity (should produce no output)
         self.command._report_cycle_results(0, 0, 5, 0)
         output = out.getvalue()
-        
+
         self.assertEqual(output.strip(), "")
 
     def test_display_completion_summary(self):
@@ -502,10 +501,10 @@ class ProcessContainerJobsBusinessLogicTest(TestCase):
         from io import StringIO
         out = StringIO()
         self.command.stdout = out
-        
+
         self.command._display_completion_summary(15, 2)
         output = out.getvalue()
-        
+
         self.assertIn("Job processor stopped", output)
         self.assertIn("Processed 15 jobs", output)
         self.assertIn("2 errors", output)
@@ -515,17 +514,17 @@ class ProcessContainerJobsBusinessLogicTest(TestCase):
         from io import StringIO
         out = StringIO()
         self.command.stdout = out
-        
+
         config = {
             'poll_interval': 5,
             'max_jobs': 10,
             'factory_enabled': False,
             'executor_type': None
         }
-        
+
         self.command._display_startup_info(config)
         output = out.getvalue()
-        
+
         self.assertIn("Starting container job processor", output)
         self.assertIn("routing=Direct Docker", output)
 
@@ -534,18 +533,18 @@ class ProcessContainerJobsBusinessLogicTest(TestCase):
         from io import StringIO
         out = StringIO()
         self.command.stdout = out
-        
+
         config = {
             'poll_interval': 5,
             'max_jobs': 10,
             'factory_enabled': True,
             'executor_type': 'docker'
         }
-        
+
         with patch.object(self.command, '_display_executor_info') as mock_display:
             self.command._display_startup_info(config)
             output = out.getvalue()
-            
+
             self.assertIn("routing=ExecutorFactory", output)
             mock_display.assert_called_once_with('docker')
 
@@ -563,9 +562,9 @@ class ProcessContainerJobsBusinessLogicTest(TestCase):
                 'use_factory': False,  # Explicitly disabled
                 'executor_type': None,
             }
-            
+
             config = self.command._parse_and_validate_options(options)
-            
+
             # Should enable factory due to settings even though use_factory=False
             self.assertTrue(config['factory_enabled'])
             self.assertEqual(config['poll_interval'], 10)
@@ -585,9 +584,9 @@ class ProcessContainerJobsBusinessLogicTest(TestCase):
                 'use_factory': False,
                 'executor_type': 'cloudrun',  # Force specific executor
             }
-            
+
             config = self.command._parse_and_validate_options(options)
-            
+
             # Should enable factory due to forced executor type
             self.assertTrue(config['factory_enabled'])
             self.assertEqual(config['executor_type'], 'cloudrun')

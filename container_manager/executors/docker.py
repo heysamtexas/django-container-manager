@@ -13,7 +13,7 @@ import docker
 from django.utils import timezone as django_timezone
 from docker.errors import NotFound
 
-from ..models import ContainerExecution, ContainerJob, DockerHost
+from ..models import ContainerExecution, ContainerJob, ExecutorHost
 from .base import ContainerExecutor
 from .exceptions import (
     ExecutorConnectionError,
@@ -257,7 +257,7 @@ class DockerExecutor(ContainerExecutor):
         if not job.docker_host:
             raise ExecutorError("No docker_host")
 
-    def _get_client(self, docker_host: DockerHost) -> docker.DockerClient:
+    def _get_client(self, docker_host: ExecutorHost) -> docker.DockerClient:
         """Get or create Docker client for host"""
         host_key = f"{docker_host.id}"
 
@@ -298,7 +298,7 @@ class DockerExecutor(ContainerExecutor):
             del self._clients[host_key]
             return None
 
-    def _create_docker_client(self, docker_host: DockerHost) -> docker.DockerClient:
+    def _create_docker_client(self, docker_host: ExecutorHost) -> docker.DockerClient:
         """Create new Docker client based on host configuration"""
         if docker_host.host_type == "unix":
             return docker.DockerClient(base_url=docker_host.connection_string)
@@ -474,7 +474,7 @@ class DockerExecutor(ContainerExecutor):
 
         return labels
 
-    def _should_pull_image(self, docker_host: DockerHost) -> bool:
+    def _should_pull_image(self, docker_host: ExecutorHost) -> bool:
         """Determine if images should be auto-pulled for this host"""
         # Check host-specific setting first
         if hasattr(docker_host, "auto_pull_images"):

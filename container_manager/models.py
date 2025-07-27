@@ -59,8 +59,8 @@ class EnvironmentVariableTemplate(models.Model):
         return env_vars
 
 
-class DockerHost(models.Model):
-    """Represents a Docker daemon endpoint (TCP or Unix socket)"""
+class ExecutorHost(models.Model):
+    """Host configuration for any executor type (Docker, Cloud Run, etc.)"""
 
     name = models.CharField(max_length=100, unique=True)
     host_type = models.CharField(
@@ -141,8 +141,8 @@ class DockerHost(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        verbose_name = "Docker Host"
-        verbose_name_plural = "Docker Hosts"
+        verbose_name = "Executor Host"
+        verbose_name_plural = "Executor Hosts"
 
     def __str__(self):
         executor_info = (
@@ -308,7 +308,7 @@ class ContainerJob(models.Model):
         ContainerTemplate, related_name="jobs", on_delete=models.CASCADE
     )
     docker_host = models.ForeignKey(
-        DockerHost, related_name="jobs", on_delete=models.CASCADE
+        ExecutorHost, related_name="jobs", on_delete=models.CASCADE
     )
 
     name = models.CharField(max_length=200, blank=True)
@@ -342,7 +342,13 @@ class ContainerJob(models.Model):
     )
 
     # Execution tracking
-    container_id = models.CharField(max_length=100, blank=True, default="")
+    execution_id = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Unified execution identifier for all executor types"
+    )
+    container_id = models.CharField(max_length=100, blank=True, default="")  # DEPRECATED: Remove after migration
     exit_code = models.IntegerField(null=True, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
@@ -427,14 +433,22 @@ class ContainerJob(models.Model):
         return None
 
     def get_execution_identifier(self) -> str:
-        """Get the appropriate execution ID for this job's executor"""
-        if self.executor_type == "docker":
-            return self.container_id
+        """Get execution identifier - unified interface for all executor types"""
+        # NEW: Use unified field first
+        if self.execution_id:
+            return self.execution_id
 
+        # FALLBACK: Legacy field support during migration
+        if self.executor_type == "docker":
+            return self.container_id or ""
         return self.external_execution_id or ""
 
     def set_execution_identifier(self, execution_id: str) -> None:
-        """Set the execution ID for this job's executor"""
+        """Set execution identifier - unified interface for all executor types"""
+        # NEW: Always set unified field
+        self.execution_id = execution_id
+
+        # MIGRATION: Also set legacy fields for backward compatibility
         if self.executor_type == "docker":
             self.container_id = execution_id
         else:
@@ -456,14 +470,10 @@ class ContainerJob(models.Model):
                 f"host executor type '{self.docker_host.executor_type}'"
             )
 
-        # Validate external_execution_id for non-docker executors
-        if (
-            self.executor_type != "docker"
-            and self.status == "running"
-            and not self.external_execution_id
-        ):
+        # Validate execution_id for running jobs (all executor types)
+        if self.status == "running" and not self.get_execution_identifier():
             raise ValidationError(
-                f"external_execution_id required for {self.executor_type} executor"
+                f"execution_id required for running {self.executor_type} jobs"
             )
 
 

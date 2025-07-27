@@ -16,18 +16,18 @@ from ..models import (
     ContainerExecution,
     ContainerJob,
     ContainerTemplate,
-    DockerHost,
+    ExecutorHost,
     NetworkAssignment,
 )
 
 # Additional test modules are in the tests/ package directory
 
 
-class DockerHostModelTest(TestCase):
-    """Test cases for DockerHost model"""
+class ExecutorHostModelTest(TestCase):
+    """Test cases for ExecutorHost model"""
 
     def setUp(self):
-        self.docker_host = DockerHost.objects.create(
+        self.docker_host = ExecutorHost.objects.create(
             name="test-host",
             host_type="unix",
             connection_string="unix:///var/run/docker.sock",
@@ -42,13 +42,13 @@ class DockerHostModelTest(TestCase):
         self.assertFalse(self.docker_host.tls_enabled)
 
     def test_docker_host_str_representation(self):
-        """Test string representation of DockerHost"""
+        """Test string representation of ExecutorHost"""
         expected = f"{self.docker_host.name} ({self.docker_host.connection_string})"
         self.assertEqual(str(self.docker_host), expected)
 
     def test_tcp_docker_host(self):
         """Test creation of TCP Docker host"""
-        tcp_host = DockerHost.objects.create(
+        tcp_host = ExecutorHost.objects.create(
             name="tcp-host",
             host_type="tcp",
             connection_string="tcp://192.168.1.100:2376",
@@ -123,7 +123,7 @@ class ContainerJobModelTest(TestCase):
             username="testuser", email="test@example.com", password="testpass123"
         )
 
-        self.docker_host = DockerHost.objects.create(
+        self.docker_host = ExecutorHost.objects.create(
             name="test-host",
             host_type="unix",
             connection_string="unix:///var/run/docker.sock",
@@ -196,7 +196,7 @@ class DockerServiceTest(TestCase):
             username="testuser", email="test@example.com", password="testpass123"
         )
 
-        self.docker_host = DockerHost.objects.create(
+        self.docker_host = ExecutorHost.objects.create(
             name="test-host",
             host_type="unix",
             connection_string="unix:///var/run/docker.sock",
@@ -240,7 +240,7 @@ class DockerServiceTest(TestCase):
     @patch("docker.DockerClient")
     def test_get_client_tcp(self, mock_docker_client):
         """Test getting Docker client for TCP connection"""
-        tcp_host = DockerHost.objects.create(
+        tcp_host = ExecutorHost.objects.create(
             name="tcp-host",
             host_type="tcp",
             connection_string="tcp://192.168.1.100:2376",
@@ -338,7 +338,7 @@ class ManagementCommandTest(TestCase):
             username="testuser", email="test@example.com", password="testpass123"
         )
 
-        self.docker_host = DockerHost.objects.create(
+        self.docker_host = ExecutorHost.objects.create(
             name="test-host",
             host_type="unix",
             connection_string="unix:///var/run/docker.sock",
@@ -407,7 +407,7 @@ class IntegrationTest(TestCase):
             username="testuser", email="test@example.com", password="testpass123"
         )
 
-        self.docker_host = DockerHost.objects.create(
+        self.docker_host = ExecutorHost.objects.create(
             name="integration-host",
             host_type="unix",
             connection_string="unix:///var/run/docker.sock",

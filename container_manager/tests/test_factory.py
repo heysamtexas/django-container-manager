@@ -7,7 +7,7 @@ from django.test import TestCase, override_settings
 
 from ..executors.exceptions import ExecutorConfigurationError, ExecutorResourceError
 from ..executors.factory import ExecutorFactory
-from ..models import ContainerJob, ContainerTemplate, DockerHost
+from ..models import ContainerJob, ContainerTemplate, ExecutorHost
 
 
 class ExecutorFactoryTest(TestCase):
@@ -22,7 +22,7 @@ class ExecutorFactoryTest(TestCase):
         self.premium_group = Group.objects.create(name="premium")
 
         # Create test Docker host
-        self.docker_host = DockerHost.objects.create(
+        self.docker_host = ExecutorHost.objects.create(
             name="test-docker",
             executor_type="docker",
             connection_string="unix:///var/run/docker.sock",
@@ -230,7 +230,7 @@ class ExecutorFactoryTest(TestCase):
     def test_get_executor_cloudrun(self):
         """Test getting CloudRun executor instance"""
         # Create CloudRun host
-        cloudrun_host = DockerHost.objects.create(
+        cloudrun_host = ExecutorHost.objects.create(
             name="test-cloudrun",
             executor_type="cloudrun",
             connection_string="cloudrun://demo-project/us-central1",
@@ -255,7 +255,7 @@ class ExecutorFactoryTest(TestCase):
 
     def test_cloudrun_cost_estimation(self):
         """Test CloudRun cost estimation through factory"""
-        cloudrun_host = DockerHost.objects.create(
+        cloudrun_host = ExecutorHost.objects.create(
             name="cost-test-cloudrun",
             executor_type="cloudrun",
             connection_string="cloudrun://demo-project/us-central1",

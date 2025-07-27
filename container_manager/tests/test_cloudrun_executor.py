@@ -10,7 +10,7 @@ from django.test import TestCase
 
 from ..executors.cloudrun import CloudRunExecutor
 from ..executors.exceptions import ExecutorConfigurationError
-from ..models import ContainerExecution, ContainerJob, ContainerTemplate, DockerHost
+from ..models import ContainerExecution, ContainerJob, ContainerTemplate, ExecutorHost
 
 try:
     import importlib.util
@@ -29,7 +29,7 @@ class CloudRunExecutorTest(TestCase):
             username="testuser", email="test@example.com"
         )
 
-        self.docker_host = DockerHost.objects.create(
+        self.docker_host = ExecutorHost.objects.create(
             name="test-cloudrun",
             executor_type="cloudrun",
             connection_string="cloudrun://test-project/us-central1",

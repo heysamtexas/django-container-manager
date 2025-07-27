@@ -4,8 +4,8 @@ from django.core.management.base import BaseCommand
 from container_manager.models import (
     ContainerJob,
     ContainerTemplate,
-    DockerHost,
     EnvironmentVariable,
+    ExecutorHost,
 )
 
 
@@ -46,7 +46,7 @@ class Command(BaseCommand):
     def _get_or_create_docker_host(self, options):
         """Get or create Docker host based on options"""
         if not options["skip_host"]:
-            docker_host, created = DockerHost.objects.get_or_create(
+            docker_host, created = ExecutorHost.objects.get_or_create(
                 name=options["host_name"],
                 defaults={
                     "host_type": "unix",
@@ -60,10 +60,10 @@ class Command(BaseCommand):
             return docker_host
         else:
             try:
-                docker_host = DockerHost.objects.get(name=options["host_name"])
+                docker_host = ExecutorHost.objects.get(name=options["host_name"])
                 self.stdout.write(f"✓ Using existing Docker host: {docker_host.name}")
                 return docker_host
-            except DockerHost.DoesNotExist:
+            except ExecutorHost.DoesNotExist:
                 self.stdout.write(
                     self.style.ERROR(
                         f'Docker host "{options["host_name"]}" not found. '

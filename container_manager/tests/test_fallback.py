@@ -16,7 +16,7 @@ from ..executors.fallback import (
     GracefulDegradationManager,
     HealthChecker,
 )
-from ..models import ContainerJob, ContainerTemplate, DockerHost
+from ..models import ContainerJob, ContainerTemplate, ExecutorHost
 
 
 class ExecutorFallbackManagerTest(TestCase):
@@ -33,7 +33,7 @@ class ExecutorFallbackManagerTest(TestCase):
             cpu_limit=1.0,
         )
 
-        self.host = DockerHost.objects.create(
+        self.host = ExecutorHost.objects.create(
             name="test-host",
             executor_type="docker",
             connection_string="unix:///var/run/docker.sock",
@@ -163,7 +163,7 @@ class HealthCheckerTest(TestCase):
     def setUp(self):
         self.checker = HealthChecker()
 
-        self.host = DockerHost.objects.create(
+        self.host = ExecutorHost.objects.create(
             name="test-host",
             executor_type="docker",
             connection_string="unix:///var/run/docker.sock",
@@ -220,7 +220,7 @@ class HealthCheckerTest(TestCase):
     def test_get_healthy_hosts(self):
         """Test getting list of healthy hosts."""
         # Create multiple hosts
-        healthy_host = DockerHost.objects.create(
+        healthy_host = ExecutorHost.objects.create(
             name="healthy-host",
             executor_type="docker",
             connection_string="unix:///var/run/docker.sock",
@@ -228,7 +228,7 @@ class HealthCheckerTest(TestCase):
             health_check_failures=0,
         )
 
-        unhealthy_host = DockerHost.objects.create(
+        unhealthy_host = ExecutorHost.objects.create(
             name="unhealthy-host",
             executor_type="docker",
             connection_string="unix:///var/run/docker.sock",
@@ -328,7 +328,7 @@ class GracefulDegradationManagerTest(TestCase):
             cpu_limit=2.0,
         )
 
-        self.host = DockerHost.objects.create(
+        self.host = ExecutorHost.objects.create(
             name="test-host",
             executor_type="docker",
             connection_string="unix:///var/run/docker.sock",

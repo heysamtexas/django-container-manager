@@ -13,8 +13,8 @@ from .models import (
     ContainerExecution,
     ContainerJob,
     ContainerTemplate,
-    DockerHost,
     EnvironmentVariableTemplate,
+    ExecutorHost,
     NetworkAssignment,
 )
 
@@ -25,8 +25,8 @@ class NetworkAssignmentInline(admin.TabularInline):
     fields = ("network_name", "aliases")
 
 
-@admin.register(DockerHost)
-class DockerHostAdmin(admin.ModelAdmin):
+@admin.register(ExecutorHost)
+class ExecutorHostAdmin(admin.ModelAdmin):
     list_display = (
         "name",
         "executor_type",
@@ -391,7 +391,7 @@ class ContainerJobAdmin(admin.ModelAdmin):
         )
 
         # Get host information
-        hosts = DockerHost.objects.filter(is_active=True)
+        hosts = ExecutorHost.objects.filter(is_active=True)
         host_capacity = []
         for host in hosts:
             host_capacity.append(
@@ -608,9 +608,9 @@ class ContainerJobAdmin(admin.ModelAdmin):
                     executor_type = factory.route_job(job)
 
                     # Find appropriate host for the selected executor
-                    from .models import DockerHost
+                    from .models import ExecutorHost
 
-                    suitable_host = DockerHost.objects.filter(
+                    suitable_host = ExecutorHost.objects.filter(
                         executor_type=executor_type, is_active=True
                     ).first()
 

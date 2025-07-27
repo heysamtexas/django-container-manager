@@ -14,7 +14,7 @@ from container_manager.models import (
     ContainerExecution,
     ContainerJob,
     ContainerTemplate,
-    DockerHost,
+    ExecutorHost,
 )
 
 # Constants
@@ -114,8 +114,8 @@ class Command(BaseCommand):
             raise CommandError(f'Template "{template_name}" not found') from None
 
         try:
-            docker_host = DockerHost.objects.get(name=host_name, is_active=True)
-        except DockerHost.DoesNotExist:
+            docker_host = ExecutorHost.objects.get(name=host_name, is_active=True)
+        except ExecutorHost.DoesNotExist:
             raise CommandError(f'Docker host "{host_name}" not found or inactive') from None
 
         # Parse environment variables
@@ -489,7 +489,7 @@ class Command(BaseCommand):
         self.stdout.write("=" * 50)
 
         # Get available executors
-        available_hosts = DockerHost.objects.filter(is_active=True)
+        available_hosts = ExecutorHost.objects.filter(is_active=True)
         available_executors = list(available_hosts.values_list('executor_type', flat=True).distinct())
 
         if not available_executors:

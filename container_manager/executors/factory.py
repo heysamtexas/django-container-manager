@@ -8,7 +8,7 @@ should handle each job based on configured weights.
 import logging
 import random
 
-from ..models import ContainerJob, DockerHost
+from ..models import ContainerJob, ExecutorHost
 from .base import ContainerExecutor
 from .exceptions import ExecutorConfigurationError, ExecutorResourceError
 
@@ -51,7 +51,7 @@ class ExecutorFactory:
 
         return selected_host.executor_type
 
-    def route_job(self, job: ContainerJob) -> DockerHost | None:
+    def route_job(self, job: ContainerJob) -> ExecutorHost | None:
         """
         Route job to best host using weight-based routing.
 
@@ -59,15 +59,15 @@ class ExecutorFactory:
             job: ContainerJob to route
 
         Returns:
-            DockerHost instance to use for execution, or None if none available
+            ExecutorHost instance to use for execution, or None if none available
         """
         return self.route_job_to_host(job)
 
-    def route_job_to_host(self, job: ContainerJob) -> DockerHost | None:
+    def route_job_to_host(self, job: ContainerJob) -> ExecutorHost | None:
         """
-        Original weight-based routing method that returns a DockerHost.
+        Original weight-based routing method that returns a ExecutorHost.
         """
-        available_hosts = DockerHost.objects.filter(is_active=True)
+        available_hosts = ExecutorHost.objects.filter(is_active=True)
 
         if not available_hosts.exists():
             logger.warning("No active executors available")
@@ -100,7 +100,7 @@ class ExecutorFactory:
         Get executor instance for a docker host.
 
         Args:
-            docker_host_or_job: DockerHost instance or ContainerJob with docker_host
+            docker_host_or_job: ExecutorHost instance or ContainerJob with docker_host
 
         Returns:
             ContainerExecutor: Configured executor instance
@@ -117,7 +117,7 @@ class ExecutorFactory:
                 raise ExecutorConfigurationError("Job must have executor_type set")
             executor_type = job.executor_type
         else:
-            # It's a DockerHost
+            # It's a ExecutorHost
             docker_host = docker_host_or_job
             executor_type = docker_host.executor_type
         cache_key = f"executor_{executor_type}_{docker_host.id}"
@@ -134,7 +134,7 @@ class ExecutorFactory:
         logger.debug(f"Created new executor instance for {executor_type}")
         return executor
 
-    def _create_executor(self, docker_host: DockerHost, executor_type: str) -> ContainerExecutor:
+    def _create_executor(self, docker_host: ExecutorHost, executor_type: str) -> ContainerExecutor:
         """Create executor instance with appropriate configuration"""
         # Create configuration dict for the executor
         config = {
@@ -187,7 +187,7 @@ class ExecutorFactory:
         Returns:
             List of executor type strings
         """
-        executor_types = DockerHost.objects.filter(is_active=True).values_list('executor_type', flat=True).distinct()
+        executor_types = ExecutorHost.objects.filter(is_active=True).values_list('executor_type', flat=True).distinct()
         return list(executor_types)
 
     def get_executor_capacity(self, executor_type: str) -> dict:
@@ -200,7 +200,7 @@ class ExecutorFactory:
         Returns:
             Dict with capacity information
         """
-        hosts = DockerHost.objects.filter(executor_type=executor_type, is_active=True)
+        hosts = ExecutorHost.objects.filter(executor_type=executor_type, is_active=True)
 
         if not hosts.exists():
             return {
@@ -237,7 +237,7 @@ class ExecutorFactory:
         Returns:
             True if executor is available
         """
-        hosts = DockerHost.objects.filter(executor_type=executor_type, is_active=True)
+        hosts = ExecutorHost.objects.filter(executor_type=executor_type, is_active=True)
 
         return any(host.current_job_count < host.max_concurrent_jobs for host in hosts)
 

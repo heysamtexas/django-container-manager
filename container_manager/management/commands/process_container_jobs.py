@@ -16,7 +16,7 @@ from django.utils import timezone
 from container_manager.docker_service import DockerConnectionError, docker_service
 from container_manager.executors.exceptions import ExecutorResourceError
 from container_manager.executors.factory import ExecutorFactory
-from container_manager.models import ContainerJob, DockerHost
+from container_manager.models import ContainerJob, ExecutorHost
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +140,7 @@ class Command(BaseCommand):
 
     def _display_executor_info(self, executor_type):
         """Display available executor information"""
-        available_hosts = DockerHost.objects.filter(is_active=True)
+        available_hosts = ExecutorHost.objects.filter(is_active=True)
         available_executors = list(
             available_hosts.values_list('executor_type', flat=True).distinct()
         )
@@ -163,9 +163,9 @@ class Command(BaseCommand):
         """Validate host filter if provided"""
         if host_filter:
             try:
-                docker_host = DockerHost.objects.get(name=host_filter, is_active=True)
+                docker_host = ExecutorHost.objects.get(name=host_filter, is_active=True)
                 self.stdout.write(f"Processing jobs only for host: {docker_host.name}")
-            except DockerHost.DoesNotExist:
+            except ExecutorHost.DoesNotExist:
                 raise CommandError(f'Docker host "{host_filter}" not found or inactive') from None
 
     def _run_processing_loop(self, config):

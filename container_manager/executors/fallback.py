@@ -10,7 +10,7 @@ from datetime import datetime
 from django.conf import settings
 from django.utils import timezone
 
-from ..models import ContainerJob, DockerHost
+from ..models import ContainerJob, ExecutorHost
 from .base import ContainerExecutor
 
 logger = logging.getLogger(__name__)
@@ -221,7 +221,7 @@ class HealthChecker:
         self.failure_threshold = getattr(settings, "EXECUTOR_FAILURE_THRESHOLD", 3)
         self.recovery_threshold = getattr(settings, "EXECUTOR_RECOVERY_THRESHOLD", 2)
 
-    def check_host_health(self, host: DockerHost) -> bool:
+    def check_host_health(self, host: ExecutorHost) -> bool:
         """
         Check if a host is healthy for job execution.
 
@@ -249,7 +249,7 @@ class HealthChecker:
             logger.exception(f"Error checking health for host {host.name}")
             return False
 
-    def _perform_health_check(self, host: DockerHost) -> bool:
+    def _perform_health_check(self, host: ExecutorHost) -> bool:
         """
         Perform actual health check on the host.
 
@@ -286,7 +286,7 @@ class HealthChecker:
             logger.warning(f"Health check failed for host {host.name}")
             return False
 
-    def get_healthy_hosts(self, executor_type: str | None = None) -> list[DockerHost]:
+    def get_healthy_hosts(self, executor_type: str | None = None) -> list[ExecutorHost]:
         """
         Get list of healthy hosts, optionally filtered by executor type.
 
@@ -294,9 +294,9 @@ class HealthChecker:
             executor_type: Optional executor type filter
 
         Returns:
-            List of healthy DockerHost instances
+            List of healthy ExecutorHost instances
         """
-        queryset = DockerHost.objects.filter(is_active=True)
+        queryset = ExecutorHost.objects.filter(is_active=True)
 
         if executor_type:
             queryset = queryset.filter(executor_type=executor_type)

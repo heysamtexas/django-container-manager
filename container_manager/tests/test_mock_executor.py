@@ -9,7 +9,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 
 from ..executors.mock import MockExecutor
-from ..models import ContainerExecution, ContainerJob, ContainerTemplate, DockerHost
+from ..models import ContainerExecution, ContainerJob, ContainerTemplate, ExecutorHost
 
 
 class MockExecutorTest(TestCase):
@@ -21,7 +21,7 @@ class MockExecutorTest(TestCase):
             username="testuser", email="test@example.com"
         )
 
-        self.docker_host = DockerHost.objects.create(
+        self.docker_host = ExecutorHost.objects.create(
             name="test-docker",
             executor_type="docker",
             connection_string="unix:///var/run/docker.sock",

@@ -8,7 +8,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 
 from ..bulk_operations import BulkJobManager
-from ..models import ContainerJob, ContainerTemplate, DockerHost
+from ..models import ContainerJob, ContainerTemplate, ExecutorHost
 
 
 class BulkJobManagerTest(TestCase):
@@ -32,14 +32,14 @@ class BulkJobManagerTest(TestCase):
         )
 
         # Create test hosts
-        self.docker_host = DockerHost.objects.create(
+        self.docker_host = ExecutorHost.objects.create(
             name="docker-host",
             executor_type="docker",
             connection_string="unix:///var/run/docker.sock",
             is_active=True,
         )
 
-        self.mock_host = DockerHost.objects.create(
+        self.mock_host = ExecutorHost.objects.create(
             name="mock-host",
             executor_type="mock",
             connection_string="mock://test",
@@ -339,7 +339,7 @@ class BulkJobManagerTest(TestCase):
     def test_select_best_host(self):
         """Test host selection logic."""
         # Create hosts with different job counts
-        host1 = DockerHost.objects.create(
+        host1 = ExecutorHost.objects.create(
             name="host1",
             executor_type="docker",
             connection_string="host1:2376",
@@ -347,7 +347,7 @@ class BulkJobManagerTest(TestCase):
             current_job_count=5,
         )
 
-        host2 = DockerHost.objects.create(
+        host2 = ExecutorHost.objects.create(
             name="host2",
             executor_type="docker",
             connection_string="host2:2376",

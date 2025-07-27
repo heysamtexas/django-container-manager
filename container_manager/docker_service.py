@@ -16,7 +16,7 @@ from docker.errors import NotFound
 
 from .executors.docker import DockerExecutor
 from .executors.exceptions import ExecutorConnectionError, ExecutorError
-from .models import ContainerJob, DockerHost
+from .models import ContainerJob, ExecutorHost
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ class DockerService:
     def __init__(self):
         self._executors: dict[str, DockerExecutor] = {}
 
-    def _get_executor(self, docker_host: DockerHost) -> DockerExecutor:
+    def _get_executor(self, docker_host: ExecutorHost) -> DockerExecutor:
         """Get or create DockerExecutor for host"""
         host_key = f"{docker_host.id}"
 
@@ -53,7 +53,7 @@ class DockerService:
 
         return self._executors[host_key]
 
-    def _should_auto_pull_images(self, docker_host: DockerHost) -> bool:
+    def _should_auto_pull_images(self, docker_host: ExecutorHost) -> bool:
         """Determine if images should be auto-pulled for this host"""
         executor = self._get_executor(docker_host)
         return executor._should_pull_image(docker_host)
@@ -63,7 +63,7 @@ class DockerService:
         executor = self._get_executor(job.docker_host)
         return executor._build_labels(job)
 
-    def get_client(self, docker_host: DockerHost) -> docker.DockerClient:
+    def get_client(self, docker_host: ExecutorHost) -> docker.DockerClient:
         """Get Docker client for host - delegates to executor"""
         try:
             executor = self._get_executor(docker_host)
@@ -252,7 +252,7 @@ class DockerService:
             job.save()
             return False
 
-    def discover_running_containers(self, docker_host: DockerHost) -> list:
+    def discover_running_containers(self, docker_host: ExecutorHost) -> list:
         """Discover all running containers managed by this system"""
         try:
             client = self.get_client(docker_host)
