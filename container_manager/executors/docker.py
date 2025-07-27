@@ -13,7 +13,7 @@ import docker
 from django.utils import timezone as django_timezone
 from docker.errors import NotFound
 
-from ..models import ContainerExecution, ContainerJob, ExecutorHost
+from ..models import ContainerJob, ExecutorHost
 from .base import ContainerExecutor
 from .exceptions import (
     ExecutorConnectionError,
@@ -473,8 +473,7 @@ class DockerExecutor(ContainerExecutor):
             job.started_at = django_timezone.now()
             job.save()
 
-            # Create execution record
-            ContainerExecution.objects.get_or_create(job=job)
+            # Execution record is now part of the job model
 
             logger.info(f"Started container {container_id} for job {job.id}")
             return True
@@ -535,16 +534,13 @@ class DockerExecutor(ContainerExecutor):
             client = self._get_client(job.docker_host)
             container = client.containers.get(job.container_id)
 
-            # Get or create execution record
-            execution, created = ContainerExecution.objects.get_or_create(job=job)
-
-            # Collect logs
+            # Collect logs directly on job
             stdout, stderr = self.get_logs(job.container_id)
-            execution.stdout_log = stdout
-            execution.stderr_log = stderr
+            job.stdout_log = stdout
+            job.stderr_log = stderr
 
             # Clean output for downstream processing
-            execution.clean_output = self._strip_docker_timestamps(stdout)
+            job.clean_output = self._strip_docker_timestamps(stdout)
 
             # Collect resource statistics
             try:
@@ -552,15 +548,15 @@ class DockerExecutor(ContainerExecutor):
                 if stats:
                     memory_usage = stats.get("memory_usage", {})
                     if memory_usage:
-                        execution.max_memory_usage = memory_usage.get("max_usage", 0)
+                        job.max_memory_usage = memory_usage.get("max_usage", 0)
 
                     cpu_stats = stats.get("cpu_stats", {})
                     if cpu_stats:
-                        execution.cpu_usage_percent = self._calculate_cpu_percent(stats)
+                        job.cpu_usage_percent = self._calculate_cpu_percent(stats)
             except Exception as e:
                 logger.warning(f"Failed to collect stats for job {job.id}: {e}")
 
-            execution.save()
+            job.save()
 
         except Exception:
             logger.exception(f"Failed to collect execution data for job {job.id}")

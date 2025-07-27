@@ -10,7 +10,6 @@ from django.utils.html import format_html
 
 from .docker_service import DockerConnectionError, docker_service
 from .models import (
-    ContainerExecution,
     ContainerJob,
     ContainerTemplate,
     EnvironmentVariableTemplate,
@@ -240,6 +239,12 @@ class ContainerJobAdmin(admin.ModelAdmin):
         "created_at",
         "duration_display",
         "executor_metadata_display",
+        "max_memory_usage",
+        "cpu_usage_percent",
+        "stdout_log",
+        "stderr_log",
+        "docker_log",
+        "clean_output",
     )
 
     fieldsets = (
@@ -275,6 +280,20 @@ class ContainerJobAdmin(admin.ModelAdmin):
                     "completed_at",
                     "duration_display",
                 ),
+                "classes": ("collapse",),
+            },
+        ),
+        (
+            "Resource Usage",
+            {
+                "fields": ("max_memory_usage", "cpu_usage_percent"),
+                "classes": ("collapse",),
+            },
+        ),
+        (
+            "Logs",
+            {
+                "fields": ("stdout_log", "stderr_log", "docker_log", "clean_output"),
                 "classes": ("collapse",),
             },
         ),
@@ -352,15 +371,11 @@ class ContainerJobAdmin(admin.ModelAdmin):
         """View job logs"""
         job = get_object_or_404(ContainerJob, pk=object_id)
 
-        try:
-            execution = job.execution
-            logs = {
-                "stdout": execution.stdout_log,
-                "stderr": execution.stderr_log,
-                "docker": execution.docker_log,
-            }
-        except ContainerExecution.DoesNotExist:
-            logs = {"stdout": "", "stderr": "", "docker": ""}
+        logs = {
+            "stdout": job.stdout_log,
+            "stderr": job.stderr_log,
+            "docker": job.docker_log,
+        }
 
         context = {
             "job": job,
@@ -756,48 +771,6 @@ class ContainerJobAdmin(admin.ModelAdmin):
         if not change:  # Creating new object
             obj.created_by = request.user
         super().save_model(request, obj, form, change)
-
-
-@admin.register(ContainerExecution)
-class ContainerExecutionAdmin(admin.ModelAdmin):
-    list_display = ("job", "max_memory_usage_mb", "cpu_usage_percent", "created_at")
-    list_filter = ("created_at", "job__status")
-    search_fields = ("job__id", "job__name", "job__template__name")
-    readonly_fields = (
-        "job",
-        "max_memory_usage",
-        "cpu_usage_percent",
-        "clean_output_processed",
-        "created_at",
-        "updated_at",
-    )
-
-    fieldsets = (
-        ("Job Information", {"fields": ("job",)}),
-        ("Resource Usage", {"fields": ("max_memory_usage", "cpu_usage_percent")}),
-        (
-            "Logs",
-            {
-                "fields": ("stdout_log", "stderr_log", "docker_log"),
-                "classes": ("collapse",),
-            },
-        ),
-        (
-            "Processed Output",
-            {"fields": ("clean_output_processed",), "classes": ("collapse",)},
-        ),
-        (
-            "Timestamps",
-            {"fields": ("created_at", "updated_at"), "classes": ("collapse",)},
-        ),
-    )
-
-    def max_memory_usage_mb(self, obj):
-        if obj.max_memory_usage:
-            return f"{obj.max_memory_usage / (1024 * 1024):.2f} MB"
-        return "-"
-
-    max_memory_usage_mb.short_description = "Max Memory Usage"
 
 
 # Note: Complex admin interfaces removed for simplicity

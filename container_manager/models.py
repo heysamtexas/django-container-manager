@@ -1,4 +1,3 @@
-import json
 import re
 import uuid
 from functools import cached_property
@@ -141,10 +140,7 @@ class ExecutorHost(models.Model):
         verbose_name_plural = "Executor Hosts"
 
     def __str__(self):
-        executor_info = (
-            f" ({self.executor_type})" if self.executor_type != "docker" else ""
-        )
-        return f"{self.name}{executor_info} ({self.connection_string})"
+        return self.name
 
     def is_available(self) -> bool:
         """Check if this executor is available for new jobs"""
@@ -219,7 +215,7 @@ class ContainerTemplate(models.Model):
         verbose_name_plural = "Container Templates"
 
     def __str__(self):
-        return f"{self.name} ({self.docker_image})"
+        return self.name
 
     def get_override_environment_variables_dict(self):
         """
@@ -404,6 +400,24 @@ class ContainerJob(models.Model):
         ),
     )
 
+    # Execution data (merged from ContainerExecution)
+    max_memory_usage = models.PositiveIntegerField(
+        null=True, blank=True, help_text="Peak memory usage in bytes"
+    )
+    cpu_usage_percent = models.FloatField(
+        null=True, blank=True, help_text="Average CPU usage percentage"
+    )
+
+    # Logs (raw with timestamps)
+    stdout_log = models.TextField(blank=True)
+    stderr_log = models.TextField(blank=True)
+    docker_log = models.TextField(blank=True, help_text="Docker daemon logs and events")
+
+    # Processed output for downstream consumption
+    clean_output = models.TextField(
+        blank=True, help_text="Stdout with timestamps and metadata stripped"
+    )
+
     # Basic metadata
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -451,6 +465,47 @@ class ContainerJob(models.Model):
         else:
             self.external_execution_id = execution_id
 
+    @cached_property
+    def clean_output_processed(self):
+        """Get stdout with Docker timestamps and metadata stripped"""
+        return self._strip_docker_timestamps(self.stdout_log)
+
+    @cached_property
+    def parsed_output(self):
+        """Attempt to parse clean_output as JSON, fallback to string"""
+        clean = self.clean_output_processed
+        if not clean.strip():
+            return None
+
+        try:
+            import json
+
+            return json.loads(clean)
+        except (json.JSONDecodeError, ValueError):
+            # Not valid JSON, return as string
+            return clean
+
+    @staticmethod
+    def _strip_docker_timestamps(log_text: str) -> str:
+        """Remove Docker timestamps and metadata from log text"""
+        if not log_text:
+            return ""
+
+        lines = log_text.split("\n")
+        clean_lines = []
+
+        # Docker timestamp pattern: 2024-01-26T10:30:45.123456789Z
+
+        timestamp_pattern = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z\s*")
+
+        for line in lines:
+            # Remove timestamp prefix
+            clean_line = timestamp_pattern.sub("", line)
+            if clean_line.strip():  # Only add non-empty lines
+                clean_lines.append(clean_line)
+
+        return "\n".join(clean_lines)
+
     def can_use_executor(self, executor_type: str) -> bool:
         """Check if this job can run on the specified executor type"""
         # All jobs can run on any executor type
@@ -472,80 +527,6 @@ class ContainerJob(models.Model):
 
         if self.override_command and len(self.override_command) > 2000:
             raise ValidationError("Override command cannot exceed 2000 characters")
-
-
-class ContainerExecution(models.Model):
-    """Execution history and logs for container jobs"""
-
-    job = models.OneToOneField(
-        ContainerJob, related_name="execution", on_delete=models.CASCADE
-    )
-
-    # Resource usage
-    max_memory_usage = models.PositiveIntegerField(
-        null=True, blank=True, help_text="Peak memory usage in bytes"
-    )
-    cpu_usage_percent = models.FloatField(
-        null=True, blank=True, help_text="Average CPU usage percentage"
-    )
-
-    # Logs (raw with timestamps)
-    stdout_log = models.TextField(blank=True)
-    stderr_log = models.TextField(blank=True)
-    docker_log = models.TextField(blank=True, help_text="Docker daemon logs and events")
-
-    # Processed output for downstream consumption
-    clean_output = models.TextField(
-        blank=True, help_text="Stdout with timestamps and metadata stripped"
-    )
-
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        verbose_name = "Container Execution"
-        verbose_name_plural = "Container Executions"
-
-    def __str__(self):
-        return f"Execution for {self.job}"
-
-    @cached_property
-    def clean_output_processed(self):
-        """Get stdout with Docker timestamps and metadata stripped"""
-        return self._strip_docker_timestamps(self.stdout_log)
-
-    @cached_property
-    def parsed_output(self):
-        """Attempt to parse clean_output as JSON, fallback to string"""
-        clean = self.clean_output_processed
-        if not clean.strip():
-            return None
-
-        try:
-            return json.loads(clean)
-        except (json.JSONDecodeError, ValueError):
-            # Not valid JSON, return as string
-            return clean
-
-    @staticmethod
-    def _strip_docker_timestamps(log_text: str) -> str:
-        """Remove Docker timestamps and metadata from log text"""
-        if not log_text:
-            return ""
-
-        lines = log_text.split("\n")
-        clean_lines = []
-
-        # Docker timestamp pattern: 2024-01-26T10:30:45.123456789Z
-        timestamp_pattern = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z\s*")
-
-        for line in lines:
-            # Remove timestamp prefix
-            clean_line = timestamp_pattern.sub("", line)
-            if clean_line.strip():  # Only add non-empty lines
-                clean_lines.append(clean_line)
-
-        return "\n".join(clean_lines)
 
 
 # Routing Rules Models

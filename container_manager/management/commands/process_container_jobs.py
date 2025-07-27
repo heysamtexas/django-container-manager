@@ -532,12 +532,12 @@ class Command(BaseCommand):
                 job.completed_at = timezone.now()
                 job.save()
 
-                # Create or update execution record with error
-                from container_manager.models import ContainerExecution
-
-                execution, created = ContainerExecution.objects.get_or_create(job=job)
-                execution.docker_log = f"ERROR: {error_message}"
-                execution.save()
+                # Set error message on job directly
+                if job.docker_log:
+                    job.docker_log += f"\nERROR: {error_message}"
+                else:
+                    job.docker_log = f"ERROR: {error_message}"
+                job.save()
 
         except Exception:
             logger.exception(f"Failed to mark job {job.id} as failed")

@@ -15,7 +15,7 @@ import uuid
 
 from django.utils import timezone
 
-from ..models import ContainerExecution, ContainerJob
+from ..models import ContainerJob
 from .base import ContainerExecutor
 
 # Constants
@@ -145,19 +145,21 @@ class MockExecutor(ContainerExecutor):
             job.status = "running"
             job.started_at = timezone.now()
             job.set_execution_identifier(execution_id)
-            job.save()
 
-            # Create execution record with initial logs
-            ContainerExecution.objects.create(
-                job=job,
-                stdout_log="Mock execution started for job "
+            # Set initial execution data on job
+            job.stdout_log = (
+                "Mock execution started for job "
                 + str(job.id)
                 + "\n"
-                + execution_info["logs"]["stdout"][:200],
-                stderr_log="",
-                docker_log=f"Mock container {execution_id} created\n"
-                + f"Container configuration: {json.dumps(self._get_container_config(job))}\n",
+                + execution_info["logs"]["stdout"][:200]
             )
+            job.stderr_log = ""
+            job.docker_log = (
+                f"Mock container {execution_id} created\n"
+                + f"Container configuration: {json.dumps(self._get_container_config(job))}\n"
+            )
+
+            job.save()
 
             logger.info(
                 f"Mock job {job.id} launched with ID {execution_id} "
@@ -268,27 +270,16 @@ class MockExecutor(ContainerExecutor):
 
             job.save()
 
-            # Update execution record with complete results
-            try:
-                execution = job.execution
-
-                execution.stdout_log = logs["stdout"]
-                execution.stderr_log = logs["stderr"]
-                execution.docker_log += logs["docker"]
-                execution.max_memory_usage = memory_usage
-                execution.cpu_usage_percent = cpu_usage
-                execution.save()
-
-            except ContainerExecution.DoesNotExist:
-                # Create execution record if it doesn't exist
-                ContainerExecution.objects.create(
-                    job=job,
-                    stdout_log=logs["stdout"],
-                    stderr_log=logs["stderr"],
-                    docker_log=logs["docker"],
-                    max_memory_usage=memory_usage,
-                    cpu_usage_percent=cpu_usage,
-                )
+            # Update job with complete execution results
+            job.stdout_log = logs["stdout"]
+            job.stderr_log = logs["stderr"]
+            if job.docker_log:
+                job.docker_log += logs["docker"]
+            else:
+                job.docker_log = logs["docker"]
+            job.max_memory_usage = memory_usage
+            job.cpu_usage_percent = cpu_usage
+            job.save()
 
             # Track performance metrics
             if execution_info and "execution_time" in execution_info:

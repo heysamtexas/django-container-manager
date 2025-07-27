@@ -10,7 +10,7 @@ from django.test import TestCase
 
 from ..executors.cloudrun import CloudRunExecutor
 from ..executors.exceptions import ExecutorConfigurationError
-from ..models import ContainerExecution, ContainerJob, ContainerTemplate, ExecutorHost
+from ..models import ContainerJob, ContainerTemplate, ExecutorHost
 
 try:
     import importlib.util
@@ -135,10 +135,10 @@ class CloudRunExecutorTest(TestCase):
             self.assertEqual(job.status, "running")
             self.assertIsNotNone(job.started_at)
 
-            # Verify execution record was created
-            execution = ContainerExecution.objects.get(job=job)
-            self.assertIsNotNone(execution)
-            self.assertIn("Cloud Run job", execution.stdout_log)
+            # Verify execution data was set on job
+            job.refresh_from_db()
+            self.assertIsNotNone(job.stdout_log)
+            self.assertIn("Cloud Run job", job.stdout_log)
 
     @patch("google.cloud.run_v2")
     def test_launch_job_failure(self, mock_gcp_run):
@@ -274,13 +274,11 @@ class CloudRunExecutorTest(TestCase):
             template=self.template, docker_host=self.docker_host, created_by=self.user
         )
 
-        # Create execution record
-        ContainerExecution.objects.create(
-            job=job,
-            stdout_log="Initial log\n",
-            stderr_log="",
-            docker_log="Cloud Run job created\n",
-        )
+        # Set initial execution data on job
+        job.stdout_log = "Initial log\n"
+        job.stderr_log = ""
+        job.docker_log = "Cloud Run job created\n"
+        job.save()
 
         # Setup mock client
         mock_client = MagicMock()

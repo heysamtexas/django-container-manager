@@ -11,7 +11,6 @@ from django.core.management.base import BaseCommand, CommandError
 from container_manager.docker_service import docker_service
 from container_manager.executors.factory import ExecutorFactory
 from container_manager.models import (
-    ContainerExecution,
     ContainerJob,
     ContainerTemplate,
     ExecutorHost,

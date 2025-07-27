@@ -9,7 +9,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 
 from ..executors.mock import MockExecutor
-from ..models import ContainerExecution, ContainerJob, ContainerTemplate, ExecutorHost
+from ..models import ContainerJob, ContainerTemplate, ExecutorHost
 
 
 class MockExecutorTest(TestCase):
@@ -375,19 +375,19 @@ class MockExecutorTest(TestCase):
         success, execution_id = executor.launch_job(job)
         self.assertTrue(success)
 
-        # Should have created execution record
-        execution = ContainerExecution.objects.get(job=job)
-        self.assertIsNotNone(execution)
-        self.assertIn("Mock execution started", execution.stdout_log)
-        self.assertIn("Mock container", execution.docker_log)
+        # Should have updated job with execution data
+        job.refresh_from_db()
+        self.assertIsNotNone(job.stdout_log)
+        self.assertIn("Mock execution started", job.stdout_log)
+        self.assertIn("Mock container", job.docker_log)
 
         # Harvest should update execution record
         harvest_success = executor.harvest_job(job)
         self.assertTrue(harvest_success)
 
-        execution.refresh_from_db()
-        self.assertGreater(execution.max_memory_usage, 0)
-        self.assertGreater(execution.cpu_usage_percent, 0)
+        job.refresh_from_db()
+        self.assertGreater(job.max_memory_usage, 0)
+        self.assertGreater(job.cpu_usage_percent, 0)
 
     def test_reset_performance_stats(self):
         """Test resetting performance statistics"""

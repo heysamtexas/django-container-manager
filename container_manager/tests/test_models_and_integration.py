@@ -13,7 +13,6 @@ from ..docker_service import (
     DockerService,
 )
 from ..models import (
-    ContainerExecution,
     ContainerJob,
     ContainerTemplate,
     ExecutorHost,
@@ -43,7 +42,7 @@ class ExecutorHostModelTest(TestCase):
 
     def test_docker_host_str_representation(self):
         """Test string representation of ExecutorHost"""
-        expected = f"{self.docker_host.name} ({self.docker_host.connection_string})"
+        expected = self.docker_host.name
         self.assertEqual(str(self.docker_host), expected)
 
     def test_tcp_docker_host(self):
@@ -92,7 +91,7 @@ class ContainerTemplateModelTest(TestCase):
 
     def test_template_str_representation(self):
         """Test string representation of ContainerTemplate"""
-        expected = f"{self.template.name} ({self.template.docker_image})"
+        expected = self.template.name
         self.assertEqual(str(self.template), expected)
 
     def test_template_with_environment_variables(self):
@@ -442,13 +441,10 @@ class IntegrationTest(TestCase):
         self.assertIsNone(job.started_at)
         self.assertIsNone(job.completed_at)
 
-        # Create execution record
-        execution = ContainerExecution.objects.create(job=job)
-
-        # Verify execution record
-        self.assertEqual(execution.job, job)
-        self.assertEqual(execution.stdout_log, "")
-        self.assertEqual(execution.stderr_log, "")
+        # Verify execution fields are available on job
+        self.assertEqual(job.stdout_log, "")
+        self.assertEqual(job.stderr_log, "")
+        self.assertEqual(job.docker_log, "")
 
         # Test job state transitions
         job.status = "running"

@@ -10,7 +10,7 @@ import time
 
 from django.utils import timezone
 
-from ..models import ContainerExecution, ContainerJob
+from ..models import ContainerJob
 from .base import ContainerExecutor
 from .exceptions import ExecutorConfigurationError
 
@@ -246,15 +246,14 @@ class CloudRunExecutor(ContainerExecutor):
                 job.started_at = timezone.now()
                 job.save()
 
-                # Create execution record
-                ContainerExecution.objects.create(
-                    job=job,
-                    stdout_log=f"Cloud Run job {job_name} created and started\n",
-                    stderr_log="",
-                    docker_log=f"Cloud Run job: {job_resource.name}\n"
+                # Set execution data directly on job
+                job.stdout_log = f"Cloud Run job {job_name} created and started\n"
+                job.stderr_log = ""
+                job.docker_log = (
+                    f"Cloud Run job: {job_resource.name}\n"
                     f"Execution: {execution_name}\n"
                     f"Region: {self.region}\n"
-                    f"Project: {self.project_id}\n",
+                    f"Project: {self.project_id}\n"
                 )
             except Exception as e:
                 logger.exception("Failed to create/run Cloud Run job")
@@ -459,42 +458,27 @@ class CloudRunExecutor(ContainerExecutor):
     def _update_execution_record(
         self, job: ContainerJob, logs: dict, exit_code: int
     ) -> None:
-        """Create or update the execution record with logs and resource usage"""
-        try:
-            execution = job.execution
-            self._update_existing_execution(execution, logs, exit_code)
-        except ContainerExecution.DoesNotExist:
-            self._create_new_execution(job, logs, exit_code)
+        """Update job with execution record with logs and resource usage"""
+        # Update logs directly on job
+        if job.stdout_log:
+            job.stdout_log += logs.get("stdout", "No stdout logs available\n")
+        else:
+            job.stdout_log = logs.get("stdout", "No stdout logs available\n")
 
-    def _update_existing_execution(self, execution, logs: dict, exit_code: int) -> None:
-        """Update existing execution record"""
-        execution.stdout_log += logs.get("stdout", "No stdout logs available\n")
-        execution.stderr_log = logs.get("stderr", "")
-        execution.docker_log += f"Job completed with exit code {exit_code}\n"
-        execution.docker_log += logs.get("cloud_run", "")
+        job.stderr_log = logs.get("stderr", "")
+
+        if job.docker_log:
+            job.docker_log += f"Job completed with exit code {exit_code}\n"
+            job.docker_log += logs.get("cloud_run", "")
+        else:
+            job.docker_log = f"Job completed with exit code {exit_code}\n" + logs.get(
+                "cloud_run", ""
+            )
 
         # Estimate resource usage (Cloud Run doesn't provide detailed metrics)
-        execution.max_memory_usage = (
-            self.memory_limit * 1024 * 1024
-        )  # Convert MB to bytes
-        execution.cpu_usage_percent = min(
-            self.cpu_limit * 100, 100
-        )  # Estimate CPU usage
-        execution.save()
-
-    def _create_new_execution(
-        self, job: ContainerJob, logs: dict, exit_code: int
-    ) -> None:
-        """Create new execution record"""
-        ContainerExecution.objects.create(
-            job=job,
-            stdout_log=logs.get("stdout", "No stdout logs available\n"),
-            stderr_log=logs.get("stderr", ""),
-            docker_log=f"Job completed with exit code {exit_code}\n"
-            + logs.get("cloud_run", ""),
-            max_memory_usage=self.memory_limit * 1024 * 1024,
-            cpu_usage_percent=min(self.cpu_limit * 100, 100),
-        )
+        job.max_memory_usage = self.memory_limit * 1024 * 1024  # Convert MB to bytes
+        job.cpu_usage_percent = min(self.cpu_limit * 100, 100)  # Estimate CPU usage
+        job.save()
 
     def _fallback_job_completion(self, job: ContainerJob) -> None:
         """Mark job as completed with minimal data when detailed harvest fails"""
