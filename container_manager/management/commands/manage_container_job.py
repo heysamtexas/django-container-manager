@@ -147,8 +147,24 @@ class Command(BaseCommand):
 
     def handle_run(self, options):
         """Run a specific job"""
-        job_id = options["job_id"]
+        job = self._validate_job_for_run(options["job_id"])
+        self.stdout.write(f"Running job {job.id}...")
 
+        try:
+            self._ensure_job_has_host(job)
+            executor = self.executor_factory.get_executor(job.docker_host)
+            
+            self._display_execution_info(job)
+            self._execute_and_wait_for_job(job, executor)
+            
+            job.refresh_from_db()
+            self.show_job_summary(job)
+
+        except Exception as e:
+            raise CommandError(f"Failed to run job: {e}")
+
+    def _validate_job_for_run(self, job_id):
+        """Validate job exists and is in pending status"""
         try:
             job = ContainerJob.objects.get(id=job_id)
         except (ContainerJob.DoesNotExist, ValueError):
@@ -158,65 +174,63 @@ class Command(BaseCommand):
             raise CommandError(
                 f"Job {job_id} is not in pending status (current: {job.status})"
             )
+        return job
 
-        self.stdout.write(f"Running job {job.id}...")
-
-        try:
-            # Use executor factory for routing and execution
-            if not job.docker_host:
-                selected_host = self.executor_factory.route_job(job)
-                if selected_host:
-                    job.docker_host = selected_host
-                    job.executor_type = selected_host.executor_type
-                    job.save()
-                else:
-                    raise CommandError("No available executor hosts")
-
-            executor = self.executor_factory.get_executor(job.docker_host)
-
-            self.stdout.write(f"Using {job.executor_type} executor")
-            self.stdout.write(f"Selected host: {job.docker_host.name}")
-
-            # Launch and wait for completion
-            success, execution_id = executor.launch_job(job)
-
-            if success:
-                job.set_execution_identifier(execution_id)
+    def _ensure_job_has_host(self, job):
+        """Ensure job has a docker host assigned via routing"""
+        if not job.docker_host:
+            selected_host = self.executor_factory.route_job(job)
+            if selected_host:
+                job.docker_host = selected_host
+                job.executor_type = selected_host.executor_type
                 job.save()
-
-                self.stdout.write(
-                    f"Job launched as {execution_id}, waiting for completion..."
-                )
-
-                # Wait for completion (simple polling for now)
-                import time
-
-                while job.status == "running":
-                    time.sleep(1)
-                    job.refresh_from_db()
-
-                # Harvest results
-                harvest_success = executor.harvest_job(job)
-
-                if harvest_success and job.status == "completed":
-                    self.stdout.write(
-                        self.style.SUCCESS(f"Job {job.id} completed successfully")
-                    )
-                else:
-                    self.stdout.write(
-                        self.style.ERROR(f"Job {job.id} failed or timed out")
-                    )
             else:
-                self.stdout.write(
-                    self.style.ERROR(f"Job {job.id} failed to launch: {execution_id}")
-                )
+                raise CommandError("No available executor hosts")
 
-            # Refresh and show updated job
+    def _display_execution_info(self, job):
+        """Display execution information to user"""
+        self.stdout.write(f"Using {job.executor_type} executor")
+        self.stdout.write(f"Selected host: {job.docker_host.name}")
+
+    def _execute_and_wait_for_job(self, job, executor):
+        """Execute job and wait for completion"""
+        success, execution_id = executor.launch_job(job)
+
+        if success:
+            job.set_execution_identifier(execution_id)
+            job.save()
+
+            self.stdout.write(
+                f"Job launched as {execution_id}, waiting for completion..."
+            )
+
+            self._wait_for_job_completion(job)
+            self._harvest_and_report_results(job, executor)
+        else:
+            self.stdout.write(
+                self.style.ERROR(f"Job {job.id} failed to launch: {execution_id}")
+            )
+
+    def _wait_for_job_completion(self, job):
+        """Wait for job to complete using simple polling"""
+        import time
+        
+        while job.status == "running":
+            time.sleep(1)
             job.refresh_from_db()
-            self.show_job_summary(job)
 
-        except Exception as e:
-            raise CommandError(f"Failed to run job: {e}")
+    def _harvest_and_report_results(self, job, executor):
+        """Harvest results and report final status"""
+        harvest_success = executor.harvest_job(job)
+
+        if harvest_success and job.status == "completed":
+            self.stdout.write(
+                self.style.SUCCESS(f"Job {job.id} completed successfully")
+            )
+        else:
+            self.stdout.write(
+                self.style.ERROR(f"Job {job.id} failed or timed out")
+            )
 
     def handle_list(self, options):
         """List container jobs"""

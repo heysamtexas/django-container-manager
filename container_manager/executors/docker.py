@@ -325,29 +325,55 @@ class DockerExecutor(ContainerExecutor):
     def _create_container(self, job: ContainerJob) -> str:
         """Create Docker container for job"""
         client = self._get_client(job.docker_host)
-        template = job.template
+        
+        try:
+            self._ensure_image_available(client, job)
+            container_config = self._build_container_config(job)
+            container = client.containers.create(**container_config)
+            self._setup_additional_networks(client, job, container)
+            
+            logger.info(f"Created container {container.id} for job {job.id}")
+            return container.id
 
-        # Build environment variables
+        except Exception as e:
+            logger.exception(f"Failed to create container for job {job.id}: {e}")
+            raise ExecutorError(f"Container creation failed: {e}")
+
+    def _build_container_environment(self, job: ContainerJob) -> dict:
+        """Build environment variables for container"""
         environment = {}
-
+        
         # Add template environment variables
-        environment.update(template.get_all_environment_variables())
-
+        environment.update(job.template.get_all_environment_variables())
+        
         # Add job override environment variables
         if job.override_environment:
             environment.update(job.override_environment)
+            
+        return environment
 
-        # Build container configuration
+    def _build_container_config(self, job: ContainerJob) -> dict:
+        """Build complete container configuration"""
+        template = job.template
+        
         container_config = {
             "image": template.docker_image,
             "command": job.override_command or template.command,
-            "environment": environment,
+            "environment": self._build_container_environment(job),
             "labels": self._build_labels(job),
             "detach": True,
-            # Note: 'remove' parameter is only for containers.run(), not containers.create()
         }
+        
+        # Add resource limits
+        self._add_resource_limits(container_config, template)
+        
+        # Add primary network
+        self._add_primary_network(container_config, template)
+        
+        return container_config
 
-        # Add resource limits if specified
+    def _add_resource_limits(self, container_config: dict, template) -> None:
+        """Add CPU and memory limits to container configuration"""
         if template.memory_limit:
             container_config["mem_limit"] = f"{template.memory_limit}m"
 
@@ -355,50 +381,50 @@ class DockerExecutor(ContainerExecutor):
             container_config["cpu_quota"] = int(template.cpu_limit * 100000)
             container_config["cpu_period"] = 100000
 
-        # Handle networking
-        networks = []
-        for network_assignment in template.network_assignments.all():
-            networks.append(network_assignment.network_name)
-
+    def _add_primary_network(self, container_config: dict, template) -> None:
+        """Add primary network to container configuration"""
+        networks = self._get_network_names(template)
         if networks:
             container_config["network"] = networks[0]
 
+    def _get_network_names(self, template) -> list:
+        """Get list of network names from template"""
+        return [
+            network_assignment.network_name
+            for network_assignment in template.network_assignments.all()
+        ]
+
+    def _ensure_image_available(self, client, job: ContainerJob) -> None:
+        """Ensure Docker image is available locally"""
+        template = job.template
+        
         try:
-            # Check if image exists locally
+            client.images.get(template.docker_image)
+            logger.debug(f"Image {template.docker_image} already exists locally")
+        except NotFound:
+            if self._should_pull_image(job.docker_host):
+                logger.info(f"Pulling image {template.docker_image}...")
+                client.images.pull(template.docker_image)
+                logger.info(f"Successfully pulled image {template.docker_image}")
+            else:
+                raise ExecutorError(
+                    f"Image {template.docker_image} not found locally and "
+                    "auto-pull is disabled"
+                )
+
+    def _setup_additional_networks(self, client, job: ContainerJob, container) -> None:
+        """Connect container to additional networks beyond the primary"""
+        networks = self._get_network_names(job.template)
+        
+        # Connect to additional networks (skip first one as it's already set as primary)
+        for network_name in networks[1:]:
             try:
-                client.images.get(template.docker_image)
-                logger.debug(f"Image {template.docker_image} already exists locally")
+                network = client.networks.get(network_name)
+                network.connect(container)
             except NotFound:
-                if self._should_pull_image(job.docker_host):
-                    logger.info(f"Pulling image {template.docker_image}...")
-                    client.images.pull(template.docker_image)
-                    logger.info(f"Successfully pulled image {template.docker_image}")
-                else:
-                    raise ExecutorError(
-                        f"Image {template.docker_image} not found locally and "
-                        "auto-pull is disabled"
-                    )
-
-            container = client.containers.create(**container_config)
-
-            # Connect to additional networks
-            if len(networks) > 1:
-                for network_name in networks[1:]:
-                    try:
-                        network = client.networks.get(network_name)
-                        network.connect(container)
-                    except NotFound:
-                        logger.warning(
-                            f"Network {network_name} not found on "
-                            f"{job.docker_host.name}"
-                        )
-
-            logger.info(f"Created container {container.id} for job {job.id}")
-            return container.id
-
-        except Exception as e:
-            logger.exception(f"Failed to create container for job {job.id}: {e}")
-            raise ExecutorError(f"Container creation failed: {e}")
+                logger.warning(
+                    f"Network {network_name} not found on {job.docker_host.name}"
+                )
 
     def _start_container(self, job: ContainerJob, container_id: str) -> bool:
         """Start the created container"""

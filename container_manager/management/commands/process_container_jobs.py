@@ -91,49 +91,78 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         """Main command handler"""
-        poll_interval = options["poll_interval"]
-        max_jobs = options["max_jobs"]
-        host_filter = options["host"]
-        single_run = options["single_run"]
-        cleanup = options["cleanup"]
-        cleanup_hours = options["cleanup_hours"]
-        use_factory = options["use_factory"]
-        executor_type = options["executor_type"]
+        config = self._parse_and_validate_options(options)
+        
+        self._display_startup_info(config)
+        self._run_cleanup_if_requested(config)
+        self._validate_host_filter(config.get("host_filter"))
+        
+        # Run main processing loop
+        processed_count, error_count = self._run_processing_loop(config)
+        
+        self._display_completion_summary(processed_count, error_count)
 
-        # Determine if we should use the executor factory
+    def _parse_and_validate_options(self, options):
+        """Parse and validate command options"""
         from ...defaults import get_use_executor_factory
-        factory_enabled = (
-            use_factory
+        
+        config = {
+            "poll_interval": options["poll_interval"],
+            "max_jobs": options["max_jobs"],
+            "host_filter": options["host"],
+            "single_run": options["single_run"],
+            "cleanup": options["cleanup"],
+            "cleanup_hours": options["cleanup_hours"],
+            "use_factory": options["use_factory"],
+            "executor_type": options["executor_type"],
+        }
+        
+        # Determine if we should use the executor factory
+        config["factory_enabled"] = (
+            config["use_factory"]
             or get_use_executor_factory()
-            or executor_type is not None
+            or config["executor_type"] is not None
         )
+        
+        return config
 
-        routing_mode = "ExecutorFactory" if factory_enabled else "Direct Docker"
+    def _display_startup_info(self, config):
+        """Display startup information and configuration"""
+        routing_mode = "ExecutorFactory" if config["factory_enabled"] else "Direct Docker"
         self.stdout.write(
             self.style.SUCCESS(
                 f"Starting container job processor "
-                f"(poll_interval={poll_interval}s, max_jobs={max_jobs}, routing={routing_mode})"
+                f"(poll_interval={config['poll_interval']}s, "
+                f"max_jobs={config['max_jobs']}, routing={routing_mode})"
             )
         )
 
-        if factory_enabled:
-            available_hosts = DockerHost.objects.filter(is_active=True)
-            available_executors = list(available_hosts.values_list('executor_type', flat=True).distinct())
-            self.stdout.write(f"Available executors: {', '.join(available_executors)}")
+        if config["factory_enabled"]:
+            self._display_executor_info(config["executor_type"])
 
-            if executor_type:
-                self.stdout.write(f"Forcing executor type: {executor_type}")
+    def _display_executor_info(self, executor_type):
+        """Display available executor information"""
+        available_hosts = DockerHost.objects.filter(is_active=True)
+        available_executors = list(
+            available_hosts.values_list('executor_type', flat=True).distinct()
+        )
+        self.stdout.write(f"Available executors: {', '.join(available_executors)}")
 
-        # Run cleanup if requested
-        if cleanup:
+        if executor_type:
+            self.stdout.write(f"Forcing executor type: {executor_type}")
+
+    def _run_cleanup_if_requested(self, config):
+        """Run container cleanup if requested"""
+        if config["cleanup"]:
             self.stdout.write("Running container cleanup...")
             try:
-                docker_service.cleanup_old_containers(orphaned_hours=cleanup_hours)
+                docker_service.cleanup_old_containers(orphaned_hours=config["cleanup_hours"])
                 self.stdout.write(self.style.SUCCESS("Cleanup completed"))
             except Exception as e:
                 self.stdout.write(self.style.ERROR(f"Cleanup failed: {e}"))
 
-        # Validate Docker hosts
+    def _validate_host_filter(self, host_filter):
+        """Validate host filter if provided"""
         if host_filter:
             try:
                 docker_host = DockerHost.objects.get(name=host_filter, is_active=True)
@@ -141,48 +170,64 @@ class Command(BaseCommand):
             except DockerHost.DoesNotExist:
                 raise CommandError(f'Docker host "{host_filter}" not found or inactive')
 
-        # Main processing loop
+    def _run_processing_loop(self, config):
+        """Run the main job processing loop"""
         processed_count = 0
         error_count = 0
 
         try:
             while not self.should_stop:
                 try:
-                    # Launch phase: Start pending jobs (non-blocking)
-                    jobs_launched = self.process_pending_jobs(
-                        host_filter, max_jobs, factory_enabled, executor_type
+                    cycle_launched, cycle_harvested = self._process_single_cycle(config)
+                    processed_count += cycle_launched + cycle_harvested
+                    
+                    self._report_cycle_results(
+                        cycle_launched, cycle_harvested, processed_count, error_count
                     )
 
-                    # Monitor phase: Check running jobs and harvest completed ones
-                    jobs_harvested = self.monitor_running_jobs(host_filter)
-
-                    processed_count += jobs_launched + jobs_harvested
-
-                    if jobs_launched > 0 or jobs_harvested > 0:
-                        self.stdout.write(
-                            f"Launched {jobs_launched} jobs, "
-                            f"harvested {jobs_harvested} jobs "
-                            f"(total processed: {processed_count}, "
-                            f"errors: {error_count})"
-                        )
-
-                    if single_run:
+                    if config["single_run"]:
                         break
 
-                    # Sleep between polling cycles
-                    time.sleep(poll_interval)
+                    time.sleep(config["poll_interval"])
 
                 except Exception as e:
                     error_count += 1
                     logger.exception(f"Error in processing cycle: {e}")
                     self.stdout.write(self.style.ERROR(f"Processing error: {e}"))
-
-                    # Sleep longer after errors
-                    time.sleep(poll_interval * 2)
+                    time.sleep(config["poll_interval"] * 2)  # Sleep longer after errors
 
         except KeyboardInterrupt:
             self.stdout.write(self.style.WARNING("Interrupted by user"))
 
+        return processed_count, error_count
+
+    def _process_single_cycle(self, config):
+        """Process a single cycle of job launching and monitoring"""
+        # Launch phase: Start pending jobs (non-blocking)
+        jobs_launched = self.process_pending_jobs(
+            config["host_filter"], 
+            config["max_jobs"], 
+            config["factory_enabled"], 
+            config["executor_type"]
+        )
+
+        # Monitor phase: Check running jobs and harvest completed ones
+        jobs_harvested = self.monitor_running_jobs(config["host_filter"])
+
+        return jobs_launched, jobs_harvested
+
+    def _report_cycle_results(self, launched, harvested, total_processed, total_errors):
+        """Report results of a processing cycle"""
+        if launched > 0 or harvested > 0:
+            self.stdout.write(
+                f"Launched {launched} jobs, "
+                f"harvested {harvested} jobs "
+                f"(total processed: {total_processed}, "
+                f"errors: {total_errors})"
+            )
+
+    def _display_completion_summary(self, processed_count, error_count):
+        """Display final completion summary"""
         self.stdout.write(
             self.style.SUCCESS(
                 f"Job processor stopped. "
@@ -336,9 +381,28 @@ class Command(BaseCommand):
 
     def monitor_running_jobs(self, host_filter: Optional[str] = None) -> int:
         """Monitor running jobs and harvest completed ones"""
-        from django.utils import timezone
+        running_jobs = self._get_running_jobs(host_filter)
+        
+        if not running_jobs:
+            return 0
 
-        # Get running jobs from database
+        harvested = 0
+        for job in running_jobs:
+            if self.should_stop:
+                break
+
+            try:
+                job_harvested = self._monitor_single_job(job)
+                harvested += job_harvested
+            except Exception as e:
+                logger.exception(f"Error monitoring job {job.id}: {e}")
+                self.mark_job_failed(job, str(e))
+                harvested += 1
+
+        return harvested
+
+    def _get_running_jobs(self, host_filter: Optional[str] = None):
+        """Get list of running jobs, optionally filtered by host"""
         queryset = ContainerJob.objects.filter(status="running").select_related(
             "template", "docker_host"
         )
@@ -346,53 +410,49 @@ class Command(BaseCommand):
         if host_filter:
             queryset = queryset.filter(docker_host__name=host_filter)
 
-        running_jobs = list(queryset)
+        return list(queryset)
 
-        if not running_jobs:
-            return 0
+    def _monitor_single_job(self, job: ContainerJob) -> int:
+        """Monitor a single job and return 1 if harvested, 0 if still running"""
+        from django.utils import timezone
+        
+        # Check for timeout first
+        if self._job_has_timed_out(job, timezone.now()):
+            self.handle_job_timeout(job)
+            return 1
 
-        harvested = 0
-        now = timezone.now()
+        # Check execution status
+        status = self.check_job_status(job)
+        return self._handle_job_status(job, status)
 
-        for job in running_jobs:
-            if self.should_stop:
-                break
+    def _job_has_timed_out(self, job: ContainerJob, now) -> bool:
+        """Check if job has exceeded its timeout"""
+        if not job.started_at:
+            return False
+            
+        running_time = (now - job.started_at).total_seconds()
+        return running_time > job.template.timeout_seconds
 
-            try:
-                # Check for timeout
-                if job.started_at:
-                    running_time = (now - job.started_at).total_seconds()
-                    if running_time > job.template.timeout_seconds:
-                        # Job timed out
-                        self.handle_job_timeout(job)
-                        harvested += 1
-                        continue
+    def _handle_job_status(self, job: ContainerJob, status: str) -> int:
+        """Handle job based on its current status, return 1 if harvested"""
+        if status in ["completed", "exited"]:
+            return self._harvest_successful_job(job)
+        elif status == "failed":
+            self.mark_job_failed(job, "Job execution failed")
+            return 1
+        elif status == "not-found":
+            self.mark_job_failed(job, "Execution not found")
+            return 1
+        # For 'running' status, continue monitoring
+        return 0
 
-                # Check execution status (works for all executor types)
-                status = self.check_job_status(job)
-
-                if status in ["completed", "exited"]:
-                    # Job finished, harvest results
-                    success = self.harvest_completed_job(job)
-                    if success:
-                        harvested += 1
-                        self.stdout.write(self.style.SUCCESS(f"Harvested job {job.id}"))
-                elif status == "failed":
-                    # Job failed, mark as failed
-                    self.mark_job_failed(job, "Job execution failed")
-                    harvested += 1
-                elif status == "not-found":
-                    # Execution disappeared, mark as failed
-                    self.mark_job_failed(job, "Execution not found")
-                    harvested += 1
-                # For 'running' status, continue monitoring
-
-            except Exception as e:
-                logger.exception(f"Error monitoring job {job.id}: {e}")
-                self.mark_job_failed(job, str(e))
-                harvested += 1
-
-        return harvested
+    def _harvest_successful_job(self, job: ContainerJob) -> int:
+        """Harvest a successfully completed job"""
+        success = self.harvest_completed_job(job)
+        if success:
+            self.stdout.write(self.style.SUCCESS(f"Harvested job {job.id}"))
+            return 1
+        return 0
 
     def check_job_status(self, job: ContainerJob) -> str:
         """Check job status using appropriate method based on executor type"""

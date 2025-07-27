@@ -310,107 +310,126 @@ class CloudRunExecutor(ContainerExecutor):
         """
         try:
             logger.info(f"Harvesting CloudRun job {job.id}")
-
+            
             execution_id = job.get_execution_identifier()
             job_info = self._active_jobs.get(execution_id)
 
             if not job_info:
-                logger.warning(f"No job info found for {job.id}, using minimal data")
-                # Mark as completed with minimal data
-                job.status = "completed"
-                job.exit_code = 0
-                job.completed_at = timezone.now()
-                job.save()
+                self._handle_missing_job_info(job)
                 return True
 
             try:
-                # Get execution details
-                client = self._get_run_client()
-
-                executions = client.list_executions(
-                    parent=job_info["job_resource_name"]
-                )
-
-                latest_execution = None
-                for execution in executions:
-                    if (
-                        latest_execution is None
-                        or execution.create_time > latest_execution.create_time
-                    ):
-                        latest_execution = execution
-
-                if latest_execution:
-                    # Determine exit code and status
-                    exit_code = 0
-                    status = "completed"
-
-                    conditions = latest_execution.status.conditions
-                    for condition in conditions:
-                        if condition.type_ == "Completed":
-                            if condition.state.name == "CONDITION_FAILED":
-                                exit_code = 1
-                                status = "failed"
-                                break
-
-                    # Update job
-                    job.exit_code = exit_code
-                    job.status = status
-                    job.completed_at = timezone.now()
-                    job.save()
-
-                    # Collect logs
-                    logs = self._collect_logs(job_info)
-
-                    # Update execution record
-                    try:
-                        execution = job.execution
-                        execution.stdout_log += logs.get(
-                            "stdout", "No stdout logs available\n"
-                        )
-                        execution.stderr_log = logs.get("stderr", "")
-                        execution.docker_log += (
-                            f"Job completed with exit code {exit_code}\n"
-                        )
-                        execution.docker_log += logs.get("cloud_run", "")
-
-                        # Estimate resource usage (Cloud Run doesn't provide detailed metrics)
-                        execution.max_memory_usage = (
-                            self.memory_limit * 1024 * 1024
-                        )  # Convert MB to bytes
-                        execution.cpu_usage_percent = min(
-                            self.cpu_limit * 100, 100
-                        )  # Estimate CPU usage
-                        execution.save()
-
-                    except ContainerExecution.DoesNotExist:
-                        ContainerExecution.objects.create(
-                            job=job,
-                            stdout_log=logs.get("stdout", "No stdout logs available\n"),
-                            stderr_log=logs.get("stderr", ""),
-                            docker_log=f"Job completed with exit code {exit_code}\n"
-                            + logs.get("cloud_run", ""),
-                            max_memory_usage=self.memory_limit * 1024 * 1024,
-                            cpu_usage_percent=min(self.cpu_limit * 100, 100),
-                        )
-
+                self._harvest_job_with_details(job, job_info)
             except Exception as e:
                 logger.exception(f"Error harvesting Cloud Run job details: {e}")
-                # Still mark as completed but with minimal data
-                job.status = "completed"
-                job.exit_code = 0
-                job.completed_at = timezone.now()
-                job.save()
+                self._fallback_job_completion(job)
 
-            # Clean up tracking
-            if execution_id in self._active_jobs:
-                del self._active_jobs[execution_id]
-
+            self._cleanup_job_tracking(execution_id)
             logger.info(f"Successfully harvested CloudRun job {job.id}")
             return True
 
         except Exception as e:
             logger.exception(f"Failed to harvest CloudRun job {job.id}: {e}")
             return False
+
+    def _handle_missing_job_info(self, job: ContainerJob) -> None:
+        """Handle job harvest when no job info is found"""
+        logger.warning(f"No job info found for {job.id}, using minimal data")
+        job.status = "completed"
+        job.exit_code = 0
+        job.completed_at = timezone.now()
+        job.save()
+
+    def _harvest_job_with_details(self, job: ContainerJob, job_info: dict) -> None:
+        """Harvest job with full Cloud Run execution details"""
+        latest_execution = self._get_latest_execution(job_info)
+        
+        if latest_execution:
+            exit_code, status = self._determine_job_outcome(latest_execution)
+            self._update_job_status(job, exit_code, status)
+            
+            logs = self._collect_logs(job_info)
+            self._update_execution_record(job, logs, exit_code)
+
+    def _get_latest_execution(self, job_info: dict):
+        """Get the latest execution from Cloud Run"""
+        client = self._get_run_client()
+        executions = client.list_executions(parent=job_info["job_resource_name"])
+
+        latest_execution = None
+        for execution in executions:
+            if (
+                latest_execution is None
+                or execution.create_time > latest_execution.create_time
+            ):
+                latest_execution = execution
+        
+        return latest_execution
+
+    def _determine_job_outcome(self, execution) -> tuple:
+        """Determine exit code and status from Cloud Run execution"""
+        exit_code = 0
+        status = "completed"
+
+        conditions = execution.status.conditions
+        for condition in conditions:
+            if condition.type_ == "Completed":
+                if condition.state.name == "CONDITION_FAILED":
+                    exit_code = 1
+                    status = "failed"
+                    break
+
+        return exit_code, status
+
+    def _update_job_status(self, job: ContainerJob, exit_code: int, status: str) -> None:
+        """Update job with final status and exit code"""
+        job.exit_code = exit_code
+        job.status = status
+        job.completed_at = timezone.now()
+        job.save()
+
+    def _update_execution_record(self, job: ContainerJob, logs: dict, exit_code: int) -> None:
+        """Create or update the execution record with logs and resource usage"""
+        try:
+            execution = job.execution
+            self._update_existing_execution(execution, logs, exit_code)
+        except ContainerExecution.DoesNotExist:
+            self._create_new_execution(job, logs, exit_code)
+
+    def _update_existing_execution(self, execution, logs: dict, exit_code: int) -> None:
+        """Update existing execution record"""
+        execution.stdout_log += logs.get("stdout", "No stdout logs available\n")
+        execution.stderr_log = logs.get("stderr", "")
+        execution.docker_log += f"Job completed with exit code {exit_code}\n"
+        execution.docker_log += logs.get("cloud_run", "")
+        
+        # Estimate resource usage (Cloud Run doesn't provide detailed metrics)
+        execution.max_memory_usage = self.memory_limit * 1024 * 1024  # Convert MB to bytes
+        execution.cpu_usage_percent = min(self.cpu_limit * 100, 100)  # Estimate CPU usage
+        execution.save()
+
+    def _create_new_execution(self, job: ContainerJob, logs: dict, exit_code: int) -> None:
+        """Create new execution record"""
+        ContainerExecution.objects.create(
+            job=job,
+            stdout_log=logs.get("stdout", "No stdout logs available\n"),
+            stderr_log=logs.get("stderr", ""),
+            docker_log=f"Job completed with exit code {exit_code}\n" + logs.get("cloud_run", ""),
+            max_memory_usage=self.memory_limit * 1024 * 1024,
+            cpu_usage_percent=min(self.cpu_limit * 100, 100),
+        )
+
+    def _fallback_job_completion(self, job: ContainerJob) -> None:
+        """Mark job as completed with minimal data when detailed harvest fails"""
+        job.status = "completed"
+        job.exit_code = 0
+        job.completed_at = timezone.now()
+        job.save()
+
+    def _cleanup_job_tracking(self, execution_id: str) -> None:
+        """Clean up job tracking data"""
+        if execution_id in self._active_jobs:
+            del self._active_jobs[execution_id]
 
     def cleanup(self, execution_id: str) -> bool:
         """
