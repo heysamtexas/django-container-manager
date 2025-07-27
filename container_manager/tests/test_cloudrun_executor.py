@@ -3,6 +3,7 @@ Tests for CloudRunExecutor with mocked GCP APIs.
 """
 
 from unittest.mock import MagicMock, patch
+import unittest
 
 from django.contrib.auth.models import User
 from django.test import TestCase
@@ -11,7 +12,14 @@ from ..executors.cloudrun import CloudRunExecutor
 from ..executors.exceptions import ExecutorConfigurationError
 from ..models import ContainerExecution, ContainerJob, ContainerTemplate, DockerHost
 
+try:
+    import google.cloud.run_v2
+    CLOUD_RUN_AVAILABLE = True
+except ImportError:
+    CLOUD_RUN_AVAILABLE = False
 
+
+@unittest.skipUnless(CLOUD_RUN_AVAILABLE, "Google Cloud Run dependencies not available")
 class CloudRunExecutorTest(TestCase):
     """Test CloudRunExecutor with various scenarios"""
 
@@ -489,7 +497,7 @@ class CloudRunExecutorTest(TestCase):
         )
 
         # Mock the run_v2 classes by patching the imports in the executor module
-        with patch("container_manager.executors.cloudrun.run_v2") as mock_run_v2:
+        with patch("google.cloud.run_v2") as mock_run_v2:
             mock_job = MagicMock()
             mock_run_v2.Job.return_value = mock_job
             mock_run_v2.Container.return_value = MagicMock()
@@ -506,7 +514,7 @@ class CloudRunExecutorTest(TestCase):
             # Verify container was created with correct image
             mock_run_v2.Container.assert_called()
 
-    @patch("container_manager.executors.cloudrun.logging")
+    @patch("google.cloud.logging")
     def test_log_collection(self, mock_logging):
         """Test log collection from Cloud Logging"""
         config = {"project_id": "test-project"}
@@ -565,7 +573,7 @@ class CloudRunExecutorTest(TestCase):
         )
 
         # Mock the run_v2 to capture the resource requirements
-        with patch("container_manager.executors.cloudrun.run_v2") as mock_run_v2:
+        with patch("google.cloud.run_v2") as mock_run_v2:
             mock_container = MagicMock()
             mock_run_v2.Container.return_value = mock_container
             mock_run_v2.Job.return_value = MagicMock()

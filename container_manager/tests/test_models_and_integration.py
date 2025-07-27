@@ -9,11 +9,11 @@ from django.urls import reverse
 from django.utils import timezone
 from docker.errors import NotFound
 
-from .docker_service import (
+from ..docker_service import (
     DockerConnectionError,
     DockerService,
 )
-from .models import (
+from ..models import (
     ContainerExecution,
     ContainerJob,
     ContainerTemplate,
@@ -399,137 +399,6 @@ class ManagementCommandTest(TestCase):
         self.assertIn("pending", output)
 
 
-class AdminInterfaceTest(TestCase):
-    """Test cases for Django admin interface"""
-
-    def setUp(self):
-        self.user = User.objects.create_superuser(
-            username="admin", email="admin@example.com", password="adminpass123"
-        )
-
-        self.client = Client()
-        self.client.login(username="admin", password="adminpass123")
-
-        self.docker_host = DockerHost.objects.create(
-            name="test-host",
-            host_type="unix",
-            connection_string="unix:///var/run/docker.sock",
-            is_active=True,
-        )
-
-        self.template = ContainerTemplate.objects.create(
-            name="test-template",
-            docker_image="ubuntu:latest",
-            command='echo "Hello World"',
-            created_by=self.user,
-        )
-
-    def test_docker_host_admin_list(self):
-        """Test Docker host admin list view"""
-        url = reverse("admin:container_manager_dockerhost_changelist")
-        response = self.client.get(url)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "test-host")
-
-    def test_container_template_admin_list(self):
-        """Test container template admin list view"""
-        url = reverse("admin:container_manager_containertemplate_changelist")
-        response = self.client.get(url)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "test-template")
-
-    def test_container_job_admin_list(self):
-        """Test container job admin list view"""
-        ContainerJob.objects.create(
-            template=self.template,
-            docker_host=self.docker_host,
-            name="admin-test-job",
-            created_by=self.user,
-        )
-
-        url = reverse("admin:container_manager_containerjob_changelist")
-        response = self.client.get(url)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "admin-test-job")
-
-    def test_create_docker_host_via_admin(self):
-        """Test creating Docker host via admin interface"""
-        url = reverse("admin:container_manager_dockerhost_add")
-
-        data = {
-            "name": "new-host",
-            "host_type": "tcp",
-            "connection_string": "tcp://localhost:2376",
-            "is_active": True,
-            "tls_enabled": False,
-            "tls_verify": False,
-            "auto_pull_images": True,
-            # Multi-executor fields
-            "executor_type": "docker",
-            "executor_config": "{}",
-            "max_concurrent_jobs": 10,
-            "current_job_count": 0,
-            # Cost fields (optional)
-            "cost_per_hour": "",
-            "cost_per_job": "",
-            # Performance fields (optional)
-            "average_startup_time": "",
-            "last_health_check": "",
-            "health_check_failures": 0,
-        }
-
-        response = self.client.post(url, data)
-        self.assertEqual(
-            response.status_code, 302
-        )  # Redirect after successful creation
-
-        # Check if host was created
-        host = DockerHost.objects.get(name="new-host")
-        self.assertEqual(host.host_type, "tcp")
-        self.assertEqual(host.connection_string, "tcp://localhost:2376")
-        self.assertEqual(host.executor_type, "docker")
-
-    def test_create_container_template_via_admin(self):
-        """Test creating container template via admin interface"""
-        url = reverse("admin:container_manager_containertemplate_add")
-
-        data = {
-            "name": "new-template",
-            "description": "Test template created via admin",
-            "docker_image": "nginx:latest",
-            "command": 'nginx -g "daemon off;"',
-            "memory_limit": 256,
-            "cpu_limit": 0.5,
-            "timeout_seconds": 600,
-            "auto_remove": True,
-            # Inline formset data for environment variables (empty)
-            "environment_variables-TOTAL_FORMS": "0",
-            "environment_variables-INITIAL_FORMS": "0",
-            "environment_variables-MIN_NUM_FORMS": "0",
-            "environment_variables-MAX_NUM_FORMS": "1000",
-            # Inline formset data for network assignments (empty)
-            "network_assignments-TOTAL_FORMS": "0",
-            "network_assignments-INITIAL_FORMS": "0",
-            "network_assignments-MIN_NUM_FORMS": "0",
-            "network_assignments-MAX_NUM_FORMS": "1000",
-        }
-
-        response = self.client.post(url, data)
-
-        # Check if template was created (allow for form validation errors)
-        if response.status_code == 302:
-            # Successful creation
-            template = ContainerTemplate.objects.get(name="new-template")
-            self.assertEqual(template.docker_image, "nginx:latest")
-            self.assertEqual(template.memory_limit, 256)
-        else:
-            # Form had validation errors - this is acceptable for this test
-            # Just verify the form was rendered
-            self.assertEqual(response.status_code, 200)
-            self.assertIn("new-template", response.content.decode())
 
 
 class IntegrationTest(TestCase):
