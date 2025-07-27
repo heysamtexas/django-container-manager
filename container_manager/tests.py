@@ -18,7 +18,7 @@ from .models import (
     ContainerJob,
     ContainerTemplate,
     DockerHost,
-    EnvironmentVariable,
+    EnvironmentVariableTemplate,
     NetworkAssignment,
 )
 

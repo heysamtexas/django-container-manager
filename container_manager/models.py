@@ -9,6 +9,52 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 
+class EnvironmentVariableTemplate(models.Model):
+    """Reusable environment variable templates"""
+    
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+    environment_variables_text = models.TextField(
+        blank=True,
+        help_text="Environment variables, one per line in KEY=value format. Example:\nDEBUG=true\nAPI_KEY=secret123\nTIMEOUT=300",
+        verbose_name="Environment Variables"
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+
+    class Meta:
+        verbose_name = "Environment Variable Template"
+        verbose_name_plural = "Environment Variable Templates"
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+    
+    def get_environment_variables_dict(self):
+        """
+        Parse environment_variables_text into a dictionary.
+        
+        Returns:
+            dict: Environment variables as key-value pairs
+        """
+        env_vars = {}
+        if not self.environment_variables_text:
+            return env_vars
+            
+        for line in self.environment_variables_text.strip().split('\n'):
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue  # Skip empty lines and comments
+                
+            if '=' in line:
+                key, value = line.split('=', 1)  # Split only on first =
+                env_vars[key.strip()] = value.strip()
+                
+        return env_vars
+
+
 class DockerHost(models.Model):
     """Represents a Docker daemon endpoint (TCP or Unix socket)"""
 
@@ -126,11 +172,20 @@ class ContainerTemplate(models.Model):
         default=3600, help_text="Maximum execution time in seconds"
     )
 
-    # Environment variables (simple key=value format)
-    environment_variables_text = models.TextField(
+    # Environment variable template (reusable base configuration)
+    environment_template = models.ForeignKey(
+        EnvironmentVariableTemplate,
+        on_delete=models.SET_NULL,
+        null=True,
         blank=True,
-        help_text="Environment variables, one per line in KEY=value format. Example:\nDEBUG=true\nAPI_KEY=secret123\nTIMEOUT=300",
-        verbose_name="Environment Variables"
+        help_text="Optional environment variable template to use as base configuration"
+    )
+    
+    # Environment variable overrides (simple key=value format)
+    override_environment_variables_text = models.TextField(
+        blank=True,
+        help_text="Environment variable overrides, one per line in KEY=value format. These override any variables from the template. Example:\nDEBUG=true\nWORKER_COUNT=4",
+        verbose_name="Environment Variable Overrides"
     )
 
     # Auto cleanup (deprecated - use cleanup process instead)
@@ -150,18 +205,18 @@ class ContainerTemplate(models.Model):
     def __str__(self):
         return f"{self.name} ({self.docker_image})"
     
-    def get_environment_variables_dict(self):
+    def get_override_environment_variables_dict(self):
         """
-        Parse environment_variables_text into a dictionary.
+        Parse override_environment_variables_text into a dictionary.
         
         Returns:
-            dict: Environment variables as key-value pairs
+            dict: Override environment variables as key-value pairs
         """
         env_vars = {}
-        if not self.environment_variables_text:
+        if not self.override_environment_variables_text:
             return env_vars
             
-        for line in self.environment_variables_text.strip().split('\n'):
+        for line in self.override_environment_variables_text.strip().split('\n'):
             line = line.strip()
             if not line or line.startswith('#'):
                 continue  # Skip empty lines and comments
@@ -174,12 +229,23 @@ class ContainerTemplate(models.Model):
     
     def get_all_environment_variables(self):
         """
-        Get environment variables from the text field.
+        Get merged environment variables from template and overrides.
+        
+        Precedence: Template → Container Overrides → Job Overrides
         
         Returns:
-            dict: Environment variables as key-value pairs
+            dict: Merged environment variables as key-value pairs
         """
-        return self.get_environment_variables_dict()
+        env_vars = {}
+        
+        # Start with template variables (if linked)
+        if self.environment_template:
+            env_vars.update(self.environment_template.get_environment_variables_dict())
+        
+        # Override with container-specific variables
+        env_vars.update(self.get_override_environment_variables_dict())
+        
+        return env_vars
 
 
 

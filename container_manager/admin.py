@@ -12,6 +12,7 @@ from .models import (
     ContainerJob,
     ContainerTemplate,
     DockerHost,
+    EnvironmentVariableTemplate,
     NetworkAssignment,
 )
 
@@ -97,6 +98,54 @@ class DockerHostAdmin(admin.ModelAdmin):
     test_connection.short_description = "Test connection to selected hosts"
 
 
+@admin.register(EnvironmentVariableTemplate)
+class EnvironmentVariableTemplateAdmin(admin.ModelAdmin):
+    formfield_overrides = {
+        models.TextField: {
+            'widget': admin.widgets.AdminTextareaWidget(attrs={'rows': 10, 'cols': 80})
+        },
+    }
+    
+    list_display = (
+        "name",
+        "description",
+        "created_by",
+        "created_at",
+        "updated_at",
+    )
+    list_filter = ("created_at", "created_by")
+    search_fields = ("name", "description")
+    readonly_fields = ("created_at", "updated_at")
+    
+    fieldsets = (
+        (
+            "Basic Information",
+            {
+                "fields": ("name", "description")
+            },
+        ),
+        (
+            "Environment Variables",
+            {
+                "fields": ("environment_variables_text",),
+                "description": "Enter environment variables one per line in KEY=value format. Comments starting with # are ignored."
+            }
+        ),
+        (
+            "Metadata",
+            {
+                "fields": ("created_by", "created_at", "updated_at"),
+                "classes": ("collapse",),
+            },
+        ),
+    )
+
+    def save_model(self, request, obj, form, change):
+        if not change:  # Creating new object
+            obj.created_by = request.user
+        super().save_model(request, obj, form, change)
+
+
 @admin.register(ContainerTemplate)
 class ContainerTemplateAdmin(admin.ModelAdmin):
     formfield_overrides = {
@@ -142,8 +191,8 @@ class ContainerTemplateAdmin(admin.ModelAdmin):
         (
             "Environment Variables", 
             {
-                "fields": ("environment_variables_text",),
-                "description": "Enter environment variables one per line in KEY=value format. Comments starting with # are ignored."
+                "fields": ("environment_template", "override_environment_variables_text"),
+                "description": "Choose a base environment template and add overrides as needed. Overrides take precedence over template variables."
             }
         ),
         ("Execution Settings", {"fields": ("auto_remove",)}),
