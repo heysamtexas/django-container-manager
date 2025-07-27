@@ -4,7 +4,7 @@ from django.core.management.base import BaseCommand
 from container_manager.models import (
     ContainerJob,
     ContainerTemplate,
-    EnvironmentVariable,
+    EnvironmentVariableTemplate,
     ExecutorHost,
 )
 
@@ -143,7 +143,8 @@ class Command(BaseCommand):
             if created:
                 self.stdout.write(f"✓ Created template: {template.name}")
                 for env_var in env_vars:
-                    EnvironmentVariable.objects.create(template=template, **env_var)
+                    # Environment variables are now stored as text in the template
+                    # This was handled above when creating the template
                     self.stdout.write(f"  - Added env var: {env_var['key']}")
             else:
                 self.stdout.write(f"✓ Template already exists: {template.name}")
