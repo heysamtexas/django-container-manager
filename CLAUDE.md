@@ -50,33 +50,6 @@ uv run python manage.py test container_manager.tests.DockerServiceTest
 uv run python manage.py test container_manager
 ```
 
-### Container Job Management
-```bash
-# Process container jobs (main worker command)
-uv run python manage.py process_container_jobs
-
-# Process jobs with custom settings
-uv run python manage.py process_container_jobs --poll-interval=10 --max-jobs=5
-
-# Process jobs for specific Docker host
-uv run python manage.py process_container_jobs --host=production-host
-
-# Run cleanup of old containers
-uv run python manage.py process_container_jobs --cleanup --cleanup-hours=48
-
-# Create a container job manually
-uv run python manage.py manage_container_job create template-name host-name --name="My Job"
-
-# List container jobs
-uv run python manage.py manage_container_job list --status=running
-
-# Show job details with logs
-uv run python manage.py manage_container_job show JOB-UUID --logs
-
-# Cancel a running job
-uv run python manage.py manage_container_job cancel JOB-UUID
-```
-
 ## Code Quality Notes
 
 ### Testing Strategy (CRITICAL)
@@ -116,63 +89,43 @@ uv run python manage.py manage_container_job cancel JOB-UUID
 - **Mock appropriately**: External services should be mocked, not stubbed
 - **Test coverage**: Focus on core functionality, skip admin interface testing
 
-### Code Coverage Requirements
+### Code Coverage & Testing
 
-**Minimum Coverage Targets:**
-- **Overall codebase:** ≥75% statement coverage
-- **New features:** ≥90% coverage required before merge
-- **Management commands:** ≥80% coverage (user-facing interfaces)
-- **Core executors:** ≥85% coverage (business-critical logic)
-- **Models:** ≥70% coverage (focus on business logic, not Django internals)
+**Django Coverage Subagent:**
+This Django project uses a specialized `coverage-enforcer` subagent for all coverage analysis and enforcement. The subagent operates independently, analyzing Django test coverage and creating improvement tasks in the `tasks/` folder. You can invoke it explicitly with:
 
-**Coverage Measurement:**
-```bash
-# Generate coverage report
-uv run coverage run --source='.' manage.py test
-uv run coverage report --show-missing
-uv run coverage html  # For detailed analysis
-
-# Coverage enforcement
-uv run coverage report --fail-under=75
+```
+@coverage-enforcer analyze current Django coverage status
+@coverage-enforcer check if this PR meets Django coverage requirements  
+@coverage-enforcer create coverage tasks for [Django app/component]
 ```
 
-**Coverage Guidelines:**
-- **Focus on behavior**, not implementation details
-- **Test edge cases** and error conditions first
-- **Mock external dependencies** (APIs, file systems, networks)
-- **Skip Django admin interface** testing (low business value)
-- **Prioritize management commands** (highest user impact)
-- **Test integration points** between components
+**Django Coverage Standards:**
+- **Overall Django codebase:** ≥75% statement coverage (enforced)
+- **New Django features:** ≥90% coverage before merge
+- **Management commands:** ≥80% coverage (Django user interfaces)
+- **Core business logic:** ≥85% coverage (models, views, forms)
+- **Django models:** ≥70% coverage (business logic focus)
 
-**Coverage Exclusions:**
-- Django migrations (auto-generated)
-- Admin interface configuration
-- Settings files and configuration
-- Import-only modules
-- Debug and development utilities
+**Coverage Task System:**
+The coverage subagent creates detailed improvement tasks in `tasks/` folder using naming convention:
+- `coverage-[short-description].md` (e.g., `coverage-user-model-methods.md`)
+- Tasks include specific test suggestions and Django testing patterns
+- Prioritized by Django component criticality and business impact
 
-**Pre-Commit Coverage Check:**
-```bash
-1. uv run python manage.py test          # ALL tests must pass
-2. uv run coverage run --source='.' manage.py test
-3. uv run coverage report --fail-under=75  # Coverage must meet threshold
-4. uv run ruff check .                   # Linting must pass  
-5. uv run ruff format .                  # Code formatting
-6. git add <files>                       # Stage changes
-7. git commit -m "message"               # Only then commit
-```
+**Developer Workflow:**
+1. Write Django tests first for new features (TDD approach)
+2. Run coverage checks: `uv run coverage report --fail-under=75`
+3. Review coverage tasks created by subagent in `tasks/` folder
+4. Implement suggested tests following Django testing best practices
 
-**Coverage-Driven Development:**
-- **New features:** Write tests achieving ≥90% coverage before implementation
-- **Bug fixes:** Add test reproducing the bug, then fix (TDD approach)
-- **Refactoring:** Maintain or improve coverage during refactoring
-- **Legacy code:** Incremental coverage improvement when touching existing code
+**Django Coverage Focus:**
+- Models: Custom methods, validators, business logic
+- Views: Business logic, permissions, form handling  
+- Management commands: All options and error conditions
+- Forms: Validation logic and custom clean methods
+- Excludes: Django migrations, admin configs, settings files
 
-**Coverage Analysis:**
-- **Weekly coverage reports** to track progress
-- **Coverage regression prevention** in CI/CD
-- **Focus on uncovered critical paths** during code review
-- **Use coverage to guide test prioritization**
 
 ### Common Issues and Fixes
 
