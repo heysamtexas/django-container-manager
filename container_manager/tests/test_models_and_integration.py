@@ -14,9 +14,7 @@ from ..docker_service import (
 )
 from ..models import (
     ContainerJob,
-    ContainerTemplate,
     ExecutorHost,
-    NetworkAssignment,
 )
 
 # Additional test modules are in the tests/ package directory
@@ -61,61 +59,6 @@ class ExecutorHostModelTest(TestCase):
         self.assertTrue(tcp_host.tls_verify)
 
 
-class ContainerTemplateModelTest(TestCase):
-    """Test cases for ContainerTemplate model"""
-
-    def setUp(self):
-        self.user = User.objects.create_user(
-            username="testuser", email="test@example.com", password="testpass123"
-        )
-
-        self.template = ContainerTemplate.objects.create(
-            name="test-template",
-            description="Test template for unit tests",
-            docker_image="ubuntu:latest",
-            command='echo "Hello World"',
-            memory_limit=512,
-            cpu_limit=1.0,
-            timeout_seconds=300,
-            created_by=self.user,
-        )
-
-    def test_template_creation(self):
-        """Test container template creation"""
-        self.assertEqual(self.template.name, "test-template")
-        self.assertEqual(self.template.docker_image, "ubuntu:latest")
-        self.assertEqual(self.template.memory_limit, 512)
-        self.assertEqual(self.template.cpu_limit, 1.0)
-        self.assertEqual(self.template.timeout_seconds, 300)
-        self.assertFalse(self.template.auto_remove)  # auto_remove defaults to False
-
-    def test_template_str_representation(self):
-        """Test string representation of ContainerTemplate"""
-        expected = self.template.name
-        self.assertEqual(str(self.template), expected)
-
-    def test_template_with_environment_variables(self):
-        """Test template with environment variables text field"""
-        self.template.override_environment_variables_text = (
-            "TEST_VAR=test_value\nSECOND_VAR=second_value"
-        )
-        self.template.save()
-
-        env_vars = self.template.get_override_environment_variables_dict()
-        self.assertEqual(env_vars["TEST_VAR"], "test_value")
-        self.assertEqual(env_vars["SECOND_VAR"], "second_value")
-
-    def test_template_with_network_assignments(self):
-        """Test template with network assignments"""
-        network = NetworkAssignment.objects.create(
-            template=self.template, network_name="test-network", aliases=["test-alias"]
-        )
-
-        self.assertEqual(network.template, self.template)
-        self.assertEqual(network.network_name, "test-network")
-        self.assertEqual(network.aliases, ["test-alias"])
-
-
 class ContainerJobModelTest(TestCase):
     """Test cases for ContainerJob model"""
 
@@ -131,24 +74,19 @@ class ContainerJobModelTest(TestCase):
             is_active=True,
         )
 
-        self.template = ContainerTemplate.objects.create(
-            name="test-template",
+        self.job = ContainerJob.objects.create(
+            docker_host=self.docker_host,
             docker_image="ubuntu:latest",
             command='echo "Hello World"',
-            created_by=self.user,
-        )
-
-        self.job = ContainerJob.objects.create(
-            template=self.template,
-            docker_host=self.docker_host,
             name="test-job",
             created_by=self.user,
         )
 
     def test_job_creation(self):
         """Test container job creation"""
-        self.assertEqual(self.job.template, self.template)
         self.assertEqual(self.job.docker_host, self.docker_host)
+        self.assertEqual(self.job.docker_image, "ubuntu:latest")
+        self.assertEqual(self.job.command, 'echo "Hello World"')
         self.assertEqual(self.job.name, "test-job")
         self.assertEqual(self.job.status, "pending")
         self.assertIsInstance(self.job.id, uuid.UUID)
@@ -176,17 +114,24 @@ class ContainerJobModelTest(TestCase):
 
     def test_job_with_override_environment(self):
         """Test job with override environment variables"""
-        override_env = {"TEST_VAR": "override_value", "NEW_VAR": "new_value"}
+        override_env_text = "TEST_VAR=override_value\nNEW_VAR=new_value"
 
         job_with_override = ContainerJob.objects.create(
-            template=self.template,
             docker_host=self.docker_host,
+            docker_image="ubuntu:latest",
+            command='echo "Hello World"',
             name="override-job",
-            override_environment=override_env,
+            override_environment=override_env_text,
             created_by=self.user,
         )
 
-        self.assertEqual(job_with_override.override_environment, override_env)
+        self.assertEqual(job_with_override.override_environment, override_env_text)
+
+        # Test that the parsed environment variables work correctly
+        expected_env = {"TEST_VAR": "override_value", "NEW_VAR": "new_value"}
+        self.assertEqual(
+            job_with_override.get_override_environment_variables_dict(), expected_env
+        )
 
 
 class DockerServiceTest(TestCase):
@@ -204,19 +149,10 @@ class DockerServiceTest(TestCase):
             is_active=True,
         )
 
-        self.template = ContainerTemplate.objects.create(
-            name="test-template",
+        self.job = ContainerJob.objects.create(
+            docker_host=self.docker_host,
             docker_image="ubuntu:latest",
             command='echo "Hello World"',
-            memory_limit=512,
-            cpu_limit=1.0,
-            timeout_seconds=300,
-            created_by=self.user,
-        )
-
-        self.job = ContainerJob.objects.create(
-            template=self.template,
-            docker_host=self.docker_host,
             name="test-job",
             created_by=self.user,
         )
@@ -279,9 +215,9 @@ class DockerServiceTest(TestCase):
         mock_client.images.pull.return_value = None
         mock_get_client.return_value = mock_client
 
-        # Add environment variable to template
-        self.template.override_environment_variables_text = "TEST_VAR=test_value"
-        self.template.save()
+        # Add environment variable to job
+        self.job.override_environment = "TEST_VAR=test_value"
+        self.job.save()
 
         container_id = self.docker_service.create_container(self.job)
 
@@ -346,56 +282,6 @@ class ManagementCommandTest(TestCase):
             is_active=True,
         )
 
-        self.template = ContainerTemplate.objects.create(
-            name="test-template",
-            docker_image="ubuntu:latest",
-            command='echo "Hello World"',
-            created_by=self.user,
-        )
-
-    def test_manage_container_job_create(self):
-        """Test creating a job via management command"""
-        from io import StringIO
-
-        out = StringIO()
-        call_command(
-            "manage_container_job",
-            "create",
-            "test-template",
-            "test-host",
-            "--name",
-            "created-job",
-            stdout=out,
-        )
-
-        # Check if job was created
-        job = ContainerJob.objects.get(name="created-job")
-        self.assertEqual(job.template, self.template)
-        self.assertEqual(job.docker_host, self.docker_host)
-        self.assertEqual(job.status, "pending")
-
-        # Check command output
-        output = out.getvalue()
-        self.assertIn("Created job", output)
-
-    def test_manage_container_job_list(self):
-        """Test listing jobs via management command"""
-        # Create a test job
-        ContainerJob.objects.create(
-            template=self.template,
-            docker_host=self.docker_host,
-            name="list-test-job",
-            created_by=self.user,
-        )
-
-        from io import StringIO
-
-        out = StringIO()
-        call_command("manage_container_job", "list", stdout=out)
-
-        output = out.getvalue()
-        self.assertIn("list-test-job", output)
-        self.assertIn("pending", output)
 
 
 class IntegrationTest(TestCase):
@@ -413,24 +299,13 @@ class IntegrationTest(TestCase):
             is_active=True,
         )
 
-        self.template = ContainerTemplate.objects.create(
-            name="integration-template",
-            docker_image="ubuntu:latest",
-            command='echo "Integration test"',
-            timeout_seconds=60,
-            created_by=self.user,
-        )
-
-        # Add environment variable
-        self.template.override_environment_variables_text = "TEST_ENV=integration_value"
-        self.template.save()
-
     def test_complete_job_workflow(self):
         """Test complete job creation and execution workflow"""
         # Create job
         job = ContainerJob.objects.create(
-            template=self.template,
             docker_host=self.docker_host,
+            docker_image="ubuntu:latest",
+            command='echo "Hello World"',
             name="integration-job",
             created_by=self.user,
         )

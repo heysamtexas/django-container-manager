@@ -253,8 +253,8 @@ class DockerExecutor(ContainerExecutor):
         if job.status == "running" and not job.get_execution_identifier():
             errors.append("Execution ID required for running Docker jobs")
 
-        # Docker-specific validation: template image is required
-        if job.template and not job.template.docker_image:
+        # Docker-specific validation: image is required
+        if not job.docker_image:
             errors.append("Docker image is required for Docker executor")
 
         return errors
@@ -292,8 +292,8 @@ class DockerExecutor(ContainerExecutor):
         if job.status != "pending":
             raise ExecutorError(f"Invalid status: {job.status}")
 
-        if not job.template:
-            raise ExecutorError("No template")
+        if not job.docker_image:
+            raise ExecutorError("No docker image specified")
 
         if not job.docker_host:
             raise ExecutorError("No docker_host")
@@ -377,78 +377,67 @@ class DockerExecutor(ContainerExecutor):
         """Build environment variables for container"""
         environment = {}
 
-        # Add template environment variables
-        environment.update(job.template.get_all_environment_variables())
-
-        # Add job override environment variables
-        if job.override_environment:
-            environment.update(job.override_environment)
+        # Add job environment variables (includes template and overrides)
+        environment.update(job.get_all_environment_variables())
 
         return environment
 
     def _build_container_config(self, job: ContainerJob) -> dict:
         """Build complete container configuration"""
-        template = job.template
-
         container_config = {
-            "image": template.docker_image,
-            "command": job.override_command or template.command,
+            "image": job.docker_image,
+            "command": job.command,
             "environment": self._build_container_environment(job),
             "labels": self._build_labels(job),
             "detach": True,
         }
 
         # Add resource limits
-        self._add_resource_limits(container_config, template)
+        self._add_resource_limits(container_config, job)
 
         # Add primary network
-        self._add_primary_network(container_config, template)
+        self._add_primary_network(container_config, job)
 
         return container_config
 
-    def _add_resource_limits(self, container_config: dict, template) -> None:
+    def _add_resource_limits(self, container_config: dict, job) -> None:
         """Add CPU and memory limits to container configuration"""
-        if template.memory_limit:
-            container_config["mem_limit"] = f"{template.memory_limit}m"
+        if job.memory_limit:
+            container_config["mem_limit"] = f"{job.memory_limit}m"
 
-        if template.cpu_limit:
-            container_config["cpu_quota"] = int(template.cpu_limit * 100000)
+        if job.cpu_limit:
+            container_config["cpu_quota"] = int(job.cpu_limit * 100000)
             container_config["cpu_period"] = 100000
 
-    def _add_primary_network(self, container_config: dict, template) -> None:
+    def _add_primary_network(self, container_config: dict, job) -> None:
         """Add primary network to container configuration"""
-        networks = self._get_network_names(template)
+        networks = job.get_network_names()
         if networks:
             container_config["network"] = networks[0]
 
-    def _get_network_names(self, template) -> list:
-        """Get list of network names from template"""
-        return [
-            network_assignment.network_name
-            for network_assignment in template.network_assignments.all()
-        ]
+    def _get_network_names(self, job) -> list:
+        """Get list of network names from job configuration"""
+        return job.get_network_names()
 
     def _ensure_image_available(self, client, job: ContainerJob) -> None:
         """Ensure Docker image is available locally"""
-        template = job.template
-
         try:
-            client.images.get(template.docker_image)
-            logger.debug(f"Image {template.docker_image} already exists locally")
+            client.images.get(job.docker_image)
+            logger.debug(f"Image {job.docker_image} already exists locally")
         except NotFound:
             if self._should_pull_image(job.docker_host):
-                logger.info(f"Pulling image {template.docker_image}...")
-                client.images.pull(template.docker_image)
-                logger.info(f"Successfully pulled image {template.docker_image}")
+                logger.info(f"Pulling image {job.docker_image}...")
+                client.images.pull(job.docker_image)
+                logger.info(f"Successfully pulled image {job.docker_image}")
             else:
                 raise ExecutorError(
-                    f"Image {template.docker_image} not found locally and "
+                    f"Image {job.docker_image} not found locally and "
                     "auto-pull is disabled"
                 ) from None
 
     def _setup_additional_networks(self, client, job: ContainerJob, container) -> None:
         """Connect container to additional networks beyond the primary"""
-        networks = self._get_network_names(job.template)
+        networks = job.get_network_names()
 
         # Connect to additional networks (skip first one as it's already set as primary)
         for network_name in networks[1:]:
@@ -486,19 +475,16 @@ class DockerExecutor(ContainerExecutor):
 
     def _build_labels(self, job: ContainerJob) -> dict[str, str]:
         """Build comprehensive labels for container discovery and management"""
-        template = job.template
-
         labels = {
             # Django container management labels
             "django.container_manager.job_id": str(job.id),
-            "django.container_manager.template_id": str(template.id),
-            "django.container_manager.template_name": template.name,
+            "django.container_manager.job_name": job.name or "unnamed",
             "django.container_manager.host_id": str(job.docker_host.id),
             "django.container_manager.host_name": job.docker_host.name,
             "django.container_manager.created_at": job.created_at.isoformat(),
             # Standard container labels
             "com.docker.compose.project": "django-container-manager",
-            "com.docker.compose.service": template.name,
+            "com.docker.compose.service": job.name or "job",
             # Metadata labels
             "version": "1.0",
             "managed_by": "django-container-manager",

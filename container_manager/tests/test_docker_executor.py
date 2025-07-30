@@ -14,7 +14,6 @@ from container_manager.executors.exceptions import (
 )
 from container_manager.models import (
     ContainerJob,
-    ContainerTemplate,
     ExecutorHost,
 )
 
@@ -39,23 +38,16 @@ class DockerExecutorTest(TestCase):
             executor_type="docker",
         )
 
-        # Create test template
-        self.template = ContainerTemplate.objects.create(
-            name="test-template",
-            description="Test template for Docker testing",
+        # Create test job with direct configuration
+        self.job = ContainerJob.objects.create(
+            docker_host=self.docker_host,
+            name="Test Job",
+            description="Test job for Docker testing",
             docker_image="alpine:latest",
             command='echo "test"',
             timeout_seconds=300,
             memory_limit=128,
             cpu_limit=0.5,
-            created_by=self.user,
-        )
-
-        # Create test job
-        self.job = ContainerJob.objects.create(
-            template=self.template,
-            docker_host=self.docker_host,
-            name="Test Job",
             created_by=self.user,
         )
 
@@ -112,55 +104,53 @@ class DockerExecutorTest(TestCase):
         except Exception as e:
             self.fail(f"_validate_job raised {e} unexpectedly")
 
-    def test_validate_job_missing_template(self):
-        """Test _validate_job with missing template"""
-        # Create job normally first, then set template_id to None manually
-        job_without_template = ContainerJob.objects.create(
-            template=self.template,
+    def test_validate_job_missing_docker_image(self):
+        """Test _validate_job with missing docker_image - should fail"""
+        job_no_image = ContainerJob.objects.create(
             docker_host=self.docker_host,
-            name="Invalid Job",
+            name="No Image Job",
+            docker_image="",  # Empty image
+            created_by=self.user,
         )
-        job_without_template.template_id = None
 
-        with self.assertRaises((ExecutorError, Exception)) as context:
-            self.executor._validate_job(job_without_template)
+        # The _validate_job should now check for docker_image and fail
+        with self.assertRaises(ExecutorError) as context:
+            self.executor._validate_job(job_no_image)
 
-        # Django may raise RelatedObjectDoesNotExist, which is also expected
+        self.assertIn("docker image", str(context.exception).lower())
 
     def test_validate_job_missing_docker_host(self):
         """Test _validate_job with missing docker_host"""
         # Create job normally first, then set docker_host_id to None manually
         job_without_host = ContainerJob.objects.create(
-            template=self.template,
             docker_host=self.docker_host,
             name="Invalid Job",
+            docker_image="alpine:latest",
+            created_by=self.user,
         )
         job_without_host.docker_host_id = None
 
-        with self.assertRaises((ExecutorError, Exception)) as context:
+        with self.assertRaises((ExecutorError, Exception)):
             self.executor._validate_job(job_without_host)
 
         # Django may raise RelatedObjectDoesNotExist, which is also expected
 
-    def test_validate_job_missing_docker_image(self):
-        """Test _validate_job with missing docker_image - still passes basic validation"""
-        template_no_image = ContainerTemplate.objects.create(
-            name="no-image-template",
-            docker_image="",  # Empty image
+    def test_validate_job_missing_command(self):
+        """Test _validate_job with missing command - basic validation still passes"""
+        job_no_command = ContainerJob.objects.create(
+            docker_host=self.docker_host,
+            name="No Command Job",
+            docker_image="alpine:latest",
+            command="",  # Empty command
             created_by=self.user,
         )
-        job_no_image = ContainerJob.objects.create(
-            template=template_no_image,
-            docker_host=self.docker_host,
-            name="No Image Job",
-        )
 
-        # The basic _validate_job doesn't check for docker_image,
-        # that's checked during container creation
+        # The basic _validate_job doesn't check for command,
+        # that's executor-specific validation
         try:
-            self.executor._validate_job(job_no_image)
+            self.executor._validate_job(job_no_command)
         except ExecutorError:
-            self.fail("_validate_job should not fail for missing docker_image")
+            self.fail("_validate_job should not fail for missing command")
 
     def test_split_docker_logs_stdout_only(self):
         """Test _split_docker_logs with stdout only"""
@@ -394,17 +384,18 @@ class DockerExecutorTest(TestCase):
 
     def test_validate_job_public_method_invalid(self):
         """Test validate_job (public method) with invalid job"""
-        # Create job normally first, then set template_id to None manually
-        job_without_template = ContainerJob.objects.create(
-            template=self.template,
+        # Create job normally first, then set docker_host_id to None manually
+        job_without_host = ContainerJob.objects.create(
             docker_host=self.docker_host,
             name="Invalid Job",
+            docker_image="alpine:latest",
+            created_by=self.user,
         )
-        job_without_template.template_id = None
+        job_without_host.docker_host_id = None
 
         # This should either return False or raise an exception, both are handled
         try:
-            is_valid, message = self.executor.validate_job(job_without_template)
+            is_valid, message = self.executor.validate_job(job_without_host)
             self.assertFalse(is_valid)
         except Exception:
             # Django ORM exception is also acceptable for this test
@@ -514,7 +505,7 @@ class DockerExecutorTest(TestCase):
 
     def test_build_container_environment_with_overrides(self):
         """Test _build_container_environment with job environment overrides"""
-        self.job.override_environment = {"CUSTOM_VAR": "custom_value", "DEBUG": "true"}
+        self.job.override_environment = "CUSTOM_VAR=custom_value\nDEBUG=true"
         self.job.save()
 
         env = self.executor._build_container_environment(self.job)
@@ -534,7 +525,7 @@ class DockerExecutorTest(TestCase):
 
     def test_build_container_config_with_command_override(self):
         """Test _build_container_config with command override"""
-        self.job.override_command = "echo 'overridden command'"
+        self.job.command = "echo 'overridden command'"
         self.job.save()
 
         config = self.executor._build_container_config(self.job)
@@ -543,8 +534,8 @@ class DockerExecutorTest(TestCase):
 
     def test_build_container_config_with_working_directory(self):
         """Test _build_container_config with working directory"""
-        self.template.working_directory = "/app"
-        self.template.save()
+        self.job.working_directory = "/app"
+        self.job.save()
 
         config = self.executor._build_container_config(self.job)
 
@@ -559,7 +550,7 @@ class DockerExecutorTest(TestCase):
 
         expected_labels = [
             "django.container_manager.job_id",
-            "django.container_manager.template_name",
+            "django.container_manager.job_name",
             "django.container_manager.created_by",
         ]
 
@@ -567,9 +558,7 @@ class DockerExecutorTest(TestCase):
             self.assertIn(label, labels)
 
         self.assertEqual(labels["django.container_manager.job_id"], str(self.job.id))
-        self.assertEqual(
-            labels["django.container_manager.template_name"], self.template.name
-        )
+        self.assertEqual(labels["django.container_manager.job_name"], self.job.name)
 
     def test_should_pull_image_true(self):
         """Test _should_pull_image returns True when auto_pull_images is True"""

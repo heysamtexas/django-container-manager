@@ -11,17 +11,9 @@ from django.utils.html import format_html
 from .docker_service import DockerConnectionError, docker_service
 from .models import (
     ContainerJob,
-    ContainerTemplate,
     EnvironmentVariableTemplate,
     ExecutorHost,
-    NetworkAssignment,
 )
-
-
-class NetworkAssignmentInline(admin.TabularInline):
-    model = NetworkAssignment
-    extra = 1
-    fields = ("network_name", "aliases")
 
 
 @admin.register(ExecutorHost)
@@ -142,72 +134,28 @@ class EnvironmentVariableTemplateAdmin(admin.ModelAdmin):
         super().save_model(request, obj, form, change)
 
 
-@admin.register(ContainerTemplate)
-class ContainerTemplateAdmin(admin.ModelAdmin):
-    formfield_overrides: ClassVar = {
-        models.TextField: {
-            "widget": admin.widgets.AdminTextareaWidget(attrs={"rows": 8, "cols": 80})
-        },
-    }
-    list_display = (
-        "name",
-        "docker_image",
-        "memory_limit",
-        "cpu_limit",
-        "timeout_seconds",
-        "auto_remove",
-        "created_at",
-    )
-    list_filter = ("auto_remove", "created_at", "created_by")
-    search_fields = ("name", "docker_image", "description")
-    readonly_fields = ("created_at", "updated_at")
+# ContainerTemplateAdmin removed - templates merged into ContainerJob
+# @admin.register(ContainerTemplate)
+# class ContainerTemplateAdmin(admin.ModelAdmin):
+#     formfield_overrides: ClassVar = {
+#         models.TextField: {
+#             "widget": admin.widgets.AdminTextareaWidget(attrs={"rows": 8, "cols": 80})
+#         },
+#     }
+#     list_display = (
+#         "name",
+#         "docker_image",
+#         "memory_limit",
+#         "cpu_limit",
+#         "timeout_seconds",
+#         "auto_remove",
+#         "created_at",
+#     )
+#     list_filter = ("auto_remove", "created_at", "created_by")
+#     search_fields = ("name", "docker_image", "description")
+#     readonly_fields = ("created_at", "updated_at")
 
-    inlines: ClassVar = [NetworkAssignmentInline]
-
-    fieldsets = (
-        (
-            "Basic Information",
-            {
-                "fields": (
-                    "name",
-                    "description",
-                    "docker_image",
-                    "command",
-                    "working_directory",
-                )
-            },
-        ),
-        (
-            "Resource Limits",
-            {
-                "fields": ("memory_limit", "cpu_limit", "timeout_seconds"),
-                "classes": ("collapse",),
-            },
-        ),
-        (
-            "Environment Variables",
-            {
-                "fields": (
-                    "environment_template",
-                    "override_environment_variables_text",
-                ),
-                "description": "Choose a base environment template and add overrides as needed. Overrides take precedence over template variables.",
-            },
-        ),
-        ("Execution Settings", {"fields": ("auto_remove",)}),
-        (
-            "Metadata",
-            {
-                "fields": ("created_by", "created_at", "updated_at"),
-                "classes": ("collapse",),
-            },
-        ),
-    )
-
-    def save_model(self, request, obj, form, change):
-        if not change:  # Creating new object
-            obj.created_by = request.user
-        super().save_model(request, obj, form, change)
+# ContainerTemplateAdmin fieldsets and methods removed
 
 
 @admin.register(ContainerJob)
@@ -215,18 +163,18 @@ class ContainerJobAdmin(admin.ModelAdmin):
     list_display = (
         "id",
         "job_name",
-        "template",
+        "docker_image",
         "docker_host",
         "executor_type",
         "status",
         "duration_display",
         "created_at",
     )
-    list_filter = ("status", "executor_type", "docker_host", "template", "created_at")
+    list_filter = ("status", "executor_type", "docker_host", "created_at")
     search_fields = (
         "id",
         "name",
-        "template__name",
+        "docker_image",
         "docker_host__name",
     )
     readonly_fields = (
@@ -250,7 +198,7 @@ class ContainerJobAdmin(admin.ModelAdmin):
     fieldsets = (
         (
             "Job Information",
-            {"fields": ("id", "template", "docker_host", "name", "status")},
+            {"fields": ("id", "docker_image", "docker_host", "name", "status")},
         ),
         (
             "Executor Configuration",
@@ -263,9 +211,16 @@ class ContainerJobAdmin(admin.ModelAdmin):
             },
         ),
         (
+            "Container Configuration",
+            {
+                "fields": ("command", "environment_template", "network_configuration"),
+                "classes": ("collapse",),
+            },
+        ),
+        (
             "Execution Overrides",
             {
-                "fields": ("override_command", "override_environment"),
+                "fields": ("override_environment",),
                 "classes": ("collapse",),
             },
         ),
@@ -320,7 +275,7 @@ class ContainerJobAdmin(admin.ModelAdmin):
     ]
 
     def job_name(self, obj):
-        return obj.name or obj.template.name
+        return obj.name or "Unnamed Job"
 
     job_name.short_description = "Name"
 
@@ -427,10 +382,14 @@ class ContainerJobAdmin(admin.ModelAdmin):
         created_count = 0
         for job in queryset:
             ContainerJob.objects.create(
-                template=job.template,
                 docker_host=job.docker_host,
-                name=f"{job.name or job.template.name} (Copy)",
-                override_command=job.override_command,
+                name=f"{job.name or 'Unnamed Job'} (Copy)",
+                docker_image=job.docker_image,
+                command=job.command,
+                environment_template=job.environment_template,
+                memory_limit=job.memory_limit,
+                cpu_limit=job.cpu_limit,
+                timeout_seconds=job.timeout_seconds,
                 override_environment=job.override_environment,
                 created_by=request.user,
             )
@@ -699,13 +658,12 @@ class ContainerJobAdmin(admin.ModelAdmin):
             [
                 "Job ID",
                 "Name",
-                "Template",
+                "Docker Image",
                 "Executor Type",
                 "Status",
                 "Duration (seconds)",
                 "Cost",
                 "Created At",
-                "Routing Reason",
             ]
         )
 
@@ -716,14 +674,13 @@ class ContainerJobAdmin(admin.ModelAdmin):
             writer.writerow(
                 [
                     str(job.id),
-                    job.name or job.template.name,
-                    job.template.name,
+                    job.name or "Unnamed Job",
+                    job.docker_image,
                     job.executor_type,
                     job.status,
                     duration,
                     cost,
                     job.created_at.isoformat(),
-                    "N/A",  # routing_reason removed
                 ]
             )
 

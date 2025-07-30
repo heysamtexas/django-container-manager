@@ -47,12 +47,7 @@ class ExecutorFactory:
         # Update job with routing info
         job.docker_host = selected_host
         job.executor_type = selected_host.executor_type
-        job.routing_reason = (
-            "Default fallback to docker"
-            if selected_host.executor_type == "docker"
-            else f"Routed to {selected_host.executor_type}"
-        )
-        job.save(update_fields=["docker_host", "executor_type", "routing_reason"])
+        job.save(update_fields=["docker_host", "executor_type"])
 
         return selected_host.executor_type
 

@@ -7,7 +7,7 @@ from django.test import TestCase, override_settings
 
 from ..executors.exceptions import ExecutorConfigurationError, ExecutorResourceError
 from ..executors.factory import ExecutorFactory
-from ..models import ContainerJob, ContainerTemplate, ExecutorHost
+from ..models import ContainerJob, ExecutorHost
 
 
 class ExecutorFactoryTest(TestCase):
@@ -31,46 +31,16 @@ class ExecutorFactoryTest(TestCase):
             current_job_count=0,
         )
 
-        # Create test templates
-        self.regular_template = ContainerTemplate.objects.create(
-            name="regular-job",
-            docker_image="nginx:latest",
-            memory_limit=512,
-            cpu_limit=1.0,
-            timeout_seconds=600,
-        )
-
-        self.high_memory_template = ContainerTemplate.objects.create(
-            name="ml-training",
-            docker_image="tensorflow/tensorflow:latest",
-            memory_limit=16384,  # 16GB
-            cpu_limit=8.0,
-            timeout_seconds=7200,
-        )
-
-        self.batch_template = ContainerTemplate.objects.create(
-            name="batch-processor",
-            docker_image="python:3.9",
-            memory_limit=1024,
-            cpu_limit=2.0,
-            timeout_seconds=1800,
-        )
-
-        self.test_template = ContainerTemplate.objects.create(
-            name="test-template",
-            docker_image="alpine:latest",
-            memory_limit=128,
-            cpu_limit=0.5,
-            timeout_seconds=300,
-        )
-
         # Create factory instance
         self.factory = ExecutorFactory()
 
     def test_route_job_default_docker(self):
         """Test routing to default Docker executor"""
         job = ContainerJob.objects.create(
-            template=self.regular_template,
+            docker_image="nginx:latest",
+            memory_limit=512,
+            cpu_limit=1.0,
+            timeout_seconds=600,
             docker_host=self.docker_host,
             created_by=self.user,
         )
@@ -78,7 +48,6 @@ class ExecutorFactoryTest(TestCase):
         executor_type = self.factory.route_job_to_executor_type(job)
 
         self.assertEqual(executor_type, "docker")
-        self.assertEqual(job.routing_reason, "Default fallback to docker")
 
     @override_settings(
         EXECUTOR_ROUTING_RULES=[
@@ -102,7 +71,10 @@ class ExecutorFactoryTest(TestCase):
         factory = ExecutorFactory()
 
         job = ContainerJob.objects.create(
-            template=self.high_memory_template,
+            docker_image="tensorflow/tensorflow:latest",
+            memory_limit=16384,  # 16GB
+            cpu_limit=8.0,
+            timeout_seconds=7200,
             docker_host=self.docker_host,
             created_by=self.user,
         )
@@ -111,14 +83,13 @@ class ExecutorFactoryTest(TestCase):
         executor_type = factory.route_job_to_executor_type(job)
 
         self.assertEqual(executor_type, "docker")
-        self.assertEqual(job.routing_reason, "Default fallback to docker")
 
     @override_settings(
         EXECUTOR_ROUTING_RULES=[
             {
-                "condition": 'template.name.startswith("batch-")',
+                "condition": 'name.startswith("batch-")',
                 "executor": "cloudrun",
-                "reason": "Batch processing template",
+                "reason": "Batch processing job",
                 "priority": 1,
             }
         ],
@@ -129,13 +100,17 @@ class ExecutorFactoryTest(TestCase):
             "mock": {"enabled": True},
         },
     )
-    def test_route_job_template_name_rule(self):
-        """Test routing based on template name rule"""
+    def test_route_job_name_rule(self):
+        """Test routing based on job name rule"""
         # Create factory with overridden settings
         factory = ExecutorFactory()
 
         job = ContainerJob.objects.create(
-            template=self.batch_template,
+            name="batch-processor",
+            docker_image="python:3.9",
+            memory_limit=1024,
+            cpu_limit=2.0,
+            timeout_seconds=1800,
             docker_host=self.docker_host,
             created_by=self.user,
         )
@@ -144,7 +119,6 @@ class ExecutorFactoryTest(TestCase):
         executor_type = factory.route_job_to_executor_type(job)
 
         self.assertEqual(executor_type, "docker")
-        self.assertEqual(job.routing_reason, "Default fallback to docker")
 
     @override_settings(
         EXECUTOR_ROUTING_RULES=[
@@ -171,7 +145,10 @@ class ExecutorFactoryTest(TestCase):
         self.user.groups.add(self.premium_group)
 
         job = ContainerJob.objects.create(
-            template=self.regular_template,
+            docker_image="nginx:latest",
+            memory_limit=512,
+            cpu_limit=1.0,
+            timeout_seconds=600,
             docker_host=self.docker_host,
             created_by=self.user,
         )
@@ -180,7 +157,6 @@ class ExecutorFactoryTest(TestCase):
         executor_type = factory.route_job_to_executor_type(job)
 
         self.assertEqual(executor_type, "docker")
-        self.assertEqual(job.routing_reason, "Default fallback to docker")
 
     def test_route_job_no_available_executors(self):
         """Test error when no executors are available"""
@@ -189,7 +165,10 @@ class ExecutorFactoryTest(TestCase):
         self.docker_host.save()
 
         job = ContainerJob.objects.create(
-            template=self.regular_template,
+            docker_image="nginx:latest",
+            memory_limit=512,
+            cpu_limit=1.0,
+            timeout_seconds=600,
             docker_host=self.docker_host,
             created_by=self.user,
         )
@@ -200,7 +179,10 @@ class ExecutorFactoryTest(TestCase):
     def test_get_executor_docker(self):
         """Test getting Docker executor instance"""
         job = ContainerJob.objects.create(
-            template=self.regular_template,
+            docker_image="nginx:latest",
+            memory_limit=512,
+            cpu_limit=1.0,
+            timeout_seconds=600,
             docker_host=self.docker_host,
             executor_type="docker",
             created_by=self.user,
@@ -214,7 +196,10 @@ class ExecutorFactoryTest(TestCase):
     def test_get_executor_mock(self):
         """Test getting Mock executor instance"""
         job = ContainerJob.objects.create(
-            template=self.test_template,
+            docker_image="alpine:latest",
+            memory_limit=128,
+            cpu_limit=0.5,
+            timeout_seconds=300,
             docker_host=self.docker_host,
             executor_type="mock",
             created_by=self.user,
@@ -236,7 +221,10 @@ class ExecutorFactoryTest(TestCase):
         )
 
         job = ContainerJob.objects.create(
-            template=self.regular_template,
+            docker_image="nginx:latest",
+            memory_limit=512,
+            cpu_limit=1.0,
+            timeout_seconds=600,
             docker_host=cloudrun_host,
             executor_type="cloudrun",
             created_by=self.user,
@@ -261,7 +249,10 @@ class ExecutorFactoryTest(TestCase):
         )
 
         job = ContainerJob.objects.create(
-            template=self.high_memory_template,
+            docker_image="tensorflow/tensorflow:latest",
+            memory_limit=16384,  # 16GB
+            cpu_limit=8.0,
+            timeout_seconds=7200,
             docker_host=cloudrun_host,
             executor_type="cloudrun",
             created_by=self.user,
@@ -280,7 +271,10 @@ class ExecutorFactoryTest(TestCase):
     def test_get_executor_unknown_type(self):
         """Test error for unknown executor type"""
         job = ContainerJob.objects.create(
-            template=self.regular_template,
+            docker_image="nginx:latest",
+            memory_limit=512,
+            cpu_limit=1.0,
+            timeout_seconds=600,
             docker_host=self.docker_host,
             executor_type="unknown",
             created_by=self.user,
@@ -292,7 +286,10 @@ class ExecutorFactoryTest(TestCase):
     def test_get_executor_no_type(self):
         """Test error when job has no executor type"""
         job = ContainerJob.objects.create(
-            template=self.regular_template,
+            docker_image="nginx:latest",
+            memory_limit=512,
+            cpu_limit=1.0,
+            timeout_seconds=600,
             docker_host=self.docker_host,
             created_by=self.user,
         )
@@ -315,14 +312,20 @@ class ExecutorFactoryTest(TestCase):
     def test_executor_caching(self):
         """Test that executor instances are cached"""
         job1 = ContainerJob.objects.create(
-            template=self.regular_template,
+            docker_image="nginx:latest",
+            memory_limit=512,
+            cpu_limit=1.0,
+            timeout_seconds=600,
             docker_host=self.docker_host,
             executor_type="docker",
             created_by=self.user,
         )
 
         job2 = ContainerJob.objects.create(
-            template=self.regular_template,
+            docker_image="nginx:latest",
+            memory_limit=512,
+            cpu_limit=1.0,
+            timeout_seconds=600,
             docker_host=self.docker_host,
             executor_type="docker",
             created_by=self.user,
@@ -337,7 +340,10 @@ class ExecutorFactoryTest(TestCase):
     def test_clear_cache(self):
         """Test clearing executor cache"""
         job = ContainerJob.objects.create(
-            template=self.regular_template,
+            docker_image="nginx:latest",
+            memory_limit=512,
+            cpu_limit=1.0,
+            timeout_seconds=600,
             docker_host=self.docker_host,
             executor_type="docker",
             created_by=self.user,
@@ -379,7 +385,10 @@ class ExecutorFactoryTest(TestCase):
         ]
 
         job = ContainerJob.objects.create(
-            template=self.regular_template,
+            docker_image="nginx:latest",
+            memory_limit=512,
+            cpu_limit=1.0,
+            timeout_seconds=600,
             docker_host=self.docker_host,
             created_by=self.user,
         )

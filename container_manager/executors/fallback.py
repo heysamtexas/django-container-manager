@@ -451,7 +451,9 @@ class GracefulDegradationManager:
         strategies = []
 
         # High priority jobs get resource reduction first
-        if job.template.memory_limit > HIGH_MEMORY_THRESHOLD_MB:  # More than 1GB
+        if (
+            job.memory_limit and job.memory_limit > HIGH_MEMORY_THRESHOLD_MB
+        ):  # More than 1GB
             strategies.append("reduce_resources")
 
         # Non-critical jobs can be delayed
@@ -479,8 +481,12 @@ class GracefulDegradationManager:
         Returns:
             Tuple of (success, message)
         """
-        original_memory = job.template.memory_limit
-        original_cpu = job.template.cpu_limit
+        original_memory = job.memory_limit
+        original_cpu = job.cpu_limit
+
+        # Only reduce if we have values to work with
+        if not original_memory:
+            return False, "No memory limit to reduce"
 
         # Reduce memory by 25%
         new_memory = int(original_memory * 0.75)

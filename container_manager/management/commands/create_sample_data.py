@@ -3,7 +3,7 @@ from django.core.management.base import BaseCommand
 
 from container_manager.models import (
     ContainerJob,
-    ContainerTemplate,
+    EnvironmentVariableTemplate,
     ExecutorHost,
 )
 
@@ -36,8 +36,8 @@ class Command(BaseCommand):
         admin_user = self._get_admin_user()
         self._create_sample_templates(admin_user)
 
-        # Create sample job
-        self._create_sample_job(docker_host, admin_user)
+        # Create sample jobs
+        self._create_sample_jobs(docker_host, admin_user)
 
         # Show completion message
         self._show_completion_message()
@@ -87,7 +87,6 @@ class Command(BaseCommand):
                 "docker_image": "alpine:latest",
                 "command": 'echo "Hello from Alpine Linux! Container is working correctly."',
                 "timeout_seconds": 60,
-                "auto_remove": False,
                 "env_vars": [],
             },
             {
@@ -103,7 +102,6 @@ class Command(BaseCommand):
                 "timeout_seconds": 300,
                 "memory_limit": 128,
                 "cpu_limit": 0.5,
-                "auto_remove": False,
                 "env_vars": [
                     {"key": "TEST_VAR", "value": "Hello World", "is_secret": False},
                     {"key": "PYTHONUNBUFFERED", "value": "1", "is_secret": False},
@@ -120,7 +118,6 @@ class Command(BaseCommand):
                 ),
                 "timeout_seconds": 120,
                 "memory_limit": 64,
-                "auto_remove": False,
                 "env_vars": [
                     {"key": "TEST_ENV", "value": "production", "is_secret": False},
                 ],
@@ -128,38 +125,83 @@ class Command(BaseCommand):
         ]
 
     def _create_sample_templates(self, admin_user):
-        """Create sample container templates"""
+        """Create sample environment variable templates"""
         templates_data = self._get_sample_templates_data()
 
         for template_data in templates_data:
-            env_vars = template_data.pop("env_vars", [])
+            env_vars = template_data.get("env_vars", [])
 
-            template, created = ContainerTemplate.objects.get_or_create(
-                name=template_data["name"],
-                defaults={**template_data, "created_by": admin_user},
+            # Only create environment variable template if there are env vars
+            if env_vars:
+                env_template_name = f"{template_data['name']}-env"
+
+                # Convert env_vars list to text format
+                env_text_lines = []
+                for env_var in env_vars:
+                    env_text_lines.append(f"{env_var['key']}={env_var['value']}")
+                env_text = "\n".join(env_text_lines)
+
+                env_template, created = (
+                    EnvironmentVariableTemplate.objects.get_or_create(
+                        name=env_template_name,
+                        defaults={
+                            "description": f"Environment variables for {template_data['name']}",
+                            "environment_variables_text": env_text,
+                            "created_by": admin_user,
+                        },
+                    )
+                )
+
+                if created:
+                    self.stdout.write(
+                        f"✓ Created environment template: {env_template.name}"
+                    )
+                    for env_var in env_vars:
+                        self.stdout.write(f"  - Added env var: {env_var['key']}")
+                else:
+                    self.stdout.write(
+                        f"✓ Environment template already exists: {env_template.name}"
+                    )
+
+    def _create_sample_jobs(self, docker_host, admin_user):
+        """Create sample jobs for demonstration"""
+        templates_data = self._get_sample_templates_data()
+
+        for template_data in templates_data:
+            # Get environment template if it exists
+            env_template = None
+            if template_data.get("env_vars"):
+                env_template_name = f"{template_data['name']}-env"
+                try:
+                    env_template = EnvironmentVariableTemplate.objects.get(
+                        name=env_template_name
+                    )
+                except EnvironmentVariableTemplate.DoesNotExist:
+                    pass
+
+            # Create job with direct field specification
+            job_name = f"Sample {template_data['name'].replace('-', ' ').title()} Job"
+            job, created = ContainerJob.objects.get_or_create(
+                docker_host=docker_host,
+                name=job_name,
+                defaults={
+                    "created_by": admin_user,
+                    "description": template_data["description"],
+                    "docker_image": template_data["docker_image"],
+                    "command": template_data["command"],
+                    "timeout_seconds": template_data["timeout_seconds"],
+                    "memory_limit": template_data.get("memory_limit"),
+                    "cpu_limit": template_data.get("cpu_limit"),
+                    "environment_template": env_template,
+                },
             )
 
-            if created:
-                self.stdout.write(f"✓ Created template: {template.name}")
-                for env_var in env_vars:
-                    # Environment variables are now stored as text in the template
-                    # This was handled above when creating the template
-                    self.stdout.write(f"  - Added env var: {env_var['key']}")
-            else:
-                self.stdout.write(f"✓ Template already exists: {template.name}")
-
-    def _create_sample_job(self, docker_host, admin_user):
-        """Create sample job for demonstration"""
-        alpine_template = ContainerTemplate.objects.get(name="alpine-echo-test")
-        job, created = ContainerJob.objects.get_or_create(
-            template=alpine_template,
-            docker_host=docker_host,
-            name="Sample Alpine Echo Job",
-            defaults={"created_by": admin_user},
-        )
-
-        status = "Created" if created else "already exists"
-        self.stdout.write(f"✓ Sample job {status}: {job.name} (ID: {job.id})")
+            status = "Created" if created else "already exists"
+            self.stdout.write(f"✓ Sample job {status}: {job.name} (ID: {job.id})")
+            if env_template:
+                self.stdout.write(
+                    f"  - Linked to environment template: {env_template.name}"
+                )
 
     def _show_completion_message(self):
         """Show completion message and next steps"""
@@ -169,5 +211,5 @@ class Command(BaseCommand):
         self.stdout.write("2. Start the sample job using the admin interface")
         self.stdout.write("3. Run: uv run python manage.py process_container_jobs")
         self.stdout.write(
-            "4. Test with: uv run python manage.py manage_container_job list"
+            "4. Test with: uv run python manage.py process_container_jobs --once"
         )

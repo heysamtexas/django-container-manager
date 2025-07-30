@@ -5,6 +5,7 @@ Tests for executor fallback logic.
 import time
 from unittest.mock import Mock, patch
 
+from django.contrib.auth.models import User
 from django.test import TestCase
 from django.utils import timezone
 
@@ -16,7 +17,7 @@ from ..executors.fallback import (
     GracefulDegradationManager,
     HealthChecker,
 )
-from ..models import ContainerJob, ContainerTemplate, ExecutorHost
+from ..models import ContainerJob, ExecutorHost
 
 
 class ExecutorFallbackManagerTest(TestCase):
@@ -26,11 +27,8 @@ class ExecutorFallbackManagerTest(TestCase):
         self.manager = ExecutorFallbackManager()
 
         # Create test objects
-        self.template = ContainerTemplate.objects.create(
-            name="test-template",
-            docker_image="test:latest",
-            memory_limit=512,
-            cpu_limit=1.0,
+        self.user = User.objects.create_user(
+            username="testuser", email="test@example.com"
         )
 
         self.host = ExecutorHost.objects.create(
@@ -41,10 +39,13 @@ class ExecutorFallbackManagerTest(TestCase):
         )
 
         self.job = ContainerJob.objects.create(
-            template=self.template,
+            docker_image="test:latest",
+            memory_limit=512,
+            cpu_limit=1.0,
             docker_host=self.host,
             name="test-job",
             status="pending",
+            created_by=self.user,
         )
 
     def test_calculate_retry_delay(self):
@@ -321,11 +322,8 @@ class GracefulDegradationManagerTest(TestCase):
     def setUp(self):
         self.manager = GracefulDegradationManager()
 
-        self.template = ContainerTemplate.objects.create(
-            name="test-template",
-            docker_image="test:latest",
-            memory_limit=2048,  # High memory for degradation testing
-            cpu_limit=2.0,
+        self.user = User.objects.create_user(
+            username="testuser", email="test@example.com"
         )
 
         self.host = ExecutorHost.objects.create(
@@ -336,10 +334,13 @@ class GracefulDegradationManagerTest(TestCase):
         )
 
         self.job = ContainerJob.objects.create(
-            template=self.template,
+            docker_image="test:latest",
+            memory_limit=2048,  # High memory for degradation testing
+            cpu_limit=2.0,
             docker_host=self.host,
             name="test-job",
             status="pending",
+            created_by=self.user,
         )
 
     def test_get_prioritized_strategies(self):

@@ -14,7 +14,7 @@ from django.test import TestCase
 from container_manager.executors.exceptions import (
     ExecutorConfigurationError,
 )
-from container_manager.models import ContainerJob, ContainerTemplate, ExecutorHost
+from container_manager.models import ContainerJob, ExecutorHost
 
 
 class CloudRunExecutorMockedTest(TestCase):
@@ -40,17 +40,11 @@ class CloudRunExecutorMockedTest(TestCase):
             executor_type="cloudrun",
         )
 
-        self.template = ContainerTemplate.objects.create(
-            name="test-template",
+        self.job = ContainerJob.objects.create(
+            docker_host=self.host,
             docker_image="gcr.io/test/image:latest",
             command='echo "test"',
             timeout_seconds=300,
-            created_by=self.user,
-        )
-
-        self.job = ContainerJob.objects.create(
-            template=self.template,
-            docker_host=self.host,
             name="Test Job",
             created_by=self.user,
         )

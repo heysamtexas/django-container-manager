@@ -7,11 +7,12 @@ These tests focus on simple coverage improvements without complex mocking.
 from io import StringIO
 from unittest.mock import patch
 
+from django.contrib.auth.models import User
 from django.core.management.base import CommandError
 from django.test import TestCase
 
 from container_manager.management.commands.process_container_jobs import Command
-from container_manager.models import ContainerJob, ContainerTemplate, ExecutorHost
+from container_manager.models import ContainerJob, ExecutorHost
 
 
 class ProcessContainerJobsSimpleTest(TestCase):
@@ -27,11 +28,8 @@ class ProcessContainerJobsSimpleTest(TestCase):
             executor_type="docker",
         )
 
-        self.template = ContainerTemplate.objects.create(
-            name="test-template",
-            docker_image="python:3.11",
-            command="python script.py",
-            timeout_seconds=300,
+        self.user = User.objects.create_user(
+            username="testuser", email="test@example.com"
         )
 
         # Set up command with mocked output
@@ -95,10 +93,12 @@ class ProcessContainerJobsSimpleTest(TestCase):
     def test_launch_single_job_routing_factory(self):
         """Test launch_single_job with factory routing"""
         job = ContainerJob.objects.create(
-            template=self.template,
+            docker_image="python:3.11",
+            command="python script.py",
             name="test-job",
             status="pending",
             docker_host=self.host,
+            created_by=self.user,
         )
 
         with patch.object(
@@ -114,10 +114,12 @@ class ProcessContainerJobsSimpleTest(TestCase):
     def test_launch_single_job_routing_docker_service(self):
         """Test launch_single_job with docker service routing"""
         job = ContainerJob.objects.create(
-            template=self.template,
+            docker_image="python:3.11",
+            command="python script.py",
             name="test-job",
             status="pending",
             docker_host=self.host,
+            created_by=self.user,
         )
 
         with patch.object(

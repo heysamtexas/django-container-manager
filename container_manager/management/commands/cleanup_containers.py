@@ -115,7 +115,7 @@ class Command(BaseCommand):
 
             for job in orphaned_jobs[:10]:  # Show first 10
                 self.stdout.write(
-                    f"  - {job.id} ({job.template.name}) - "
+                    f"  - {job.id} ({job.name or 'Unnamed'}) - "
                     f"{job.status} {job.completed_at}"
                 )
 

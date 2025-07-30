@@ -194,7 +194,7 @@ class CloudRunExecutor(ContainerExecutor):
         """
         try:
             logger.info(
-                f"CloudRun executor launching job {job.id} (template: {job.template.name})"
+                f"CloudRun executor launching job {job.id} (name: {job.name or 'unnamed'})"
             )
 
             # Generate unique job name
@@ -594,14 +594,9 @@ class CloudRunExecutor(ContainerExecutor):
 
         env_vars = []
 
-        # Add template environment variables
-        for key, value in job.template.get_all_environment_variables().items():
+        # Add job environment variables (includes template and overrides)
+        for key, value in job.get_all_environment_variables().items():
             env_vars.append(run_v2.EnvVar(name=key, value=value))
-
-        # Add override environment variables
-        if job.override_environment:
-            for key, value in job.override_environment.items():
-                env_vars.append(run_v2.EnvVar(name=key, value=value))
 
         # Add additional configured environment variables
         for key, value in self.env_vars.items():
@@ -611,7 +606,7 @@ class CloudRunExecutor(ContainerExecutor):
 
     def _parse_command(self, job: ContainerJob) -> tuple:
         """Parse command and arguments from job configuration"""
-        command_string = job.override_command or job.template.command
+        command_string = job.command
         if not command_string:
             return None, None
 
@@ -627,11 +622,11 @@ class CloudRunExecutor(ContainerExecutor):
         """Create Cloud Run container specification"""
         from google.cloud import run_v2
 
-        memory_mb = min(job.template.memory_limit, 32768)  # Cloud Run max
-        cpu_cores = min(job.template.cpu_limit, 8.0)  # Cloud Run max
+        memory_mb = min(job.memory_limit or 512, 32768)  # Cloud Run max
+        cpu_cores = min(job.cpu_limit or 1.0, 8.0)  # Cloud Run max
 
         container = run_v2.Container(
-            image=job.template.docker_image,
+            image=job.docker_image,
             env=env_vars,
             resources=run_v2.ResourceRequirements(
                 limits={"memory": f"{memory_mb}Mi", "cpu": str(cpu_cores)}
@@ -649,7 +644,7 @@ class CloudRunExecutor(ContainerExecutor):
         """Create Cloud Run task template"""
         from google.cloud import run_v2
 
-        timeout = min(job.template.timeout_seconds, 3600)  # Cloud Run max
+        timeout = min(job.timeout_seconds or 3600, 3600)  # Cloud Run max
 
         return run_v2.TaskTemplate(
             template=run_v2.ExecutionTemplate(
@@ -674,7 +669,7 @@ class CloudRunExecutor(ContainerExecutor):
         labels = {
             "managed-by": "django-docker-manager",
             "job-id": str(job.id),
-            "template": job.template.name.replace("_", "-").lower(),
+            "job-name": (job.name or "unnamed").replace("_", "-").lower(),
         }
         labels.update(self.labels)
         return labels
@@ -751,9 +746,9 @@ class CloudRunExecutor(ContainerExecutor):
         # Memory: $0.00000250 per GiB-second
         # Requests: $0.40 per million requests
 
-        cpu_cores = min(job.template.cpu_limit, 8.0)
-        memory_gb = min(job.template.memory_limit / 1024, 32)  # Convert MB to GB
-        duration_seconds = job.template.timeout_seconds
+        cpu_cores = min(job.cpu_limit or 1.0, 8.0)
+        memory_gb = min((job.memory_limit or 512) / 1024, 32)  # Convert MB to GB
+        duration_seconds = job.timeout_seconds or 3600
 
         cpu_cost = cpu_cores * duration_seconds * 0.00002400
         memory_cost = memory_gb * duration_seconds * 0.00000250
@@ -783,11 +778,10 @@ class CloudRunExecutor(ContainerExecutor):
             errors.append("project_id is required for Cloud Run executor")
 
         # CloudRun-specific validation: resource limits
-        if job.template:
-            if job.template.memory_limit and job.template.memory_limit > 32768:
-                errors.append("Cloud Run memory limit cannot exceed 32768 MB")
-            if job.template.cpu_limit and job.template.cpu_limit > 8.0:
-                errors.append("Cloud Run CPU limit cannot exceed 8.0 cores")
+        if job.memory_limit and job.memory_limit > 32768:
+            errors.append("Cloud Run memory limit cannot exceed 32768 MB")
+        if job.cpu_limit and job.cpu_limit > 8.0:
+            errors.append("Cloud Run CPU limit cannot exceed 8.0 cores")
 
         return errors
 

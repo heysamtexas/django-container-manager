@@ -20,7 +20,7 @@ from container_manager.executors.exceptions import (
     ExecutorConnectionError,
     ExecutorError,
 )
-from container_manager.models import ContainerJob, ContainerTemplate, ExecutorHost
+from container_manager.models import ContainerJob, ExecutorHost
 
 
 class DockerServiceTest(TestCase):
@@ -44,21 +44,14 @@ class DockerServiceTest(TestCase):
             auto_pull_images=True,
         )
 
-        # Create test template
-        self.template = ContainerTemplate.objects.create(
-            name="test-template",
-            description="Test template",
-            docker_image="alpine:latest",
-            command='echo "test"',
-            timeout_seconds=300,
-            created_by=self.user,
-        )
+        # Templates no longer needed - using direct job configuration
 
         # Create test job
         self.job = ContainerJob.objects.create(
-            template=self.template,
             docker_host=self.docker_host,
+            docker_image="alpine:latest",
             name="Test Job",
+            executor_type="docker",
             created_by=self.user,
         )
 
@@ -343,17 +336,13 @@ class DockerServiceLegacyMethodsTest(TestCase):
             executor_type="docker",
         )
 
-        self.template = ContainerTemplate.objects.create(
-            name="test-template",
-            docker_image="alpine:latest",
-            command='echo "test"',
-            created_by=self.user,
-        )
+        # Templates no longer needed - using direct job configuration
 
         self.job = ContainerJob.objects.create(
-            template=self.template,
             docker_host=self.docker_host,
+            docker_image="alpine:latest",
             name="Test Job",
+            executor_type="docker",
             created_by=self.user,
         )
 
@@ -414,17 +403,13 @@ class DockerServiceAdditionalMethodsTest(TestCase):
             executor_type="docker",
         )
 
-        self.template = ContainerTemplate.objects.create(
-            name="test-template",
-            docker_image="alpine:latest",
-            command='echo "test"',
-            created_by=self.user,
-        )
+        # Templates no longer needed - using direct job configuration
 
         self.job = ContainerJob.objects.create(
-            template=self.template,
             docker_host=self.docker_host,
+            docker_image="alpine:latest",
             name="Test Job",
+            executor_type="docker",
             created_by=self.user,
             container_id="container_123",
         )
@@ -540,3 +525,592 @@ class DockerServiceAdditionalMethodsTest(TestCase):
             result = self.service.remove_container(self.job)
 
             self.assertFalse(result)
+
+
+class DockerServiceUncoveredMethodsTest(TestCase):
+    """Test previously uncovered methods in DockerService"""
+
+    def setUp(self):
+        super().setUp()
+
+        # Create test data
+        self.user = User.objects.create_user(
+            username="testuser", email="test@example.com", password="testpass"
+        )
+
+        self.docker_host = ExecutorHost.objects.create(
+            name="test-host",
+            host_type="unix",
+            connection_string="unix:///var/run/docker.sock",
+            is_active=True,
+            executor_type="docker",
+        )
+
+        self.job = ContainerJob.objects.create(
+            docker_host=self.docker_host,
+            docker_image="alpine:latest",
+            name="Test Job",
+            executor_type="docker",
+            created_by=self.user,
+            container_id="container_123",
+        )
+
+        self.service = DockerService()
+
+    def test_get_container_logs_no_container_id(self):
+        """Test get_container_logs with no container ID"""
+        self.job.container_id = ""
+        self.job.save()
+
+        logs = list(self.service.get_container_logs(self.job))
+        self.assertEqual(logs, [])
+
+    def test_get_container_logs_streaming_mode(self):
+        """Test get_container_logs in streaming mode"""
+        mock_client = Mock()
+        mock_container = Mock()
+        mock_client.containers.get.return_value = mock_container
+
+        # Mock streaming logs (generator of bytes)
+        mock_container.logs.return_value = [b"log line 1\n", b"log line 2\n"]
+
+        with patch.object(self.service, "get_client", return_value=mock_client):
+            logs = list(self.service.get_container_logs(self.job, follow=True))
+
+            self.assertEqual(len(logs), 2)
+            self.assertEqual(logs[0], "log line 1\n")
+            self.assertEqual(logs[1], "log line 2\n")
+            mock_container.logs.assert_called_once_with(
+                stream=True, follow=True, tail="all", timestamps=True
+            )
+
+    def test_get_container_logs_non_streaming_bytes(self):
+        """Test get_container_logs non-streaming mode with bytes"""
+        mock_client = Mock()
+        mock_container = Mock()
+        mock_client.containers.get.return_value = mock_container
+
+        # Mock non-streaming logs (single bytes object)
+        mock_container.logs.return_value = b"Complete log output\n"
+
+        with patch.object(self.service, "get_client", return_value=mock_client):
+            logs = list(self.service.get_container_logs(self.job, follow=False))
+
+            self.assertEqual(len(logs), 1)
+            self.assertEqual(logs[0], "Complete log output\n")
+
+    def test_get_container_logs_non_streaming_string(self):
+        """Test get_container_logs non-streaming mode with string"""
+        mock_client = Mock()
+        mock_container = Mock()
+        mock_client.containers.get.return_value = mock_container
+
+        # Mock non-streaming logs (string)
+        mock_container.logs.return_value = "String log output\n"
+
+        with patch.object(self.service, "get_client", return_value=mock_client):
+            logs = list(self.service.get_container_logs(self.job, follow=False))
+
+            self.assertEqual(len(logs), 1)
+            self.assertEqual(logs[0], "String log output\n")
+
+    def test_get_container_logs_container_not_found(self):
+        """Test get_container_logs when container not found"""
+        from docker.errors import NotFound
+
+        mock_client = Mock()
+        mock_client.containers.get.side_effect = NotFound("Container not found")
+
+        with patch.object(self.service, "get_client", return_value=mock_client):
+            logs = list(self.service.get_container_logs(self.job))
+
+            self.assertEqual(logs, [])
+
+    def test_get_container_logs_general_exception(self):
+        """Test get_container_logs with general exception"""
+        mock_client = Mock()
+        mock_client.containers.get.side_effect = Exception("General error")
+
+        with patch.object(self.service, "get_client", return_value=mock_client):
+            logs = list(self.service.get_container_logs(self.job))
+
+            self.assertEqual(logs, [])
+
+    def test_get_container_stats_success(self):
+        """Test get_container_stats success path"""
+        mock_client = Mock()
+        mock_container = Mock()
+        expected_stats = {"memory": {"usage": 1024}, "cpu": {"usage": 50}}
+        mock_container.stats.return_value = expected_stats
+        mock_client.containers.get.return_value = mock_container
+
+        with patch.object(self.service, "get_client", return_value=mock_client):
+            stats = self.service.get_container_stats(self.job)
+
+            self.assertEqual(stats, expected_stats)
+            mock_container.stats.assert_called_once_with(stream=False)
+
+    def test_get_container_stats_no_container_id(self):
+        """Test get_container_stats with no container ID"""
+        self.job.container_id = ""
+        self.job.save()
+
+        stats = self.service.get_container_stats(self.job)
+        self.assertIsNone(stats)
+
+    def test_get_container_stats_container_not_found(self):
+        """Test get_container_stats when container not found"""
+        from docker.errors import NotFound
+
+        mock_client = Mock()
+        mock_client.containers.get.side_effect = NotFound("Container not found")
+
+        with patch.object(self.service, "get_client", return_value=mock_client):
+            stats = self.service.get_container_stats(self.job)
+
+            self.assertIsNone(stats)
+
+    def test_get_container_stats_general_exception(self):
+        """Test get_container_stats with general exception"""
+        mock_client = Mock()
+        mock_client.containers.get.side_effect = Exception("General error")
+
+        with patch.object(self.service, "get_client", return_value=mock_client):
+            stats = self.service.get_container_stats(self.job)
+
+            self.assertIsNone(stats)
+
+    def test_wait_for_container_success(self):
+        """Test wait_for_container success path"""
+        mock_client = Mock()
+        mock_container = Mock()
+        mock_container.wait.return_value = {"StatusCode": 0}
+        mock_client.containers.get.return_value = mock_container
+
+        with patch.object(self.service, "get_client", return_value=mock_client):
+            with patch.object(self.service, "_collect_execution_data") as mock_collect:
+                exit_code = self.service.wait_for_container(self.job)
+
+                self.assertEqual(exit_code, 0)
+                self.job.refresh_from_db()
+                self.assertEqual(self.job.exit_code, 0)
+                self.assertEqual(self.job.status, "completed")
+                self.assertIsNotNone(self.job.completed_at)
+                mock_collect.assert_called_once_with(self.job)
+
+    def test_wait_for_container_failure(self):
+        """Test wait_for_container with non-zero exit code"""
+        mock_client = Mock()
+        mock_container = Mock()
+        mock_container.wait.return_value = {"StatusCode": 1}
+        mock_client.containers.get.return_value = mock_container
+
+        with patch.object(self.service, "get_client", return_value=mock_client):
+            with patch.object(self.service, "_collect_execution_data") as mock_collect:
+                exit_code = self.service.wait_for_container(self.job)
+
+                self.assertEqual(exit_code, 1)
+                self.job.refresh_from_db()
+                self.assertEqual(self.job.exit_code, 1)
+                self.assertEqual(self.job.status, "failed")
+                mock_collect.assert_called_once_with(self.job)
+
+    def test_wait_for_container_no_container_id(self):
+        """Test wait_for_container with no container ID"""
+        self.job.container_id = ""
+        self.job.save()
+
+        exit_code = self.service.wait_for_container(self.job)
+        self.assertIsNone(exit_code)
+
+    def test_wait_for_container_not_found(self):
+        """Test wait_for_container when container not found"""
+        from docker.errors import NotFound
+
+        mock_client = Mock()
+        mock_client.containers.get.side_effect = NotFound("Container not found")
+
+        with patch.object(self.service, "get_client", return_value=mock_client):
+            exit_code = self.service.wait_for_container(self.job)
+
+            self.assertIsNone(exit_code)
+
+    def test_wait_for_container_general_exception(self):
+        """Test wait_for_container with general exception"""
+        mock_client = Mock()
+        mock_client.containers.get.side_effect = Exception("General error")
+
+        with patch.object(self.service, "get_client", return_value=mock_client):
+            exit_code = self.service.wait_for_container(self.job)
+
+            self.assertIsNone(exit_code)
+
+    def test_collect_execution_data_success(self):
+        """Test _collect_execution_data delegates to executor"""
+        with patch(
+            "container_manager.docker_service.DockerExecutor"
+        ) as mock_executor_class:
+            mock_executor = Mock()
+            mock_executor_class.return_value = mock_executor
+
+            self.service._collect_execution_data(self.job)
+
+            mock_executor._collect_data.assert_called_once_with(self.job)
+
+    def test_collect_execution_data_exception(self):
+        """Test _collect_execution_data handles exceptions"""
+        with patch(
+            "container_manager.docker_service.DockerExecutor"
+        ) as mock_executor_class:
+            mock_executor = Mock()
+            mock_executor._collect_data.side_effect = Exception("Collection failed")
+            mock_executor_class.return_value = mock_executor
+
+            # Should not raise exception
+            self.service._collect_execution_data(self.job)
+
+    def test_cleanup_container_after_execution_success(self):
+        """Test _cleanup_container_after_execution delegates to executor"""
+        with patch(
+            "container_manager.docker_service.DockerExecutor"
+        ) as mock_executor_class:
+            mock_executor = Mock()
+            mock_executor_class.return_value = mock_executor
+
+            self.service._cleanup_container_after_execution(self.job)
+
+            mock_executor._immediate_cleanup.assert_called_once_with(self.job)
+
+    def test_cleanup_container_after_execution_exception(self):
+        """Test _cleanup_container_after_execution handles exceptions"""
+        with patch(
+            "container_manager.docker_service.DockerExecutor"
+        ) as mock_executor_class:
+            mock_executor = Mock()
+            mock_executor._immediate_cleanup.side_effect = Exception("Cleanup failed")
+            mock_executor_class.return_value = mock_executor
+
+            # Should not raise exception
+            self.service._cleanup_container_after_execution(self.job)
+
+    def test_launch_job_success(self):
+        """Test launch_job success path"""
+        with patch(
+            "container_manager.docker_service.DockerExecutor"
+        ) as mock_executor_class:
+            mock_executor = Mock()
+            mock_executor.launch_job.return_value = (True, "container_123")
+            mock_executor_class.return_value = mock_executor
+
+            result = self.service.launch_job(self.job)
+
+            self.assertTrue(result)
+            mock_executor.launch_job.assert_called_once_with(self.job)
+
+    def test_launch_job_executor_failure(self):
+        """Test launch_job when executor returns failure"""
+        with patch(
+            "container_manager.docker_service.DockerExecutor"
+        ) as mock_executor_class:
+            mock_executor = Mock()
+            mock_executor.launch_job.return_value = (False, "Launch failed")
+            mock_executor_class.return_value = mock_executor
+
+            result = self.service.launch_job(self.job)
+
+            self.assertFalse(result)
+
+    def test_launch_job_exception(self):
+        """Test launch_job with exception"""
+        with patch(
+            "container_manager.docker_service.DockerExecutor"
+        ) as mock_executor_class:
+            mock_executor = Mock()
+            mock_executor.launch_job.side_effect = Exception("Launch exception")
+            mock_executor_class.return_value = mock_executor
+
+            result = self.service.launch_job(self.job)
+
+            self.assertFalse(result)
+            self.job.refresh_from_db()
+            self.assertEqual(self.job.status, "failed")
+            self.assertIsNotNone(self.job.completed_at)
+
+    def test_discover_running_containers_success(self):
+        """Test discover_running_containers success path"""
+        mock_client = Mock()
+        expected_containers = [Mock(), Mock()]
+        mock_client.containers.list.return_value = expected_containers
+
+        with patch.object(self.service, "get_client", return_value=mock_client):
+            containers = self.service.discover_running_containers(self.docker_host)
+
+            self.assertEqual(containers, expected_containers)
+            mock_client.containers.list.assert_called_once_with(
+                filters={"label": "django.container_manager.job_id"}
+            )
+
+    def test_discover_running_containers_exception(self):
+        """Test discover_running_containers with exception"""
+        mock_client = Mock()
+        mock_client.containers.list.side_effect = Exception("Discovery failed")
+
+        with patch.object(self.service, "get_client", return_value=mock_client):
+            containers = self.service.discover_running_containers(self.docker_host)
+
+            self.assertEqual(containers, [])
+
+    def test_check_container_status_success(self):
+        """Test check_container_status success path"""
+        with patch(
+            "container_manager.docker_service.DockerExecutor"
+        ) as mock_executor_class:
+            mock_executor = Mock()
+            mock_executor.check_status.return_value = "running"
+            mock_executor_class.return_value = mock_executor
+
+            status = self.service.check_container_status(self.job)
+
+            self.assertEqual(status, "running")
+            mock_executor.check_status.assert_called_once_with("container_123")
+
+    def test_check_container_status_no_container_id(self):
+        """Test check_container_status with no container ID"""
+        self.job.container_id = ""
+        self.job.save()
+
+        status = self.service.check_container_status(self.job)
+        self.assertEqual(status, "no-container")
+
+    def test_check_container_status_not_found(self):
+        """Test check_container_status maps not-found status"""
+        with patch(
+            "container_manager.docker_service.DockerExecutor"
+        ) as mock_executor_class:
+            mock_executor = Mock()
+            mock_executor.check_status.return_value = "not-found"
+            mock_executor_class.return_value = mock_executor
+
+            status = self.service.check_container_status(self.job)
+
+            self.assertEqual(status, "not-found")
+
+    def test_check_container_status_failed_mapping(self):
+        """Test check_container_status maps failed to error"""
+        with patch(
+            "container_manager.docker_service.DockerExecutor"
+        ) as mock_executor_class:
+            mock_executor = Mock()
+            mock_executor.check_status.return_value = "failed"
+            mock_executor_class.return_value = mock_executor
+
+            status = self.service.check_container_status(self.job)
+
+            self.assertEqual(status, "error")
+
+    def test_check_container_status_exception(self):
+        """Test check_container_status with exception"""
+        with patch(
+            "container_manager.docker_service.DockerExecutor"
+        ) as mock_executor_class:
+            mock_executor = Mock()
+            mock_executor.check_status.side_effect = Exception("Status check failed")
+            mock_executor_class.return_value = mock_executor
+
+            status = self.service.check_container_status(self.job)
+
+            self.assertEqual(status, "error")
+
+    def test_harvest_completed_job_success(self):
+        """Test harvest_completed_job success path"""
+        with patch(
+            "container_manager.docker_service.DockerExecutor"
+        ) as mock_executor_class:
+            mock_executor = Mock()
+            mock_executor.harvest_job.return_value = True
+            mock_executor_class.return_value = mock_executor
+
+            result = self.service.harvest_completed_job(self.job)
+
+            self.assertTrue(result)
+            mock_executor.harvest_job.assert_called_once_with(self.job)
+
+    def test_harvest_completed_job_exception(self):
+        """Test harvest_completed_job with exception"""
+        with patch(
+            "container_manager.docker_service.DockerExecutor"
+        ) as mock_executor_class:
+            mock_executor = Mock()
+            mock_executor.harvest_job.side_effect = Exception("Harvest failed")
+            mock_executor_class.return_value = mock_executor
+
+            result = self.service.harvest_completed_job(self.job)
+
+            self.assertFalse(result)
+
+
+class DockerServiceCleanupTest(TestCase):
+    """Test cleanup operations in DockerService"""
+
+    def setUp(self):
+        super().setUp()
+
+        # Create test data
+        self.user = User.objects.create_user(
+            username="testuser", email="test@example.com", password="testpass"
+        )
+
+        self.docker_host = ExecutorHost.objects.create(
+            name="test-host",
+            host_type="unix",
+            connection_string="unix:///var/run/docker.sock",
+            is_active=True,
+            executor_type="docker",
+        )
+
+        self.service = DockerService()
+
+    def test_cleanup_old_containers_success(self):
+        """Test cleanup_old_containers with successful cleanup"""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        # Create old completed job
+        old_time = timezone.now() - timedelta(hours=25)
+
+        old_job = ContainerJob.objects.create(
+            docker_host=self.docker_host,
+            docker_image="alpine:latest",
+            name="Old Job",
+            executor_type="docker",
+            status="completed",
+            container_id="old_container_123",
+            completed_at=old_time,
+            created_by=self.user,
+        )
+
+        with patch(
+            "container_manager.docker_service.DockerExecutor"
+        ) as mock_executor_class:
+            mock_executor = Mock()
+            mock_executor.cleanup.return_value = True
+            mock_executor_class.return_value = mock_executor
+
+            count = self.service.cleanup_old_containers(orphaned_hours=24)
+
+            self.assertEqual(count, 1)
+            mock_executor.cleanup.assert_called_once_with("old_container_123")
+
+            # Check that container_id was cleared
+            old_job.refresh_from_db()
+            self.assertEqual(old_job.container_id, "")
+
+    def test_cleanup_old_containers_no_orphaned_jobs(self):
+        """Test cleanup_old_containers with no orphaned jobs"""
+        count = self.service.cleanup_old_containers(orphaned_hours=24)
+        self.assertEqual(count, 0)
+
+    def test_cleanup_old_containers_cleanup_failure(self):
+        """Test cleanup_old_containers with cleanup failure"""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        # Create old completed job
+        old_time = timezone.now() - timedelta(hours=25)
+
+        old_job = ContainerJob.objects.create(
+            docker_host=self.docker_host,
+            docker_image="alpine:latest",
+            name="Old Job",
+            executor_type="docker",
+            status="completed",
+            container_id="old_container_123",
+            completed_at=old_time,
+            created_by=self.user,
+        )
+
+        with patch(
+            "container_manager.docker_service.DockerExecutor"
+        ) as mock_executor_class:
+            mock_executor = Mock()
+            mock_executor.cleanup.side_effect = Exception("Cleanup failed")
+            mock_executor_class.return_value = mock_executor
+
+            count = self.service.cleanup_old_containers(orphaned_hours=24)
+
+            self.assertEqual(count, 0)  # No successful cleanups
+
+            # Check that container_id was NOT cleared due to failure
+            old_job.refresh_from_db()
+            self.assertEqual(old_job.container_id, "old_container_123")
+
+    def test_cleanup_old_containers_empty_container_id(self):
+        """Test cleanup_old_containers skips jobs with empty container_id"""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        # Create old completed job with no container_id
+        old_time = timezone.now() - timedelta(hours=25)
+
+        ContainerJob.objects.create(
+            docker_host=self.docker_host,
+            docker_image="alpine:latest",
+            name="Old Job",
+            executor_type="docker",
+            status="completed",
+            container_id="",  # Empty container_id
+            completed_at=old_time,
+            created_by=self.user,
+        )
+
+        with patch(
+            "container_manager.docker_service.DockerExecutor"
+        ) as mock_executor_class:
+            mock_executor = Mock()
+            mock_executor_class.return_value = mock_executor
+
+            count = self.service.cleanup_old_containers(orphaned_hours=24)
+
+            self.assertEqual(count, 0)
+            # Should not attempt cleanup for empty container_id
+            mock_executor.cleanup.assert_not_called()
+
+    def test_cleanup_old_containers_multiple_statuses(self):
+        """Test cleanup_old_containers handles multiple completion statuses"""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        old_time = timezone.now() - timedelta(hours=25)
+
+        # Create jobs in different completion states
+        statuses = ["completed", "failed", "timeout", "cancelled"]
+        jobs = []
+
+        for i, status in enumerate(statuses):
+            job = ContainerJob.objects.create(
+                docker_host=self.docker_host,
+                docker_image="alpine:latest",
+                name=f"Job {i}",
+                executor_type="docker",
+                status=status,
+                container_id=f"container_{i}",
+                completed_at=old_time,
+                created_by=self.user,
+            )
+            jobs.append(job)
+
+        with patch(
+            "container_manager.docker_service.DockerExecutor"
+        ) as mock_executor_class:
+            mock_executor = Mock()
+            mock_executor.cleanup.return_value = True
+            mock_executor_class.return_value = mock_executor
+
+            count = self.service.cleanup_old_containers(orphaned_hours=24)
+
+            self.assertEqual(count, 4)  # All 4 jobs should be cleaned
+            self.assertEqual(mock_executor.cleanup.call_count, 4)

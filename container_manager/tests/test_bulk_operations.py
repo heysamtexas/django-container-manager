@@ -8,7 +8,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 
 from ..bulk_operations import BulkJobManager
-from ..models import ContainerJob, ContainerTemplate, ExecutorHost
+from ..models import ContainerJob, ExecutorHost
 
 
 class BulkJobManagerTest(TestCase):
@@ -22,14 +22,7 @@ class BulkJobManagerTest(TestCase):
             username="testuser", email="test@example.com", password="testpass"
         )
 
-        # Create test template
-        self.template = ContainerTemplate.objects.create(
-            name="test-template",
-            docker_image="test:latest",
-            memory_limit=512,
-            cpu_limit=1.0,
-            timeout_seconds=300,
-        )
+        # Templates no longer exist - using direct job configuration
 
         # Create test hosts
         self.docker_host = ExecutorHost.objects.create(
@@ -48,86 +41,67 @@ class BulkJobManagerTest(TestCase):
 
     def test_create_jobs_bulk_success(self):
         """Test successful bulk job creation."""
-        with patch.object(
-            self.manager.executor_factory, "route_job_dry_run"
-        ) as mock_route:
-            mock_route.return_value = "docker"
-
-            jobs, errors = self.manager.create_jobs_bulk(
-                template=self.template,
-                count=5,
-                user=self.user,
-                host=self.docker_host,
-                name_pattern="batch-job-{index}",
-            )
+        jobs, errors = self.manager.create_jobs_bulk(
+            docker_image="alpine:latest",
+            count=5,
+            user=self.user,
+            host=self.docker_host,
+            name_pattern="batch-job-{index}",
+        )
 
         self.assertEqual(len(jobs), 5)
         self.assertEqual(len(errors), 0)
 
         # Check job properties
         for i, job in enumerate(jobs):
-            self.assertEqual(job.template, self.template)
             self.assertEqual(job.docker_host, self.docker_host)
             self.assertEqual(job.name, f"batch-job-{i}")
             self.assertEqual(job.created_by, self.user)
             self.assertEqual(job.status, "pending")
+            self.assertEqual(job.docker_image, "alpine:latest")
 
-    def test_create_jobs_bulk_with_overrides(self):
-        """Test bulk job creation with environment and command overrides."""
-        env_overrides = [
-            {"ENV_VAR": "value1"},
-            {"ENV_VAR": "value2"},
-            {"ENV_VAR": "value3"},
-        ]
-        cmd_overrides = ["echo test1", "echo test2", "echo test3"]
+    def test_create_jobs_bulk_with_environment(self):
+        """Test bulk job creation with environment variables."""
+        env_vars = {"TEST_VAR": "test_value", "BATCH_ID": "batch_001"}
 
-        with patch.object(
-            self.manager.executor_factory, "route_job_dry_run"
-        ) as mock_route:
-            mock_route.return_value = "docker"
-
-            jobs, errors = self.manager.create_jobs_bulk(
-                template=self.template,
-                count=3,
-                user=self.user,
-                host=self.docker_host,
-                environment_overrides=env_overrides,
-                command_overrides=cmd_overrides,
-            )
+        jobs, errors = self.manager.create_jobs_bulk(
+            docker_image="alpine:latest",
+            count=3,
+            user=self.user,
+            host=self.docker_host,
+            command="echo 'test command'",
+            environment_variables=env_vars,
+        )
 
         self.assertEqual(len(jobs), 3)
         self.assertEqual(len(errors), 0)
 
-        # Check overrides
-        for i, job in enumerate(jobs):
-            self.assertEqual(job.override_environment, env_overrides[i])
-            self.assertEqual(job.override_command, cmd_overrides[i])
-
-    def test_create_jobs_bulk_auto_routing(self):
-        """Test bulk job creation with automatic routing."""
-        with patch.object(
-            self.manager.executor_factory, "route_job_dry_run"
-        ) as mock_route:
-            mock_route.return_value = "mock"
-
-            jobs, errors = self.manager.create_jobs_bulk(
-                template=self.template,
-                count=3,
-                user=self.user,
-                # No host specified - should auto-route
-            )
-
-        self.assertEqual(len(jobs), 3)
-        self.assertEqual(len(errors), 0)
-
-        # Should have been routed to mock host
+        # Check environment variables
         for job in jobs:
-            self.assertEqual(job.docker_host.executor_type, "mock")
+            self.assertEqual(job.get_all_environment_variables(), env_vars)
+            self.assertEqual(job.command, "echo 'test command'")
+
+    def test_create_jobs_bulk_auto_host_selection(self):
+        """Test bulk job creation with automatic host selection."""
+        jobs, errors = self.manager.create_jobs_bulk(
+            docker_image="alpine:latest",
+            count=3,
+            user=self.user,
+            # No host specified - should select first available
+        )
+
+        self.assertEqual(len(jobs), 3)
+        self.assertEqual(len(errors), 0)
+
+        # Should have been assigned to an available host
+        for job in jobs:
+            self.assertIn(job.docker_host.executor_type, ["docker", "mock"])
+            self.assertTrue(job.docker_host.is_active)
 
     def test_create_jobs_bulk_invalid_count(self):
         """Test bulk job creation with invalid count."""
         jobs, errors = self.manager.create_jobs_bulk(
-            template=self.template,
+            docker_image="alpine:latest",
             count=0,
             user=self.user,
         )
@@ -139,7 +113,7 @@ class BulkJobManagerTest(TestCase):
     def test_create_jobs_bulk_large_count(self):
         """Test bulk job creation with too large count."""
         jobs, errors = self.manager.create_jobs_bulk(
-            template=self.template,
+            docker_image="alpine:latest",
             count=15000,
             user=self.user,
         )
@@ -154,9 +128,10 @@ class BulkJobManagerTest(TestCase):
         jobs = []
         for i in range(3):
             job = ContainerJob.objects.create(
-                template=self.template,
+                docker_image="alpine:latest",
                 docker_host=self.mock_host,
                 name=f"test-job-{i}",
+                executor_type="mock",
                 status="pending",
                 created_by=self.user,
             )
@@ -186,9 +161,10 @@ class BulkJobManagerTest(TestCase):
         jobs = []
         for i in range(3):
             job = ContainerJob.objects.create(
-                template=self.template,
+                docker_image="alpine:latest",
                 docker_host=self.mock_host,
                 name=f"test-job-{i}",
+                executor_type="mock",
                 status="running",
                 container_id=f"container_{i}",
                 created_by=self.user,
@@ -216,26 +192,29 @@ class BulkJobManagerTest(TestCase):
         """Test bulk job cancellation."""
         # Create jobs in various states
         pending_job = ContainerJob.objects.create(
-            template=self.template,
+            docker_image="alpine:latest",
             docker_host=self.mock_host,
             name="pending-job",
+            executor_type="mock",
             status="pending",
             created_by=self.user,
         )
 
         running_job = ContainerJob.objects.create(
-            template=self.template,
+            docker_image="alpine:latest",
             docker_host=self.mock_host,
             name="running-job",
+            executor_type="mock",
             status="running",
             container_id="container_1",
             created_by=self.user,
         )
 
         completed_job = ContainerJob.objects.create(
-            template=self.template,
+            docker_image="alpine:latest",
             docker_host=self.mock_host,
             name="completed-job",
+            executor_type="mock",
             status="completed",
             created_by=self.user,
         )
@@ -268,7 +247,7 @@ class BulkJobManagerTest(TestCase):
         """Test bulk job restarting."""
         # Create completed job
         job = ContainerJob.objects.create(
-            template=self.template,
+            docker_image="alpine:latest",
             docker_host=self.mock_host,
             name="completed-job",
             status="completed",
@@ -309,10 +288,12 @@ class BulkJobManagerTest(TestCase):
         statuses = ["pending", "running", "completed", "failed", "completed"]
 
         for i, status in enumerate(statuses):
+            host = self.docker_host if i % 2 == 0 else self.mock_host
             job = ContainerJob.objects.create(
-                template=self.template,
-                docker_host=self.docker_host if i % 2 == 0 else self.mock_host,
+                docker_image="alpine:latest",
+                docker_host=host,
                 name=f"test-job-{i}",
+                executor_type=host.executor_type,
                 status=status,
                 created_by=self.user,
             )
@@ -355,9 +336,10 @@ class BulkJobManagerTest(TestCase):
         )
 
         job = ContainerJob.objects.create(
-            template=self.template,
+            docker_image="alpine:latest",
             docker_host=host1,
             name="test-job",
+            executor_type="docker",
             status="pending",
             created_by=self.user,
         )

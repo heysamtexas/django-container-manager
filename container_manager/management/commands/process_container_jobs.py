@@ -251,7 +251,7 @@ class Command(BaseCommand):
         # Get pending jobs
         queryset = (
             ContainerJob.objects.filter(status="pending")
-            .select_related("template", "docker_host")
+            .select_related("docker_host")
             .order_by("created_at")
         )
 
@@ -319,7 +319,7 @@ class Command(BaseCommand):
 
             # Display routing information
             self.stdout.write(
-                f"Launching job {job.id} ({job.template.name}) "
+                f"Launching job {job.id} ({job.name or 'unnamed'}) "
                 f"using {job.executor_type} executor on {job.docker_host.name}"
             )
 
@@ -362,7 +362,7 @@ class Command(BaseCommand):
             return False
 
         self.stdout.write(
-            f"Launching job {job.id} ({job.template.name}) on {job.docker_host.name}"
+            f"Launching job {job.id} ({job.name or 'unnamed'}) on {job.docker_host.name}"
         )
 
         try:
@@ -408,7 +408,7 @@ class Command(BaseCommand):
     def _get_running_jobs(self, host_filter: str | None = None):
         """Get list of running jobs, optionally filtered by host"""
         queryset = ContainerJob.objects.filter(status="running").select_related(
-            "template", "docker_host"
+            "environment_template", "docker_host"
         )
 
         if host_filter:
@@ -435,7 +435,7 @@ class Command(BaseCommand):
             return False
 
         running_time = (now - job.started_at).total_seconds()
-        return running_time > job.template.timeout_seconds
+        return running_time > job.timeout_seconds
 
     def _handle_job_status(self, job: ContainerJob, status: str) -> int:
         """Handle job based on its current status, return 1 if harvested"""
@@ -493,7 +493,7 @@ class Command(BaseCommand):
 
         self.stdout.write(
             self.style.WARNING(
-                f"Job {job.id} timed out after {job.template.timeout_seconds} seconds"
+                f"Job {job.id} timed out after {job.timeout_seconds} seconds"
             )
         )
 

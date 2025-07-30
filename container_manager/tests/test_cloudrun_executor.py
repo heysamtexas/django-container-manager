@@ -10,7 +10,7 @@ from django.test import TestCase
 
 from ..executors.cloudrun import CloudRunExecutor
 from ..executors.exceptions import ExecutorConfigurationError
-from ..models import ContainerJob, ContainerTemplate, ExecutorHost
+from ..models import ContainerJob, ExecutorHost
 
 try:
     import importlib.util
@@ -121,8 +121,12 @@ class CloudRunExecutorTest(TestCase):
             mock_client.run_job.return_value = mock_execution_operation
 
             job = ContainerJob.objects.create(
-                template=self.template,
                 docker_host=self.docker_host,
+                docker_image="gcr.io/test-project/test-image:latest",
+                memory_limit=512,
+                cpu_limit=1.0,
+                timeout_seconds=600,
+                executor_type="cloudrun",
                 created_by=self.user,
             )
 
@@ -152,7 +156,13 @@ class CloudRunExecutorTest(TestCase):
         mock_client.create_job.side_effect = Exception("GCP API Error")
 
         job = ContainerJob.objects.create(
-            template=self.template, docker_host=self.docker_host, created_by=self.user
+            docker_host=self.docker_host,
+            docker_image="gcr.io/test-project/test-image:latest",
+            memory_limit=512,
+            cpu_limit=1.0,
+            timeout_seconds=600,
+            executor_type="cloudrun",
+            created_by=self.user,
         )
 
         success, error_msg = executor.launch_job(job)
@@ -271,7 +281,13 @@ class CloudRunExecutorTest(TestCase):
         executor = CloudRunExecutor(config)
 
         job = ContainerJob.objects.create(
-            template=self.template, docker_host=self.docker_host, created_by=self.user
+            docker_host=self.docker_host,
+            docker_image="gcr.io/test-project/test-image:latest",
+            memory_limit=512,
+            cpu_limit=1.0,
+            timeout_seconds=600,
+            executor_type="cloudrun",
+            created_by=self.user,
         )
 
         # Set initial execution data on job
@@ -336,7 +352,13 @@ class CloudRunExecutorTest(TestCase):
         executor = CloudRunExecutor(config)
 
         job = ContainerJob.objects.create(
-            template=self.template, docker_host=self.docker_host, created_by=self.user
+            docker_host=self.docker_host,
+            docker_image="gcr.io/test-project/test-image:latest",
+            memory_limit=512,
+            cpu_limit=1.0,
+            timeout_seconds=600,
+            executor_type="cloudrun",
+            created_by=self.user,
         )
 
         # Setup mock client
@@ -445,7 +467,13 @@ class CloudRunExecutorTest(TestCase):
         executor = CloudRunExecutor(config)
 
         job = ContainerJob.objects.create(
-            template=self.template, docker_host=self.docker_host, created_by=self.user
+            docker_host=self.docker_host,
+            docker_image="gcr.io/test-project/test-image:latest",
+            memory_limit=512,
+            cpu_limit=1.0,
+            timeout_seconds=600,
+            executor_type="cloudrun",
+            created_by=self.user,
         )
 
         cost = executor.get_cost_estimate(job)
@@ -463,8 +491,12 @@ class CloudRunExecutorTest(TestCase):
         executor = CloudRunExecutor(config)
 
         job = ContainerJob.objects.create(
-            template=self.high_resource_template,
             docker_host=self.docker_host,
+            docker_image="gcr.io/test-project/ml-image:latest",
+            memory_limit=16384,
+            cpu_limit=4.0,
+            timeout_seconds=3600,
+            executor_type="cloudrun",
             created_by=self.user,
         )
 
@@ -488,9 +520,13 @@ class CloudRunExecutorTest(TestCase):
         executor = CloudRunExecutor(config)
 
         job = ContainerJob.objects.create(
-            template=self.template,
             docker_host=self.docker_host,
-            override_command="echo 'custom command'",
+            docker_image="gcr.io/test-project/test-image:latest",
+            memory_limit=512,
+            cpu_limit=1.0,
+            timeout_seconds=600,
+            executor_type="cloudrun",
+            command="echo 'custom command'",
             override_environment={"OVERRIDE_VAR": "override_value"},
             created_by=self.user,
         )
@@ -557,17 +593,13 @@ class CloudRunExecutorTest(TestCase):
         executor = CloudRunExecutor(config)
 
         # Create job with resources exceeding Cloud Run limits
-        extreme_template = ContainerTemplate.objects.create(
-            name="extreme-template",
+        job = ContainerJob.objects.create(
+            docker_host=self.docker_host,
             docker_image="test:latest",
             memory_limit=100000,  # 100GB - exceeds Cloud Run limit
             cpu_limit=50.0,  # 50 cores - exceeds Cloud Run limit
             timeout_seconds=10800,  # 3 hours - exceeds Cloud Run limit
-        )
-
-        job = ContainerJob.objects.create(
-            template=extreme_template,
-            docker_host=self.docker_host,
+            executor_type="cloudrun",
             created_by=self.user,
         )
 

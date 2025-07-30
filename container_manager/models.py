@@ -9,7 +9,7 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 # Constants
-MAX_PERCENTAGE = 100  # Maximum percentage value for A/B testing
+# (No constants currently defined)
 
 
 class EnvironmentVariableTemplate(models.Model):
@@ -157,12 +157,29 @@ class ExecutorHost(models.Model):
         return f"{self.name} ({self.executor_type.title()})"
 
 
-class ContainerTemplate(models.Model):
-    """Reusable container definitions with configuration"""
+class ContainerJob(models.Model):
+    """Individual container job instances"""
 
-    name = models.CharField(max_length=100, unique=True)
+    STATUS_CHOICES: ClassVar = [
+        ("pending", "Pending"),
+        ("running", "Running"),
+        ("completed", "Completed"),
+        ("failed", "Failed"),
+        ("timeout", "Timeout"),
+        ("cancelled", "Cancelled"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    docker_host = models.ForeignKey(
+        ExecutorHost, related_name="jobs", on_delete=models.CASCADE
+    )
+
+    name = models.CharField(max_length=200, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
+
+    # Container configuration (merged from ContainerTemplate)
     description = models.TextField(blank=True)
-    docker_image = models.CharField(max_length=500)
+    docker_image = models.CharField(max_length=500, blank=True, default="")
     command = models.TextField(
         blank=True, help_text="Command to run in container (optional)"
     )
@@ -190,144 +207,27 @@ class ContainerTemplate(models.Model):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        help_text="Optional environment variable template to use as base configuration",
+        help_text="Environment variable template to use as base configuration",
+    )
+
+    # Network configuration
+    network_configuration = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            "Network configuration for the container. Examples:\n"
+            '[{"network_name": "bridge", "aliases": []}]\n'
+            '[{"network_name": "app-network", "aliases": ["api", "backend"]}]\n'
+            '[{"network_name": "database-network", "aliases": []}]'
+        ),
     )
 
     # Environment variable overrides (simple key=value format)
-    override_environment_variables_text = models.TextField(
+    override_environment = models.TextField(
         blank=True,
+        default="",
         help_text="Environment variable overrides, one per line in KEY=value format. These override any variables from the template. Example:\nDEBUG=true\nWORKER_COUNT=4",
         verbose_name="Environment Variable Overrides",
-    )
-
-    # Auto cleanup (deprecated - use cleanup process instead)
-    auto_remove = models.BooleanField(
-        default=False,
-        help_text="[DEPRECATED] Use cleanup process instead of auto-remove",
-    )
-
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
-
-    class Meta:
-        verbose_name = "Container Template"
-        verbose_name_plural = "Container Templates"
-
-    def __str__(self):
-        return self.name
-
-    def get_override_environment_variables_dict(self):
-        """
-        Parse override_environment_variables_text into a dictionary.
-
-        Returns:
-            dict: Override environment variables as key-value pairs
-        """
-        env_vars = {}
-        if not self.override_environment_variables_text:
-            return env_vars
-
-        for line in self.override_environment_variables_text.strip().split("\n"):
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue  # Skip empty lines and comments
-
-            if "=" in line:
-                key, value = line.split("=", 1)  # Split only on first =
-                env_vars[key.strip()] = value.strip()
-
-        return env_vars
-
-    def get_all_environment_variables(self):
-        """
-        Get merged environment variables from template and overrides.
-
-        Precedence: Template → Container Overrides → Job Overrides
-
-        Returns:
-            dict: Merged environment variables as key-value pairs
-        """
-        env_vars = {}
-
-        # Start with template variables (if linked)
-        if self.environment_template:
-            env_vars.update(self.environment_template.get_environment_variables_dict())
-
-        # Override with container-specific variables
-        env_vars.update(self.get_override_environment_variables_dict())
-
-        return env_vars
-
-
-class NetworkAssignment(models.Model):
-    """Docker network assignments for container templates"""
-
-    template = models.ForeignKey(
-        ContainerTemplate, related_name="network_assignments", on_delete=models.CASCADE
-    )
-    network_name = models.CharField(max_length=200)
-    aliases = models.JSONField(
-        default=list, blank=True, help_text="Network aliases for the container"
-    )
-
-    class Meta:
-        verbose_name = "Network Assignment"
-        verbose_name_plural = "Network Assignments"
-        unique_together: ClassVar = ["template", "network_name"]
-
-    def __str__(self):
-        return f"{self.template.name} -> {self.network_name}"
-
-
-class ContainerJob(models.Model):
-    """Individual container job instances"""
-
-    STATUS_CHOICES: ClassVar = [
-        ("pending", "Pending"),
-        ("running", "Running"),
-        ("completed", "Completed"),
-        ("failed", "Failed"),
-        ("timeout", "Timeout"),
-        ("cancelled", "Cancelled"),
-    ]
-
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    template = models.ForeignKey(
-        ContainerTemplate, related_name="jobs", on_delete=models.CASCADE
-    )
-    docker_host = models.ForeignKey(
-        ExecutorHost, related_name="jobs", on_delete=models.CASCADE
-    )
-
-    name = models.CharField(max_length=200, blank=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
-
-    # Override template settings if needed
-    override_command = models.TextField(
-        blank=True,
-        help_text=(
-            "Override the template's default command. Examples:\n"
-            "• Single command: python main.py --config=prod\n"
-            '• Shell command: bash -c "echo Starting...; python app.py; echo Done"\n'
-            '• Multi-step: bash -c "pip install -r requirements.txt && python manage.py migrate && python manage.py runserver"\n'
-            "• Script execution: /bin/sh /scripts/deploy.sh --environment=staging\n"
-            "• Data processing: python process_data.py --input=/data/input.csv --output=/data/results.json\n"
-            "Leave blank to use the template's default command."
-        ),
-    )
-    override_environment = models.JSONField(
-        default=dict,
-        blank=True,
-        help_text=(
-            "Additional or override environment variables for this specific job. Examples:\n"
-            '• Simple config: {"DEBUG": "true", "LOG_LEVEL": "info"}\n'
-            '• Database: {"DB_HOST": "prod-db.company.com", "DB_NAME": "prod_db"}\n'
-            '• API keys: {"API_KEY": "sk-1234567890", "WEBHOOK_URL": "https://api.company.com/webhook"}\n'
-            '• File paths: {"INPUT_FILE": "/data/batch_2024.csv", "OUTPUT_DIR": "/results/batch_001"}\n'
-            '• Feature flags: {"ENABLE_FEATURE_X": "true", "USE_NEW_ALGORITHM": "false"}\n'
-            "These merge with template environment variables, with job values taking precedence."
-        ),
     )
 
     # Execution tracking
@@ -369,13 +269,7 @@ class ContainerJob(models.Model):
             ("scaleway", "Scaleway Containers"),
             ("mock", "Mock (Testing)"),
         ],
-        help_text="Preferred executor type for this job (used by routing logic)",
-    )
-
-    routing_reason = models.TextField(
-        blank=True,
-        default="",
-        help_text="Explanation of why this executor was chosen for this job",
+        help_text="Preferred executor type for this job",
     )
 
     external_execution_id = models.CharField(
@@ -434,7 +328,8 @@ class ContainerJob(models.Model):
         executor_info = (
             f" ({self.executor_type})" if self.executor_type != "docker" else ""
         )
-        return f"{self.name or self.template.name} ({self.status}){executor_info}"
+        display_name = self.name or "Unnamed Job"
+        return f"{display_name} ({self.status}){executor_info}"
 
     @property
     def duration(self):
@@ -506,6 +401,56 @@ class ContainerJob(models.Model):
 
         return "\n".join(clean_lines)
 
+    def get_override_environment_variables_dict(self):
+        """
+        Parse override_environment TextField into a dictionary.
+
+        Returns:
+            dict: Override environment variables as key-value pairs
+        """
+        env_vars = {}
+        if not self.override_environment:
+            return env_vars
+
+        for line in self.override_environment.strip().split("\n"):
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue  # Skip empty lines and comments
+
+            if "=" in line:
+                key, value = line.split("=", 1)  # Split only on first =
+                env_vars[key.strip()] = value.strip()
+
+        return env_vars
+
+    def get_all_environment_variables(self):
+        """
+        Get merged environment variables from template and overrides.
+
+        Precedence: Template → Override Environment
+
+        Returns:
+            dict: Merged environment variables as key-value pairs
+        """
+        env_vars = {}
+
+        # Start with template variables (if linked)
+        if self.environment_template:
+            env_vars.update(self.environment_template.get_environment_variables_dict())
+
+        # Override with job-specific overrides
+        env_vars.update(self.get_override_environment_variables_dict())
+
+        return env_vars
+
+    def get_network_names(self) -> list:
+        """Get list of network names from network configuration"""
+        return [
+            network.get("network_name", "")
+            for network in (self.network_configuration or [])
+            if network.get("network_name")
+        ]
+
     def can_use_executor(self, executor_type: str) -> bool:
         """Check if this job can run on the specified executor type"""
         # All jobs can run on any executor type
@@ -525,230 +470,9 @@ class ContainerJob(models.Model):
         if self.name and len(self.name) > 200:
             raise ValidationError("Job name cannot exceed 200 characters")
 
-        if self.override_command and len(self.override_command) > 2000:
-            raise ValidationError("Override command cannot exceed 2000 characters")
+        if self.command and len(self.command) > 2000:
+            raise ValidationError("Command cannot exceed 2000 characters")
 
-
-# Routing Rules Models
-class RoutingRuleSet(models.Model):
-    """
-    Collection of routing rules with metadata.
-    """
-
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    name = models.CharField(max_length=100, unique=True)
-    description = models.TextField(blank=True)
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    # A/B testing support
-    ab_test_enabled = models.BooleanField(default=False)
-    ab_test_percentage = models.FloatField(
-        default=0.0, help_text="Percentage of jobs to apply this ruleset to (0-100)"
-    )
-
-    class Meta:
-        ordering: ClassVar = ["name"]
-        verbose_name = "Routing Rule Set"
-        verbose_name_plural = "Routing Rule Sets"
-
-    def __str__(self):
-        return self.name
-
-    def clean(self):
-        """Validate the ruleset"""
-        from django.core.exceptions import ValidationError
-
-        if self.ab_test_enabled and not (
-            0 <= self.ab_test_percentage <= MAX_PERCENTAGE
-        ):
-            raise ValidationError(
-                f"A/B test percentage must be between 0 and {MAX_PERCENTAGE}"
-            )
-
-
-class RoutingRule(models.Model):
-    """
-    Individual routing rule with condition and target executor.
-    """
-
-    EXECUTOR_CHOICES: ClassVar = [
-        ("docker", "Docker"),
-        ("cloudrun", "Cloud Run"),
-        ("fargate", "AWS Fargate"),
-        ("mock", "Mock (Testing)"),
-    ]
-
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    ruleset = models.ForeignKey(
-        RoutingRuleSet, on_delete=models.CASCADE, related_name="rules"
-    )
-    name = models.CharField(max_length=100)
-    description = models.TextField(blank=True)
-
-    # Rule definition
-    condition = models.TextField(
-        help_text="Python expression that evaluates to True/False"
-    )
-    target_executor = models.CharField(max_length=50, choices=EXECUTOR_CHOICES)
-    priority = models.IntegerField(
-        default=100, help_text="Lower numbers = higher priority"
-    )
-
-    # Rule metadata
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    # Statistics
-    execution_count = models.PositiveIntegerField(default=0)
-    success_count = models.PositiveIntegerField(default=0)
-    last_executed = models.DateTimeField(null=True, blank=True)
-
-    class Meta:
-        ordering: ClassVar = ["priority", "created_at"]
-        unique_together: ClassVar = ["ruleset", "name"]
-        verbose_name = "Routing Rule"
-        verbose_name_plural = "Routing Rules"
-
-    def __str__(self):
-        return f"{self.ruleset.name}: {self.name}"
-
-    def clean(self):
-        """Validate the rule condition"""
-        from django.core.exceptions import ValidationError
-
-        if self.condition:
-            try:
-                from .routing.evaluator import (
-                    SafeExpressionError,
-                    SafeExpressionEvaluator,
-                )
-
-                evaluator = SafeExpressionEvaluator()
-                # Test with dummy context
-                dummy_context = {
-                    "memory_mb": 512,
-                    "cpu_cores": 1.0,
-                    "timeout_seconds": 600,
-                    "job_name": "test-job",
-                    "image": "test:latest",
-                }
-                evaluator.evaluate(self.condition, dummy_context)
-            except SafeExpressionError as e:
-                raise ValidationError(f"Invalid condition: {e}") from e
-
-    def evaluate(self, job) -> bool:
-        """
-        Evaluate this rule against a job.
-
-        Args:
-            job: ContainerJob to evaluate
-
-        Returns:
-            True if rule matches, False otherwise
-        """
-        if not self.is_active:
-            return False
-
-        try:
-            from django.utils import timezone as django_timezone
-
-            from .routing.evaluator import (
-                SafeExpressionError,
-                SafeExpressionEvaluator,
-                create_evaluation_context,
-            )
-
-            evaluator = SafeExpressionEvaluator()
-            context = create_evaluation_context(job)
-            result = evaluator.evaluate(self.condition, context)
-
-            # Update statistics
-            self.execution_count += 1
-            if result:
-                self.success_count += 1
-            self.last_executed = django_timezone.now()
-            self.save(
-                update_fields=["execution_count", "success_count", "last_executed"]
-            )
-
-            return result
-
-        except SafeExpressionError:
-            return False
-
-    @property
-    def success_rate(self) -> float:
-        """Calculate rule success rate"""
-        if self.execution_count == 0:
-            return 0.0
-        return (self.success_count / self.execution_count) * 100
-
-
-class RoutingDecision(models.Model):
-    """
-    Log of routing decisions for analysis and debugging.
-    """
-
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    job_id = models.UUIDField()  # Reference to ContainerJob
-
-    # Decision details
-    selected_executor = models.CharField(max_length=50)
-    rule_used = models.ForeignKey(
-        RoutingRule, on_delete=models.SET_NULL, null=True, blank=True
-    )
-    ruleset_used = models.ForeignKey(
-        RoutingRuleSet, on_delete=models.SET_NULL, null=True, blank=True
-    )
-
-    # Context at decision time
-    decision_reason = models.TextField()
-    evaluated_rules = models.JSONField(default=list)  # List of rule IDs evaluated
-    job_context = models.JSONField(default=dict)  # Job context at decision time
-
-    # Metadata
-    timestamp = models.DateTimeField(auto_now_add=True)
-    execution_time_ms = models.FloatField(null=True, blank=True)
-
-    # A/B testing
-    is_ab_test = models.BooleanField(default=False)
-    ab_test_group = models.CharField(max_length=50, blank=True)
-
-    class Meta:
-        ordering: ClassVar = ["-timestamp"]
-        verbose_name = "Routing Decision"
-        verbose_name_plural = "Routing Decisions"
-        indexes: ClassVar = [
-            models.Index(fields=["job_id"]),
-            models.Index(fields=["selected_executor"]),
-            models.Index(fields=["timestamp"]),
-        ]
-
-    def __str__(self):
-        return f"Decision for job {self.job_id}: {self.selected_executor}"
-
-
-class RuleValidationResult(models.Model):
-    """
-    Results of rule validation tests.
-    """
-
-    rule = models.ForeignKey(RoutingRule, on_delete=models.CASCADE)
-    test_case = models.CharField(max_length=100)
-    expected_result = models.BooleanField()
-    actual_result = models.BooleanField()
-    passed = models.BooleanField()
-    error_message = models.TextField(blank=True)
-    tested_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering: ClassVar = ["-tested_at"]
-        verbose_name = "Rule Validation Result"
-        verbose_name_plural = "Rule Validation Results"
-
-    def __str__(self):
-        status = "PASS" if self.passed else "FAIL"
-        return f"{self.rule.name} - {self.test_case}: {status}"
+        # Validate docker_image is provided
+        if not self.docker_image:
+            raise ValidationError("Docker image is required")

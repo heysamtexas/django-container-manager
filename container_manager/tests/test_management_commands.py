@@ -13,7 +13,7 @@ from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 
 from container_manager.management.commands.process_container_jobs import Command
-from container_manager.models import ContainerJob, ContainerTemplate, ExecutorHost
+from container_manager.models import ContainerJob, ExecutorHost
 
 
 @patch("time.sleep")  # Prevent any time delays
@@ -31,10 +31,6 @@ class ProcessContainerJobsTest(TransactionTestCase):
             is_active=True,
         )
 
-        self.template = ContainerTemplate.objects.create(
-            name="test-template", docker_image="python:3.11", command="python script.py"
-        )
-
         # Set up output capture
         self.out = StringIO()
         self.command = Command()
@@ -43,7 +39,8 @@ class ProcessContainerJobsTest(TransactionTestCase):
     def create_pending_job(self, **kwargs):
         """Helper to create a pending job."""
         defaults = {
-            "template": self.template,
+            "docker_image": "python:3.11",
+            "command": "python script.py",
             "name": "test-job",
             "status": "pending",
             "docker_host": self.host,
@@ -372,22 +369,18 @@ class ProcessContainerJobsBusinessLogicTest(TestCase):
             is_active=True,
         )
 
-        self.template = ContainerTemplate.objects.create(
-            name="test-template", docker_image="python:3.11"
-        )
-
     def test_get_pending_jobs_query_logic(self):
         """Test the database query logic for getting pending jobs."""
         # Create test jobs with different statuses
         pending_job = ContainerJob.objects.create(
-            template=self.template,
+            docker_image="python:3.11",
             name="pending-job",
             status="pending",
             docker_host=self.host,
         )
 
         running_job = ContainerJob.objects.create(
-            template=self.template,
+            docker_image="python:3.11",
             name="running-job",
             status="running",
             docker_host=self.host,
@@ -482,7 +475,7 @@ class ProcessContainerJobsBusinessLogicTest(TestCase):
     def test_job_status_transitions(self):
         """Test job status transition logic."""
         job = ContainerJob.objects.create(
-            template=self.template,
+            docker_image="python:3.11",
             name="test-job",
             status="pending",
             docker_host=self.host,

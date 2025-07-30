@@ -9,7 +9,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 
 from ..executors.mock import MockExecutor
-from ..models import ContainerJob, ContainerTemplate, ExecutorHost
+from ..models import ContainerJob, ExecutorHost
 
 
 class MockExecutorTest(TestCase):
@@ -28,22 +28,6 @@ class MockExecutorTest(TestCase):
             is_active=True,
         )
 
-        self.template = ContainerTemplate.objects.create(
-            name="test-template",
-            docker_image="alpine:latest",
-            memory_limit=128,
-            cpu_limit=0.5,
-            timeout_seconds=300,
-        )
-
-        self.high_memory_template = ContainerTemplate.objects.create(
-            name="ml-training",
-            docker_image="tensorflow/tensorflow:latest",
-            memory_limit=16384,  # 16GB
-            cpu_limit=8.0,
-            timeout_seconds=7200,
-        )
-
     def test_basic_mock_executor(self):
         """Test basic MockExecutor functionality"""
         config = {
@@ -53,7 +37,13 @@ class MockExecutorTest(TestCase):
         executor = MockExecutor(config)
 
         job = ContainerJob.objects.create(
-            template=self.template, docker_host=self.docker_host, created_by=self.user
+            docker_host=self.docker_host,
+            docker_image="alpine:latest",
+            memory_limit=128,
+            cpu_limit=0.5,
+            timeout_seconds=300,
+            executor_type="docker",
+            created_by=self.user,
         )
 
         # Test launch
@@ -89,7 +79,13 @@ class MockExecutorTest(TestCase):
         executor = MockExecutor(config)
 
         job = ContainerJob.objects.create(
-            template=self.template, docker_host=self.docker_host, created_by=self.user
+            docker_host=self.docker_host,
+            docker_image="alpine:latest",
+            memory_limit=128,
+            cpu_limit=0.5,
+            timeout_seconds=300,
+            executor_type="docker",
+            created_by=self.user,
         )
 
         # Should fail due to 100% failure rate
@@ -112,8 +108,12 @@ class MockExecutorTest(TestCase):
             executor = MockExecutor(config)
 
             job = ContainerJob.objects.create(
-                template=self.template,
                 docker_host=self.docker_host,
+                docker_image="alpine:latest",
+                memory_limit=128,
+                cpu_limit=0.5,
+                timeout_seconds=300,
+                executor_type="docker",
                 created_by=self.user,
             )
 
@@ -143,8 +143,12 @@ class MockExecutorTest(TestCase):
                 executor = MockExecutor(config)
 
                 job = ContainerJob.objects.create(
-                    template=self.template,
                     docker_host=self.docker_host,
+                    docker_image="alpine:latest",
+                    memory_limit=128,
+                    cpu_limit=0.5,
+                    timeout_seconds=300,
+                    executor_type="docker",
                     created_by=self.user,
                 )
 
@@ -176,8 +180,12 @@ class MockExecutorTest(TestCase):
         cpu_values = []
         for _ in range(10):
             job = ContainerJob.objects.create(
-                template=self.template,
                 docker_host=self.docker_host,
+                docker_image="alpine:latest",
+                memory_limit=128,
+                cpu_limit=0.5,
+                timeout_seconds=300,
+                executor_type="docker",
                 created_by=self.user,
             )
 
@@ -202,7 +210,13 @@ class MockExecutorTest(TestCase):
         executor = MockExecutor(config)
 
         job = ContainerJob.objects.create(
-            template=self.template, docker_host=self.docker_host, created_by=self.user
+            docker_host=self.docker_host,
+            docker_image="alpine:latest",
+            memory_limit=128,
+            cpu_limit=0.5,
+            timeout_seconds=300,
+            executor_type="docker",
+            created_by=self.user,
         )
 
         success, execution_id = executor.launch_job(job)
@@ -221,14 +235,24 @@ class MockExecutorTest(TestCase):
 
         # Test with high memory job
         high_memory_job = ContainerJob.objects.create(
-            template=self.high_memory_template,
             docker_host=self.docker_host,
+            docker_image="tensorflow/tensorflow:latest",
+            memory_limit=16384,
+            cpu_limit=8.0,
+            timeout_seconds=7200,
+            executor_type="docker",
             created_by=self.user,
         )
 
         # Test with regular job
         regular_job = ContainerJob.objects.create(
-            template=self.template, docker_host=self.docker_host, created_by=self.user
+            docker_host=self.docker_host,
+            docker_image="alpine:latest",
+            memory_limit=128,
+            cpu_limit=0.5,
+            timeout_seconds=300,
+            executor_type="docker",
+            created_by=self.user,
         )
 
         high_memory_time = executor._calculate_execution_time(high_memory_job)
@@ -248,7 +272,13 @@ class MockExecutorTest(TestCase):
 
         # Run a job
         job = ContainerJob.objects.create(
-            template=self.template, docker_host=self.docker_host, created_by=self.user
+            docker_host=self.docker_host,
+            docker_image="alpine:latest",
+            memory_limit=128,
+            cpu_limit=0.5,
+            timeout_seconds=300,
+            executor_type="docker",
+            created_by=self.user,
         )
 
         success, execution_id = executor.launch_job(job)
@@ -270,7 +300,13 @@ class MockExecutorTest(TestCase):
         executor = MockExecutor(config)
 
         job = ContainerJob.objects.create(
-            template=self.template, docker_host=self.docker_host, created_by=self.user
+            docker_host=self.docker_host,
+            docker_image="alpine:latest",
+            memory_limit=128,
+            cpu_limit=0.5,
+            timeout_seconds=300,
+            executor_type="docker",
+            created_by=self.user,
         )
 
         # No active executions initially
@@ -302,7 +338,13 @@ class MockExecutorTest(TestCase):
         executor = MockExecutor(config)
 
         job = ContainerJob.objects.create(
-            template=self.template, docker_host=self.docker_host, created_by=self.user
+            docker_host=self.docker_host,
+            docker_image="alpine:latest",
+            memory_limit=128,
+            cpu_limit=0.5,
+            timeout_seconds=300,
+            executor_type="docker",
+            created_by=self.user,
         )
 
         success, execution_id = executor.launch_job(job)
@@ -344,8 +386,12 @@ class MockExecutorTest(TestCase):
             executor = MockExecutor(config)
 
             job = ContainerJob.objects.create(
-                template=self.template,
                 docker_host=self.docker_host,
+                docker_image="alpine:latest",
+                memory_limit=128,
+                cpu_limit=0.5,
+                timeout_seconds=300,
+                executor_type="docker",
                 created_by=self.user,
             )
 
@@ -369,7 +415,13 @@ class MockExecutorTest(TestCase):
         executor = MockExecutor(config)
 
         job = ContainerJob.objects.create(
-            template=self.template, docker_host=self.docker_host, created_by=self.user
+            docker_host=self.docker_host,
+            docker_image="alpine:latest",
+            memory_limit=128,
+            cpu_limit=0.5,
+            timeout_seconds=300,
+            executor_type="docker",
+            created_by=self.user,
         )
 
         success, execution_id = executor.launch_job(job)
@@ -396,7 +448,13 @@ class MockExecutorTest(TestCase):
 
         # Run a job to generate stats
         job = ContainerJob.objects.create(
-            template=self.template, docker_host=self.docker_host, created_by=self.user
+            docker_host=self.docker_host,
+            docker_image="alpine:latest",
+            memory_limit=128,
+            cpu_limit=0.5,
+            timeout_seconds=300,
+            executor_type="docker",
+            created_by=self.user,
         )
 
         success, execution_id = executor.launch_job(job)
@@ -422,10 +480,14 @@ class MockExecutorTest(TestCase):
         executor = MockExecutor(config)
 
         job = ContainerJob.objects.create(
-            template=self.template,
             docker_host=self.docker_host,
-            override_command="echo 'custom command'",
-            override_environment={"TEST_VAR": "test_value"},
+            docker_image="alpine:latest",
+            memory_limit=128,
+            cpu_limit=0.5,
+            timeout_seconds=300,
+            executor_type="docker",
+            command="echo 'custom command'",
+            override_environment="TEST_VAR=test_value",
             created_by=self.user,
         )
 

@@ -165,8 +165,8 @@ class ContainerExecutor(ABC):
         if not job:
             return False, "Job is None"
 
-        if not hasattr(job, "template") or not job.template:
-            return False, "No template"
+        if not hasattr(job, "docker_image") or not job.docker_image:
+            return False, "No docker_image"
 
         if not hasattr(job, "docker_host") or not job.docker_host:
             return False, "No docker_host"

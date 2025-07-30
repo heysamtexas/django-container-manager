@@ -102,7 +102,7 @@ class MockExecutor(ContainerExecutor):
         """
         try:
             logger.info(
-                f"Mock executor launching job {job.id} (template: {job.template.name})"
+                f"Mock executor launching job {job.id} (name: {job.name or 'unnamed'})"
             )
 
             # Simulate launch failures if configured
@@ -430,10 +430,10 @@ class MockExecutor(ContainerExecutor):
 
         # Adjust based on template properties
         if (
-            job.template.memory_limit > HIGH_MEMORY_THRESHOLD_MB
-        ):  # High memory jobs take longer
+            job.memory_limit or 0
+        ) > HIGH_MEMORY_THRESHOLD_MB:  # High memory jobs take longer
             base_time *= 1.5
-        if job.template.cpu_limit > HIGH_CPU_THRESHOLD:  # High CPU jobs take longer
+        if (job.cpu_limit or 0) > HIGH_CPU_THRESHOLD:  # High CPU jobs take longer
             base_time *= 1.2
 
         # Add some randomness
@@ -452,7 +452,7 @@ class MockExecutor(ContainerExecutor):
             actual_mb = base_mb
         else:
             # Use template memory limit as upper bound for pattern-based calculation
-            max_mb = min(job.template.memory_limit, base_mb * 2)
+            max_mb = min(job.memory_limit or 512, base_mb * 2)
             actual_mb = random.uniform(base_mb * 0.7, max_mb)
 
         return int(actual_mb * 1024 * 1024)  # Convert to bytes
@@ -490,7 +490,7 @@ class MockExecutor(ContainerExecutor):
 
     def _generate_logs(self, job: ContainerJob) -> dict[str, str]:
         """Generate realistic log patterns for the job."""
-        template_name = job.template.name
+        job_name = job.name or "unnamed"
         job_id = str(job.id)
 
         # Generate stdout logs
@@ -504,18 +504,19 @@ class MockExecutor(ContainerExecutor):
         timestamp = timezone.now().strftime("%Y-%m-%d %H:%M:%S")
         stdout_lines.extend(
             [
-                f"[{timestamp}] Processing template: {template_name}",
+                f"[{timestamp}] Processing job: {job_name}",
                 f"[{timestamp}] Job ID: {job_id}",
-                f"[{timestamp}] Memory limit: {job.template.memory_limit}MB",
-                f"[{timestamp}] CPU limit: {job.template.cpu_limit} cores",
+                f"[{timestamp}] Memory limit: {job.memory_limit or 'unlimited'}MB",
+                f"[{timestamp}] CPU limit: {job.cpu_limit or 'unlimited'} cores",
             ]
         )
 
         # Add environment variables if present
-        if job.override_environment:
-            env_count = len(job.override_environment)
+        all_env_vars = job.get_all_environment_variables()
+        if all_env_vars:
+            env_count = len(all_env_vars)
             stdout_lines.append(
-                f"[{timestamp}] Environment overrides: {env_count} variables"
+                f"[{timestamp}] Environment variables: {env_count} total"
             )
 
         stdout_lines.append(
@@ -528,9 +529,9 @@ class MockExecutor(ContainerExecutor):
         # Generate docker logs
         docker_lines = [
             f"Container created for job {job_id}",
-            f"Using image: {job.template.docker_image}",
-            f"Resource limits applied: {job.template.memory_limit}MB memory, "
-            f"{job.template.cpu_limit} CPU cores",
+            f"Using image: {job.docker_image}",
+            f"Resource limits applied: {job.memory_limit or 'unlimited'}MB memory, "
+            f"{job.cpu_limit or 'unlimited'} CPU cores",
             "Container started successfully",
             "Container execution completed",
         ]
@@ -544,14 +545,12 @@ class MockExecutor(ContainerExecutor):
     def _get_container_config(self, job: ContainerJob) -> dict:
         """Generate container configuration for logging."""
         return {
-            "image": job.template.docker_image,
-            "memory_limit": f"{job.template.memory_limit}MB",
-            "cpu_limit": job.template.cpu_limit,
-            "timeout_seconds": job.template.timeout_seconds,
-            "environment_vars": len(job.override_environment)
-            if job.override_environment
-            else 0,
-            "command_override": bool(job.override_command),
+            "image": job.docker_image,
+            "memory_limit": f"{job.memory_limit or 'unlimited'}MB",
+            "cpu_limit": job.cpu_limit or "unlimited",
+            "timeout_seconds": job.timeout_seconds or 3600,
+            "environment_vars": len(job.get_all_environment_variables()),
+            "command_override": bool(job.command),
         }
 
     def _validate_executor_specific(self, job) -> list[str]:

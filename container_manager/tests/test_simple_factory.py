@@ -6,7 +6,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 
 from container_manager.executors.factory import ExecutorFactory
-from container_manager.models import ContainerJob, ContainerTemplate, ExecutorHost
+from container_manager.models import ContainerJob, ExecutorHost
 
 
 class SimpleExecutorFactoryTest(TestCase):
@@ -35,22 +35,16 @@ class SimpleExecutorFactoryTest(TestCase):
             weight=200,  # Higher weight = more preferred
         )
 
-        # Create test template
-        self.template = ContainerTemplate.objects.create(
-            name="test-job",
-            docker_image="nginx:latest",
-            memory_limit=512,
-            cpu_limit=1.0,
-            created_by=self.user,
-        )
-
         self.factory = ExecutorFactory()
 
     def test_route_job_weight_based(self):
         """Test that routing respects weights."""
         job = ContainerJob.objects.create(
-            template=self.template,
             docker_host=self.host1,  # Initial assignment
+            docker_image="nginx:latest",
+            name="test-job",
+            memory_limit=512,
+            cpu_limit=1.0,
             created_by=self.user,
         )
 
@@ -67,7 +61,10 @@ class SimpleExecutorFactoryTest(TestCase):
         ExecutorHost.objects.all().update(is_active=False)
 
         job = ContainerJob.objects.create(
-            template=self.template, docker_host=self.host1, created_by=self.user
+            docker_host=self.host1,
+            docker_image="nginx:latest",
+            name="test-job",
+            created_by=self.user,
         )
 
         selected_host = self.factory.route_job(job)
@@ -84,7 +81,10 @@ class SimpleExecutorFactoryTest(TestCase):
     def test_weight_distribution(self):
         """Test that higher weights are more likely to be selected."""
         job = ContainerJob.objects.create(
-            template=self.template, docker_host=self.host1, created_by=self.user
+            docker_host=self.host1,
+            docker_image="nginx:latest",
+            name="test-job",
+            created_by=self.user,
         )
 
         # Run multiple routing attempts and track results

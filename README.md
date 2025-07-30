@@ -208,19 +208,13 @@ python manage.py process_container_jobs --cleanup --cleanup-hours=48
 
 ### Job Management
 
-```bash
-# Create a job manually
-python manage.py manage_container_job create template-name host-name --name="My Job"
+Job creation and management is handled through the Django admin interface, which provides:
 
-# List jobs with filtering
-python manage.py manage_container_job list --status=running
-
-# Show detailed job information with logs
-python manage.py manage_container_job show JOB-UUID --logs
-
-# Cancel a running job
-python manage.py manage_container_job cancel JOB-UUID
-```
+- **Interactive job creation** with real-time validation
+- **Advanced filtering and search** capabilities
+- **Bulk operations** for managing multiple jobs
+- **Real-time monitoring** with status updates
+- **Integrated log viewing** and debugging tools
 
 ## 📊 Monitoring & Admin Interface
 

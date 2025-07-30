@@ -11,7 +11,7 @@ from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from container_manager.models import ContainerJob, ContainerTemplate, ExecutorHost
+from container_manager.models import ContainerJob, ExecutorHost
 
 
 class CleanupContainersCommandTest(TestCase):
@@ -33,14 +33,7 @@ class CleanupContainersCommandTest(TestCase):
             is_active=True,
         )
 
-        # Create test template
-        self.template = ContainerTemplate.objects.create(
-            name="test-template",
-            description="Test template for cleanup testing",
-            docker_image="alpine:latest",
-            command='echo "test"',
-            created_by=self.user,
-        )
+        # No template needed in new model structure
 
         self.old_time = timezone.now() - timedelta(hours=48)
         self.recent_time = timezone.now() - timedelta(hours=1)
@@ -48,10 +41,11 @@ class CleanupContainersCommandTest(TestCase):
     def _create_old_completed_job(self):
         """Create a completed job that's old enough for cleanup"""
         job = ContainerJob.objects.create(
-            template=self.template,
             docker_host=self.docker_host,
             name="Old Completed Job",
             status="completed",
+            docker_image="alpine:latest",
+            command='echo "test"',
             container_id="old_container_123",
             started_at=self.old_time,
             completed_at=self.old_time + timedelta(minutes=5),
@@ -61,10 +55,11 @@ class CleanupContainersCommandTest(TestCase):
     def _create_recent_completed_job(self):
         """Create a completed job that's too recent for cleanup"""
         job = ContainerJob.objects.create(
-            template=self.template,
             docker_host=self.docker_host,
             name="Recent Completed Job",
             status="completed",
+            docker_image="alpine:latest",
+            command='echo "test"',
             container_id="recent_container_456",
             started_at=self.recent_time,
             completed_at=self.recent_time + timedelta(minutes=5),
@@ -74,10 +69,11 @@ class CleanupContainersCommandTest(TestCase):
     def _create_running_job(self):
         """Create a running job that should not be cleaned"""
         job = ContainerJob.objects.create(
-            template=self.template,
             docker_host=self.docker_host,
             name="Running Job",
             status="running",
+            docker_image="alpine:latest",
+            command='echo "test"',
             container_id="running_container_789",
             started_at=self.old_time,
         )
@@ -148,10 +144,11 @@ class CleanupContainersCommandTest(TestCase):
         # Create test jobs
         old_job1 = self._create_old_completed_job()
         old_job2 = ContainerJob.objects.create(
-            template=self.template,
             docker_host=self.docker_host,
             name="Old Failed Job",
             status="failed",
+            docker_image="alpine:latest",
+            command='echo "test"',
             container_id="old_failed_123",
             started_at=self.old_time,
             completed_at=self.old_time + timedelta(minutes=2),
@@ -192,10 +189,11 @@ class CleanupContainersCommandTest(TestCase):
         # Create 15 old completed jobs (more than the display limit of 10)
         for i in range(15):
             ContainerJob.objects.create(
-                template=self.template,
                 docker_host=self.docker_host,
                 name=f"Old Job {i}",
                 status="completed",
+                docker_image="alpine:latest",
+                command='echo "test"',
                 container_id=f"old_container_{i}",
                 started_at=self.old_time,
                 completed_at=self.old_time + timedelta(minutes=1),
@@ -337,10 +335,11 @@ class CleanupContainersCommandTest(TestCase):
         created_jobs = []
         for status, completion_time, should_include in jobs_data:
             job = ContainerJob.objects.create(
-                template=self.template,
                 docker_host=self.docker_host,
                 name=f"Test Job {status}",
                 status=status,
+                docker_image="alpine:latest",
+                command='echo "test"',
                 container_id=f"container_{status}",
                 started_at=completion_time - timedelta(minutes=5),
                 completed_at=completion_time
@@ -370,10 +369,11 @@ class CleanupContainersCommandTest(TestCase):
         """Test that jobs without container_id are excluded from cleanup preview"""
         # Create job without container_id
         job_no_container = ContainerJob.objects.create(
-            template=self.template,
             docker_host=self.docker_host,
             name="Job Without Container ID",
             status="completed",
+            docker_image="alpine:latest",
+            command='echo "test"',
             container_id="",  # Empty container ID
             started_at=self.old_time,
             completed_at=self.old_time + timedelta(minutes=5),
@@ -381,10 +381,11 @@ class CleanupContainersCommandTest(TestCase):
 
         # Create job with container_id
         job_with_container = ContainerJob.objects.create(
-            template=self.template,
             docker_host=self.docker_host,
             name="Job With Container ID",
             status="completed",
+            docker_image="alpine:latest",
+            command='echo "test"',
             container_id="has_container_123",
             started_at=self.old_time,
             completed_at=self.old_time + timedelta(minutes=5),

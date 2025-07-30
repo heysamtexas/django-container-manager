@@ -14,7 +14,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from .executors.factory import ExecutorFactory
-from .models import ContainerJob, ContainerTemplate, ExecutorHost
+from .models import ContainerJob, ExecutorHost
 
 logger = logging.getLogger(__name__)
 
@@ -35,26 +35,32 @@ class BulkJobManager:
 
     def create_jobs_bulk(
         self,
-        template: ContainerTemplate,
+        docker_image: str,
         count: int,
         user: User,
         host: ExecutorHost | None = None,
         name_pattern: str | None = None,
-        environment_overrides: list[dict[str, Any]] | None = None,
-        command_overrides: list[str] | None = None,
+        command: str = "",
+        environment_variables: dict[str, str] | None = None,
+        memory_limit: int | None = None,
+        cpu_limit: float | None = None,
+        timeout_seconds: int = 3600,
         batch_size: int = 100,
     ) -> tuple[list[ContainerJob], list[str]]:
         """
         Create multiple jobs in bulk.
 
         Args:
-            template: Container template to use
+            docker_image: Docker image to use for all jobs
             count: Number of jobs to create
             user: User creating the jobs
             host: Specific host to use (optional, will auto-route if None)
             name_pattern: Pattern for job names (e.g., "batch-job-{index}")
-            environment_overrides: List of environment override dicts
-            command_overrides: List of command overrides
+            command: Command to run in containers
+            environment_variables: Base environment variables for all jobs
+            memory_limit: Memory limit in MB
+            cpu_limit: CPU limit in cores
+            timeout_seconds: Timeout in seconds
             batch_size: Number of jobs to create per database transaction
 
         Returns:
@@ -74,30 +80,26 @@ class BulkJobManager:
             )
             return created_jobs, errors
 
-        # Prepare environment and command overrides
-        env_overrides = environment_overrides or []
-        cmd_overrides = command_overrides or []
+        # Prepare base environment variables
+        base_env = environment_variables or {}
 
-        # Pad lists to match count
-        while len(env_overrides) < count:
-            env_overrides.append({})
-        while len(cmd_overrides) < count:
-            cmd_overrides.append("")
-
-        logger.info(f"Creating {count} jobs in bulk for template {template.name}")
+        logger.info(f"Creating {count} jobs in bulk with image {docker_image}")
 
         # Process in batches to avoid memory issues
         for batch_start in range(0, count, batch_size):
             batch_end = min(batch_start + batch_size, count)
             batch_jobs, batch_errors = self._create_job_batch(
-                template=template,
+                docker_image=docker_image,
                 start_index=batch_start,
                 end_index=batch_end,
                 user=user,
                 host=host,
                 name_pattern=name_pattern,
-                env_overrides=env_overrides,
-                cmd_overrides=cmd_overrides,
+                command=command,
+                environment_variables=base_env,
+                memory_limit=memory_limit,
+                cpu_limit=cpu_limit,
+                timeout_seconds=timeout_seconds,
             )
             created_jobs.extend(batch_jobs)
             errors.extend(batch_errors)
@@ -107,14 +109,17 @@ class BulkJobManager:
 
     def _create_job_batch(
         self,
-        template: ContainerTemplate,
+        docker_image: str,
         start_index: int,
         end_index: int,
         user: User,
         host: ExecutorHost | None,
         name_pattern: str | None,
-        env_overrides: list[dict[str, Any]],
-        cmd_overrides: list[str],
+        command: str,
+        environment_variables: dict[str, str],
+        memory_limit: int | None,
+        cpu_limit: float | None,
+        timeout_seconds: int,
     ) -> tuple[list[ContainerJob], list[str]]:
         """Create a batch of jobs within a single transaction."""
         jobs = []
@@ -130,37 +135,38 @@ class BulkJobManager:
                                 index=i, batch=start_index // 100, uuid=str(uuid4())[:8]
                             )
                         else:
-                            job_name = f"{template.name}-{i}"
+                            job_name = f"job-{i}"
 
                         # Select host if not specified
                         job_host = host
                         if not job_host:
-                            # Auto-route based on template requirements
-                            try:
-                                executor_type = self.executor_factory.route_job_dry_run(
-                                    template
-                                )
-                                job_host = ExecutorHost.objects.filter(
-                                    executor_type=executor_type, is_active=True
-                                ).first()
-                            except Exception as e:
-                                logger.warning(f"Auto-routing failed for job {i}: {e}")
-                                job_host = ExecutorHost.objects.filter(
-                                    is_active=True
-                                ).first()
+                            # Use first available host
+                            job_host = ExecutorHost.objects.filter(
+                                is_active=True
+                            ).first()
 
                         if not job_host:
                             errors.append(f"No available host for job {i}")
                             continue
 
+                        # Convert environment variables dict to text format
+                        env_text = ""
+                        if environment_variables:
+                            env_text = "\n".join(
+                                [f"{k}={v}" for k, v in environment_variables.items()]
+                            )
+
                         # Create job
                         job = ContainerJob.objects.create(
-                            template=template,
                             docker_host=job_host,
                             name=job_name,
+                            docker_image=docker_image,
+                            command=command,
+                            override_environment=env_text,
+                            memory_limit=memory_limit,
+                            cpu_limit=cpu_limit,
+                            timeout_seconds=timeout_seconds,
                             executor_type=job_host.executor_type,  # Match host type
-                            override_command=cmd_overrides[i] or "",
-                            override_environment=env_overrides[i] or {},
                             created_by=user,
                             status="pending",
                         )
