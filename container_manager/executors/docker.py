@@ -538,10 +538,8 @@ class DockerExecutor(ContainerExecutor):
 
     def _create_container(self, job: ContainerJob) -> str:
         """Create Docker container for job with proper cleanup on failure"""
-        from ..defaults import get_container_manager_setting
 
         client = self._get_client(job.docker_host)
-        create_timeout = get_container_manager_setting("DOCKER_CREATE_TIMEOUT", 60)
         container = None
 
         try:
@@ -550,7 +548,7 @@ class DockerExecutor(ContainerExecutor):
 
             # Use Docker client's native timeout support
             container = client.containers.create(**container_config)
-            
+
             # Setup additional networks - if this fails, we need to cleanup the container
             self._setup_additional_networks(client, job, container)
 
@@ -566,7 +564,7 @@ class DockerExecutor(ContainerExecutor):
                     logger.info(f"Cleaned up failed container {container.id}")
                 except Exception as cleanup_error:
                     logger.warning(f"Failed to cleanup container after creation failure: {cleanup_error}")
-            
+
             raise ExecutorError(f"Container creation failed: {e}") from e
 
     def _build_container_environment(self, job: ContainerJob) -> dict:
@@ -650,7 +648,7 @@ class DockerExecutor(ContainerExecutor):
         try:
             client = self._get_client(job.docker_host)
             container = client.containers.get(container_id)
-            
+
             # Docker client start() doesn't support timeout parameter directly
             # The timeout is handled at the client level
             container.start()

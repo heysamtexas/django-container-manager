@@ -147,8 +147,8 @@ class JobManagementService:
             display_name = f"{info['name']} ({info['type_name']})"
         """
         try:
-            # Use polymorphic display for host information
-            executor = self.executor_factory.get_executor(host)
+            # Check if executor can be created (validates host configuration)
+            self.executor_factory.get_executor(host)
 
             # Get executor-specific display name
             if host.executor_type == "docker":

@@ -275,7 +275,7 @@ class ContainerJob(models.Model):
         verbose_name = "Container Job"
         verbose_name_plural = "Container Jobs"
         ordering: ClassVar = ["-created_at"]
-        indexes = [
+        indexes: ClassVar = [
             models.Index(
                 fields=["status", "created_at"], name="cjob_status_created_idx"
             ),

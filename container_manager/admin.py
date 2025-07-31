@@ -71,7 +71,7 @@ class ExecutorHostAdmin(admin.ModelAdmin):
 
         try:
             provider = ExecutorProvider()
-            executor = provider.get_executor(obj)
+            provider.get_executor(obj)  # Check if executor can be created
             # Try to get executor - if it fails, connection is bad
             return format_html('<span style="color: green;">●</span> Connected')
         except ExecutorConnectionError:
@@ -86,7 +86,7 @@ class ExecutorHostAdmin(admin.ModelAdmin):
         provider = ExecutorProvider()
         for host in queryset:
             try:
-                executor = provider.get_executor(host)
+                provider.get_executor(host)  # Check if executor can be created
                 # If we can get executor, connection is good
                 messages.success(request, f"Connection to {host.name} successful")
             except ExecutorConnectionError as e:

@@ -484,7 +484,7 @@ class ProcessContainerJobsSimpleTest(TestCase):
             self.command.executor_factory, "get_executor"
         ) as mock_get_executor:
             mock_get_executor.side_effect = Exception("Executor error")
-            
+
             result = self.command.monitor_running_jobs()
 
             self.assertEqual(
