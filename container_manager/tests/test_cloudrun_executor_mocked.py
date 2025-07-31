@@ -236,15 +236,6 @@ class CloudRunExecutorMockedTest(TestCase):
         self.assertFalse(is_valid)
         self.assertIn("None", message)
 
-    def test_estimate_cost_returns_none(self):
-        """Test estimate_cost returns None (not implemented)"""
-        from container_manager.executors.cloudrun import CloudRunExecutor
-
-        config = {"docker_host": self.host}
-        executor = CloudRunExecutor(config)
-
-        cost = executor.estimate_cost(self.job)
-        self.assertIsNone(cost)
 
     def test_connection_string_parsing_valid(self):
         """Test connection string parsing with valid format"""

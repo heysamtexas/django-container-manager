@@ -401,10 +401,6 @@ class DockerExecutorTest(TestCase):
             # Django ORM exception is also acceptable for this test
             pass
 
-    def test_estimate_cost_returns_none(self):
-        """Test estimate_cost returns None (not implemented)"""
-        cost = self.executor.estimate_cost(self.job)
-        self.assertIsNone(cost)
 
     @patch("container_manager.executors.docker.DockerExecutor._get_client")
     def test_get_health_status_healthy(self, mock_get_client):

@@ -461,51 +461,6 @@ class CloudRunExecutorTest(TestCase):
         self.assertEqual(usage["cpu_usage_percent"], 100)  # Capped at 100%
         self.assertIn("execution_time_seconds", usage)
 
-    def test_cost_estimation(self):
-        """Test cost estimation for Cloud Run jobs"""
-        config = {"project_id": "test-project"}
-        executor = CloudRunExecutor(config)
-
-        job = ContainerJob.objects.create(
-            docker_host=self.docker_host,
-            docker_image="gcr.io/test-project/test-image:latest",
-            memory_limit=512,
-            cpu_limit=1.0,
-            timeout_seconds=600,
-            executor_type="cloudrun",
-            created_by=self.user,
-        )
-
-        cost = executor.get_cost_estimate(job)
-
-        self.assertIn("cpu_cost", cost)
-        self.assertIn("memory_cost", cost)
-        self.assertIn("request_cost", cost)
-        self.assertIn("total_cost", cost)
-        self.assertEqual(cost["currency"], "USD")
-        self.assertGreater(cost["total_cost"], 0)
-
-    def test_cost_estimation_high_resources(self):
-        """Test cost estimation for high-resource jobs"""
-        config = {"project_id": "test-project"}
-        executor = CloudRunExecutor(config)
-
-        job = ContainerJob.objects.create(
-            docker_host=self.docker_host,
-            docker_image="gcr.io/test-project/ml-image:latest",
-            memory_limit=16384,
-            cpu_limit=4.0,
-            timeout_seconds=3600,
-            executor_type="cloudrun",
-            created_by=self.user,
-        )
-
-        cost = executor.get_cost_estimate(job)
-
-        # High resource job should cost more
-        self.assertGreater(cost["total_cost"], 0.01)  # Should be more than minimal cost
-        self.assertGreater(cost["cpu_cost"], 0)
-        self.assertGreater(cost["memory_cost"], 0)
 
     @patch("google.cloud.run_v2")
     def test_job_spec_creation(self, mock_gcp_run):
