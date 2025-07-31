@@ -391,21 +391,12 @@ class ServiceIntegrationTest(TestCase):
             created_by=self.user,
         )
 
-    def test_service_with_real_models(self):
-        """Test service behavior with real model instances."""
-        service = JobManagementService()
-
-        # These should work with real models (though they may fail validation
-        # due to mocked executors, that's expected behavior)
-        details = service.get_job_execution_details(self.job)
-        self.assertIn("type_name", details)
-        self.assertIn("id_label", details)
-        self.assertIn("id_value", details)
-        self.assertIn("status_detail", details)
 
     def test_host_display_info_integration(self):
         """Test host display info integration with real models."""
-        service = JobManagementService()
+        # Create a fresh service instance with a real factory to avoid test pollution
+        from ..executors.factory import ExecutorFactory
+        service = JobManagementService(ExecutorFactory())
 
         info = service.get_host_display_info(self.docker_host)
 

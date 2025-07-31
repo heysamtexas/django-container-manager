@@ -60,7 +60,7 @@ class DockerExecutor(ContainerExecutor):
             return "not-found"
 
         # Find the job
-        job = ContainerJob.objects.filter(container_id=execution_id).first()
+        job = ContainerJob.objects.filter(execution_id=execution_id).first()
         if not job:
             return "not-found"
 
@@ -93,7 +93,7 @@ class DockerExecutor(ContainerExecutor):
 
         try:
             # Find the job associated with this execution_id
-            job = ContainerJob.objects.filter(container_id=execution_id).first()
+            job = ContainerJob.objects.filter(execution_id=execution_id).first()
             if not job:
                 return "", ""
 
@@ -138,12 +138,13 @@ class DockerExecutor(ContainerExecutor):
 
     def harvest_job(self, job: ContainerJob) -> bool:
         """Collect final results and update job status"""
-        if not job.container_id:
+        execution_id = job.get_execution_identifier()
+        if not execution_id:
             return False
 
         try:
             client = self._get_client(job.docker_host)
-            container = client.containers.get(job.container_id)
+            container = client.containers.get(execution_id)
 
             # Get exit code
             container.reload()
@@ -161,7 +162,7 @@ class DockerExecutor(ContainerExecutor):
             # Immediate cleanup if configured
             self._immediate_cleanup(job)
         except NotFound:
-            logger.warning(f"Container {job.container_id} not found during harvest")
+            logger.warning(f"Container {execution_id} not found during harvest")
             job.status = "failed"
             job.completed_at = django_timezone.now()
             job.save()
@@ -180,7 +181,7 @@ class DockerExecutor(ContainerExecutor):
 
         try:
             # Find the job to get docker_host
-            job = ContainerJob.objects.filter(container_id=execution_id).first()
+            job = ContainerJob.objects.filter(execution_id=execution_id).first()
             client = docker.from_env() if not job else self._get_client(job.docker_host)
 
             container = client.containers.get(execution_id)
@@ -455,7 +456,7 @@ class DockerExecutor(ContainerExecutor):
             container.start()
 
             # Update job status
-            job.container_id = container_id
+            job.set_execution_identifier(container_id)
             job.status = "running"
             job.started_at = django_timezone.now()
             job.save()
@@ -511,15 +512,16 @@ class DockerExecutor(ContainerExecutor):
 
     def _collect_data(self, job: ContainerJob) -> None:
         """Collect execution logs and statistics"""
-        if not job.container_id:
+        execution_id = job.get_execution_identifier()
+        if not execution_id:
             return
 
         try:
             client = self._get_client(job.docker_host)
-            container = client.containers.get(job.container_id)
+            container = client.containers.get(execution_id)
 
             # Collect logs directly on job
-            stdout, stderr = self.get_logs(job.container_id)
+            stdout, stderr = self.get_logs(execution_id)
             job.stdout_log = stdout
             job.stderr_log = stderr
 
@@ -551,8 +553,9 @@ class DockerExecutor(ContainerExecutor):
 
         immediate_cleanup = get_container_manager_setting("IMMEDIATE_CLEANUP", True)
 
-        if immediate_cleanup and job.container_id:
-            self.cleanup(job.container_id)
+        execution_id = job.get_execution_identifier()
+        if immediate_cleanup and execution_id:
+            self.cleanup(execution_id)
 
     def _strip_docker_timestamps(self, log_text: str) -> str:
         """Remove Docker timestamps from log text"""

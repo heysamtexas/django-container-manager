@@ -215,7 +215,7 @@ class ProcessContainerJobsTest(TransactionTestCase):
         """Test monitor_running_jobs can be called without crashing."""
         # Create running job
         job = self.create_pending_job(
-            status="running", external_execution_id="exec-123"
+            status="running", execution_id="exec-123"
         )
 
         # Test that monitor_running_jobs can be called without errors
@@ -234,7 +234,7 @@ class ProcessContainerJobsTest(TransactionTestCase):
     ):
         """Test that monitor_running_jobs handles status check errors gracefully."""
         job = self.create_pending_job(
-            status="running", external_execution_id="exec-123"
+            status="running", execution_id="exec-123"
         )
 
         # Set up executor mock to fail
@@ -479,12 +479,12 @@ class ProcessContainerJobsBusinessLogicTest(TestCase):
 
         # Test status transitions
         job.status = "submitted"
-        job.external_execution_id = "exec-123"
+        job.set_execution_identifier("exec-123")
         job.save()
 
         job.refresh_from_db()
         self.assertEqual(job.status, "submitted")
-        self.assertEqual(job.external_execution_id, "exec-123")
+        self.assertEqual(job.get_execution_identifier(), "exec-123")
 
         # Test transition to completed
         job.status = "completed"

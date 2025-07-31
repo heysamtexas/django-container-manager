@@ -108,7 +108,7 @@ class Command(BaseCommand):
         orphaned_jobs = ContainerJob.objects.filter(
             completed_at__lt=cutoff_time,
             status__in=["completed", "failed", "timeout", "cancelled"],
-        ).exclude(container_id="")
+        ).exclude(execution_id="")
 
         orphaned_count = orphaned_jobs.count()
 

@@ -46,7 +46,7 @@ class CleanupContainersCommandTest(TestCase):
             status="completed",
             docker_image="alpine:latest",
             command='echo "test"',
-            container_id="old_container_123",
+            execution_id="old_container_123",
             started_at=self.old_time,
             completed_at=self.old_time + timedelta(minutes=5),
         )
@@ -60,7 +60,7 @@ class CleanupContainersCommandTest(TestCase):
             status="completed",
             docker_image="alpine:latest",
             command='echo "test"',
-            container_id="recent_container_456",
+            execution_id="recent_container_456",
             started_at=self.recent_time,
             completed_at=self.recent_time + timedelta(minutes=5),
         )
@@ -74,7 +74,7 @@ class CleanupContainersCommandTest(TestCase):
             status="running",
             docker_image="alpine:latest",
             command='echo "test"',
-            container_id="running_container_789",
+            execution_id="running_container_789",
             started_at=self.old_time,
         )
         return job
@@ -137,7 +137,7 @@ class CleanupContainersCommandTest(TestCase):
             status="failed",
             docker_image="alpine:latest",
             command='echo "test"',
-            container_id="old_failed_123",
+            execution_id="old_failed_123",
             started_at=self.old_time,
             completed_at=self.old_time + timedelta(minutes=2),
         )
@@ -182,7 +182,7 @@ class CleanupContainersCommandTest(TestCase):
                 status="completed",
                 docker_image="alpine:latest",
                 command='echo "test"',
-                container_id=f"old_container_{i}",
+                execution_id=f"old_container_{i}",
                 started_at=self.old_time,
                 completed_at=self.old_time + timedelta(minutes=1),
             )
@@ -299,7 +299,7 @@ class CleanupContainersCommandTest(TestCase):
                 status=status,
                 docker_image="alpine:latest",
                 command='echo "test"',
-                container_id=f"container_{status}",
+                execution_id=f"container_{status}",
                 started_at=completion_time - timedelta(minutes=5),
                 completed_at=completion_time
                 if status in ["completed", "failed", "timeout", "cancelled"]
@@ -333,7 +333,7 @@ class CleanupContainersCommandTest(TestCase):
             status="completed",
             docker_image="alpine:latest",
             command='echo "test"',
-            container_id="",  # Empty container ID
+            execution_id="",  # Empty container ID
             started_at=self.old_time,
             completed_at=self.old_time + timedelta(minutes=5),
         )
@@ -345,7 +345,7 @@ class CleanupContainersCommandTest(TestCase):
             status="completed",
             docker_image="alpine:latest",
             command='echo "test"',
-            container_id="has_container_123",
+            execution_id="has_container_123",
             started_at=self.old_time,
             completed_at=self.old_time + timedelta(minutes=5),
         )

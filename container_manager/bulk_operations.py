@@ -386,8 +386,7 @@ class BulkJobManager:
 
                     # Reset job state
                     job.status = "pending"
-                    job.container_id = ""
-                    job.external_execution_id = ""
+                    job.set_execution_identifier("")
                     job.exit_code = None
                     job.started_at = None
                     job.completed_at = None

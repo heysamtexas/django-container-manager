@@ -161,16 +161,12 @@ class ProcessContainerJobsSimpleTest(TestCase):
         """Test _run_cleanup_if_requested when cleanup is enabled shows deprecation warning"""
         config = {"cleanup": True, "cleanup_hours": 48}
         
-        # Set up output capture
-        from io import StringIO
-        out = StringIO()
-        self.command.stdout = out
-
+        # Should show deprecation warning since docker_service is removed
         self.command._run_cleanup_if_requested(config)
 
-        # Should show deprecation warning since docker_service is removed
-        output = out.getvalue()
+        output = self.command.stdout.getvalue()
         self.assertIn("Container cleanup temporarily disabled", output)
+        self.assertIn("docker_service deprecated", output)
 
     def test_run_cleanup_if_requested_disabled(self):
         """Test _run_cleanup_if_requested when cleanup is disabled"""
@@ -227,8 +223,8 @@ class ProcessContainerJobsSimpleTest(TestCase):
             job.refresh_from_db()
             self.assertEqual(job.docker_host.executor_type, "docker")
 
-    def test_launch_job_with_factory_no_docker_host(self):
-        """Test launch_job_with_factory when job has no docker_host assigned"""
+    def test_launch_job_with_factory_executor_retrieval_failure(self):
+        """Test launch_job_with_factory when executor retrieval fails"""
         job = ContainerJob.objects.create(
             docker_image="python:3.11",
             command="python script.py",
@@ -238,14 +234,15 @@ class ProcessContainerJobsSimpleTest(TestCase):
             created_by=self.user,
         )
         
-        # Simulate missing docker_host
-        job.docker_host = None
+        # Mock executor factory to fail on get_executor
+        with patch.object(self.command.executor_factory, "get_executor") as mock_get_executor:
+            mock_get_executor.side_effect = Exception("Executor creation failed")
+            
+            with patch.object(self.command, "mark_job_failed") as mock_mark_failed:
+                result = self.command.launch_job_with_factory(job)
 
-        with patch.object(self.command, "mark_job_failed") as mock_mark_failed:
-            result = self.command.launch_job_with_factory(job)
-
-            self.assertFalse(result)
-            mock_mark_failed.assert_called_once_with(job, "Job must have docker_host assigned")
+                self.assertFalse(result)
+                mock_mark_failed.assert_called_once_with(job, "Executor creation failed")
 
     def test_launch_job_with_factory_launch_failure(self):
         """Test launch_job_with_factory when job launch fails"""
@@ -307,9 +304,8 @@ class ProcessContainerJobsSimpleTest(TestCase):
                 self.assertFalse(result)
                 mock_mark_failed.assert_called_once_with(job, "General error")
 
-    @patch("container_manager.management.commands.process_container_jobs.docker_service")
-    def test_launch_job_with_docker_service_connection_error(self, mock_docker_service):
-        """Test launch_job_with_docker_service with connection error"""
+    def test_launch_job_with_executor_provider_connection_error(self):
+        """Test launch_job_with_executor_provider with connection error"""
         job = ContainerJob.objects.create(
             docker_image="python:3.11",
             command="python script.py",
@@ -319,17 +315,60 @@ class ProcessContainerJobsSimpleTest(TestCase):
             created_by=self.user,
         )
 
-        mock_docker_service.get_client.side_effect = ExecutorConnectionError("Connection failed")
+        with patch.object(self.command.executor_factory, "get_executor") as mock_get_executor:
+            mock_get_executor.side_effect = ExecutorConnectionError("Connection failed")
+            
+            with patch.object(self.command, "mark_job_failed") as mock_mark_failed:
+                result = self.command.launch_job_with_executor_provider(job)
 
-        with patch.object(self.command, "mark_job_failed") as mock_mark_failed:
-            result = self.command.launch_job_with_docker_service(job)
+                self.assertFalse(result)
+                mock_mark_failed.assert_called_once_with(job, "Connection failed")
+
+    def test_launch_job_with_executor_provider_success(self):
+        """Test launch_job_with_executor_provider success"""
+        job = ContainerJob.objects.create(
+            docker_image="python:3.11",
+            command="python script.py",
+            name="test-job",
+            status="pending",
+            docker_host=self.host,
+            created_by=self.user,
+        )
+
+        with patch.object(self.command.executor_factory, "get_executor") as mock_get_executor:
+            mock_executor = Mock()
+            mock_executor.launch_job.return_value = (True, "execution-123")
+            mock_get_executor.return_value = mock_executor
+            
+            result = self.command.launch_job_with_executor_provider(job)
+
+            self.assertTrue(result)
+            mock_executor.launch_job.assert_called_once_with(job)
+            job.refresh_from_db()
+            self.assertEqual(job.execution_id, "execution-123")
+
+    def test_launch_job_with_executor_provider_launch_failure(self):
+        """Test launch_job_with_executor_provider launch failure"""
+        job = ContainerJob.objects.create(
+            docker_image="python:3.11",
+            command="python script.py",
+            name="test-job",
+            status="pending",
+            docker_host=self.host,
+            created_by=self.user,
+        )
+
+        with patch.object(self.command.executor_factory, "get_executor") as mock_get_executor:
+            mock_executor = Mock()
+            mock_executor.launch_job.return_value = (False, "Launch failed")
+            mock_get_executor.return_value = mock_executor
+            
+            result = self.command.launch_job_with_executor_provider(job)
 
             self.assertFalse(result)
-            mock_mark_failed.assert_called_once_with(job, "Docker host connection failed: Connection failed")
 
-    @patch("container_manager.management.commands.process_container_jobs.docker_service")
-    def test_launch_job_with_docker_service_success(self, mock_docker_service):
-        """Test launch_job_with_docker_service success"""
+    def test_launch_job_with_executor_provider_exception(self):
+        """Test launch_job_with_executor_provider with exception"""
         job = ContainerJob.objects.create(
             docker_image="python:3.11",
             command="python script.py",
@@ -339,53 +378,16 @@ class ProcessContainerJobsSimpleTest(TestCase):
             created_by=self.user,
         )
 
-        mock_docker_service.get_client.return_value = True
-        mock_docker_service.launch_job.return_value = True
+        with patch.object(self.command.executor_factory, "get_executor") as mock_get_executor:
+            mock_executor = Mock()
+            mock_executor.launch_job.side_effect = Exception("Launch error")
+            mock_get_executor.return_value = mock_executor
+            
+            with patch.object(self.command, "mark_job_failed") as mock_mark_failed:
+                result = self.command.launch_job_with_executor_provider(job)
 
-        result = self.command.launch_job_with_docker_service(job)
-
-        self.assertTrue(result)
-        mock_docker_service.launch_job.assert_called_once_with(job)
-
-    @patch("container_manager.management.commands.process_container_jobs.docker_service")
-    def test_launch_job_with_docker_service_launch_failure(self, mock_docker_service):
-        """Test launch_job_with_docker_service launch failure"""
-        job = ContainerJob.objects.create(
-            docker_image="python:3.11",
-            command="python script.py",
-            name="test-job",
-            status="pending",
-            docker_host=self.host,
-            created_by=self.user,
-        )
-
-        mock_docker_service.get_client.return_value = True
-        mock_docker_service.launch_job.return_value = False
-
-        result = self.command.launch_job_with_docker_service(job)
-
-        self.assertFalse(result)
-
-    @patch("container_manager.management.commands.process_container_jobs.docker_service")
-    def test_launch_job_with_docker_service_exception(self, mock_docker_service):
-        """Test launch_job_with_docker_service with exception"""
-        job = ContainerJob.objects.create(
-            docker_image="python:3.11",
-            command="python script.py",
-            name="test-job",
-            status="pending",
-            docker_host=self.host,
-            created_by=self.user,
-        )
-
-        mock_docker_service.get_client.return_value = True
-        mock_docker_service.launch_job.side_effect = Exception("Launch error")
-
-        with patch.object(self.command, "mark_job_failed") as mock_mark_failed:
-            result = self.command.launch_job_with_docker_service(job)
-
-            self.assertFalse(result)
-            mock_mark_failed.assert_called_once_with(job, "Launch error")
+                self.assertFalse(result)
+                mock_mark_failed.assert_called_once_with(job, "Launch error")
 
     def test_monitor_running_jobs_no_jobs(self):
         """Test monitor_running_jobs when no running jobs exist"""
@@ -543,17 +545,16 @@ class ProcessContainerJobsSimpleTest(TestCase):
         jobs = self.command._get_running_jobs()
         self.assertEqual(len(jobs), 2)  # Only running jobs returned
 
-    @patch("container_manager.management.commands.process_container_jobs.docker_service")
-    def test_run_cleanup_if_requested_exception(self, mock_docker_service):
-        """Test _run_cleanup_if_requested with exception"""
+    def test_run_cleanup_if_requested_shows_deprecation_message(self):
+        """Test _run_cleanup_if_requested shows deprecation message"""
         config = {"cleanup": True, "cleanup_hours": 24}
-        mock_docker_service.cleanup_old_containers.side_effect = Exception("Cleanup error")
 
-        # Should not raise exception, just output error
+        # Should show deprecation message since docker_service is removed
         self.command._run_cleanup_if_requested(config)
 
         output = self.command.stdout.getvalue()
-        self.assertIn("Cleanup failed: Cleanup error", output)
+        self.assertIn("Container cleanup temporarily disabled", output)
+        self.assertIn("docker_service deprecated", output)
 
     def test_display_startup_info_with_factory_disabled(self):
         """Test _display_startup_info with factory disabled"""
@@ -1081,8 +1082,7 @@ class ProcessContainerJobsSimpleTest(TestCase):
             self.assertEqual(result, 0)
             mock_harvest.assert_called_once_with(job)
     
-    @patch("container_manager.management.commands.process_container_jobs.docker_service")
-    def test_check_job_status_docker_executor(self, mock_docker_service):
+    def test_check_job_status_docker_executor(self):
         """Test check_job_status with docker executor"""
         docker_host = ExecutorHost.objects.create(
             name="docker-host",
@@ -1098,40 +1098,48 @@ class ProcessContainerJobsSimpleTest(TestCase):
             status="running",
             docker_host=docker_host,
             created_by=self.user,
+            execution_id="container-123",
         )
         
-        mock_docker_service.check_container_status.return_value = "running"
-        
-        result = self.command.check_job_status(job)
-        
-        self.assertEqual(result, "running")
-        mock_docker_service.check_container_status.assert_called_once_with(job)
+        with patch.object(self.command.executor_factory, "get_executor") as mock_get_executor:
+            mock_executor = Mock()
+            mock_executor.check_status.return_value = "running"
+            mock_get_executor.return_value = mock_executor
+            
+            result = self.command.check_job_status(job)
+            
+            self.assertEqual(result, "running")
+            mock_get_executor.assert_called_once_with(docker_host)
+            mock_executor.check_status.assert_called_once_with("container-123")
     
-    @patch("container_manager.management.commands.process_container_jobs.docker_service")
-    def test_check_job_status_empty_executor_type(self, mock_docker_service):
-        """Test check_job_status when executor_type is empty string (defaults to docker)"""
+    def test_check_job_status_with_execution_id(self):
+        """Test check_job_status with execution_id"""
         docker_host = ExecutorHost.objects.create(
-            name="empty-executor-host",
+            name="docker-host-with-execution",
             connection_string="tcp://localhost:2381",
             host_type="tcp",
             is_active=True,
-            executor_type="docker",  # Default to docker for empty executor
+            executor_type="docker",
         )
         job = ContainerJob.objects.create(
             docker_image="python:3.11",
             command="python script.py",
-            name="empty-executor-job",
+            name="job-with-execution",
             status="running",
             docker_host=docker_host,
             created_by=self.user,
+            execution_id="container-456",
         )
         
-        mock_docker_service.check_container_status.return_value = "exited"
-        
-        result = self.command.check_job_status(job)
-        
-        self.assertEqual(result, "exited")
-        mock_docker_service.check_container_status.assert_called_once_with(job)
+        with patch.object(self.command.executor_factory, "get_executor") as mock_get_executor:
+            mock_executor = Mock()
+            mock_executor.check_status.return_value = "exited"
+            mock_get_executor.return_value = mock_executor
+            
+            result = self.command.check_job_status(job)
+            
+            self.assertEqual(result, "exited")
+            mock_executor.check_status.assert_called_once_with("container-456")
     
     def test_check_job_status_non_docker_executor(self):
         """Test check_job_status with non-docker executor"""
@@ -1191,8 +1199,7 @@ class ProcessContainerJobsSimpleTest(TestCase):
             
             self.assertEqual(result, "error")
     
-    @patch("container_manager.management.commands.process_container_jobs.docker_service")
-    def test_harvest_completed_job_docker_executor(self, mock_docker_service):
+    def test_harvest_completed_job_docker_executor(self):
         """Test harvest_completed_job with docker executor"""
         docker_host = ExecutorHost.objects.create(
             name="docker-harvest-host",
@@ -1210,12 +1217,16 @@ class ProcessContainerJobsSimpleTest(TestCase):
             created_by=self.user,
         )
         
-        mock_docker_service.harvest_completed_job.return_value = True
-        
-        result = self.command.harvest_completed_job(job)
-        
-        self.assertTrue(result)
-        mock_docker_service.harvest_completed_job.assert_called_once_with(job)
+        with patch.object(self.command.executor_factory, "get_executor") as mock_get_executor:
+            mock_executor = Mock()
+            mock_executor.harvest_job.return_value = True
+            mock_get_executor.return_value = mock_executor
+            
+            result = self.command.harvest_completed_job(job)
+            
+            self.assertTrue(result)
+            mock_get_executor.assert_called_once_with(docker_host)
+            mock_executor.harvest_job.assert_called_once_with(job)
     
     def test_harvest_completed_job_non_docker_executor(self):
         """Test harvest_completed_job with non-docker executor"""

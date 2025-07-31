@@ -206,8 +206,8 @@ class DockerExecutorTest(TestCase):
     @patch("container_manager.executors.docker.DockerExecutor._get_client")
     def test_check_status_running_container(self, mock_get_client):
         """Test check_status with running container"""
-        # Set up job with container_id
-        self.job.container_id = "test-container-123"
+        # Set up job with execution_id
+        self.job.set_execution_identifier("test-container-123")
         self.job.save()
 
         # Mock Docker client and container
@@ -223,8 +223,8 @@ class DockerExecutorTest(TestCase):
     @patch("container_manager.executors.docker.DockerExecutor._get_client")
     def test_check_status_exited_container(self, mock_get_client):
         """Test check_status with exited container"""
-        # Set up job with container_id
-        self.job.container_id = "test-container-123"
+        # Set up job with execution_id
+        self.job.set_execution_identifier("test-container-123")
         self.job.save()
 
         # Mock Docker client and container
@@ -240,8 +240,8 @@ class DockerExecutorTest(TestCase):
     @patch("container_manager.executors.docker.DockerExecutor._get_client")
     def test_check_status_paused_container(self, mock_get_client):
         """Test check_status with paused container (mapped to running)"""
-        # Set up job with container_id
-        self.job.container_id = "test-container-123"
+        # Set up job with execution_id
+        self.job.set_execution_identifier("test-container-123")
         self.job.save()
 
         # Mock Docker client and container
@@ -257,8 +257,8 @@ class DockerExecutorTest(TestCase):
     @patch("container_manager.executors.docker.DockerExecutor._get_client")
     def test_check_status_container_not_found(self, mock_get_client):
         """Test check_status when Docker container not found"""
-        # Set up job with container_id
-        self.job.container_id = "test-container-123"
+        # Set up job with execution_id
+        self.job.set_execution_identifier("test-container-123")
         self.job.save()
 
         # Mock Docker client to raise NotFound
@@ -272,8 +272,8 @@ class DockerExecutorTest(TestCase):
     @patch("container_manager.executors.docker.DockerExecutor._get_client")
     def test_check_status_docker_exception(self, mock_get_client):
         """Test check_status with Docker exception"""
-        # Set up job with container_id
-        self.job.container_id = "test-container-123"
+        # Set up job with execution_id
+        self.job.set_execution_identifier("test-container-123")
         self.job.save()
 
         # Mock Docker client to raise generic exception
@@ -308,8 +308,8 @@ class DockerExecutorTest(TestCase):
     @patch("container_manager.executors.docker.DockerExecutor._get_client")
     def test_get_logs_success(self, mock_get_client):
         """Test get_logs successful retrieval"""
-        # Set up job with container_id
-        self.job.container_id = "test-container-123"
+        # Set up job with execution_id
+        self.job.set_execution_identifier("test-container-123")
         self.job.save()
 
         # Mock Docker client and container
@@ -329,8 +329,8 @@ class DockerExecutorTest(TestCase):
     @patch("container_manager.executors.docker.DockerExecutor._get_client")
     def test_get_logs_container_not_found(self, mock_get_client):
         """Test get_logs when Docker container not found"""
-        # Set up job with container_id
-        self.job.container_id = "test-container-123"
+        # Set up job with execution_id
+        self.job.set_execution_identifier("test-container-123")
         self.job.save()
 
         # Mock Docker client to raise NotFound
@@ -345,8 +345,8 @@ class DockerExecutorTest(TestCase):
     @patch("container_manager.executors.docker.DockerExecutor._get_client")
     def test_get_logs_docker_exception(self, mock_get_client):
         """Test get_logs with Docker exception"""
-        # Set up job with container_id
-        self.job.container_id = "test-container-123"
+        # Set up job with execution_id
+        self.job.set_execution_identifier("test-container-123")
         self.job.save()
 
         # Mock Docker client to raise generic exception
@@ -608,7 +608,7 @@ class DockerExecutorTest(TestCase):
         # Verify job was updated
         self.job.refresh_from_db()
         self.assertEqual(self.job.status, "running")
-        self.assertEqual(self.job.container_id, "test-container-123")
+        self.assertEqual(self.job.get_execution_identifier(), "test-container-123")
         self.assertIsNotNone(self.job.started_at)
 
     @patch.object(DockerExecutor, "_validate_job")
@@ -710,7 +710,7 @@ class DockerExecutorTest(TestCase):
         # Verify job was updated
         self.job.refresh_from_db()
         self.assertEqual(self.job.status, "running")
-        self.assertEqual(self.job.container_id, container_id)
+        self.assertEqual(self.job.get_execution_identifier(), container_id)
         self.assertIsNotNone(self.job.started_at)
 
     @patch.object(DockerExecutor, "_get_client")
@@ -739,7 +739,7 @@ class DockerExecutorTest(TestCase):
         mock_get_client.return_value = mock_client
 
         # Set up job with container_id
-        self.job.container_id = "harvest-test-container"
+        self.job.set_execution_identifier("harvest-test-container")
         self.job.status = "running"
         self.job.save()
 
@@ -766,7 +766,7 @@ class DockerExecutorTest(TestCase):
         mock_get_client.return_value = mock_client
 
         # Set up job with container_id
-        self.job.container_id = "harvest-failed-container"
+        self.job.set_execution_identifier("harvest-failed-container")
         self.job.status = "running"
         self.job.save()
 
@@ -782,9 +782,9 @@ class DockerExecutorTest(TestCase):
             self.assertEqual(self.job.status, "failed")
             self.assertEqual(self.job.exit_code, 1)
 
-    def test_harvest_job_no_container_id(self):
-        """Test harvest job without container_id"""
-        self.job.container_id = ""
+    def test_harvest_job_no_execution_id(self):
+        """Test harvest job without execution_id"""
+        self.job.set_execution_identifier("")
         self.job.save()
 
         success = self.executor.harvest_job(self.job)
@@ -798,7 +798,7 @@ class DockerExecutorTest(TestCase):
         mock_client.containers.get.side_effect = NotFound("Container not found")
         mock_get_client.return_value = mock_client
 
-        self.job.container_id = "missing-container"
+        self.job.set_execution_identifier("missing-container")
         self.job.status = "running"
         self.job.save()
 
@@ -816,7 +816,7 @@ class DockerExecutorTest(TestCase):
         """Test harvest job with exception"""
         mock_get_client.side_effect = Exception("Harvest error")
 
-        self.job.container_id = "error-container"
+        self.job.set_execution_identifier("error-container")
         self.job.save()
 
         success = self.executor.harvest_job(self.job)
@@ -851,7 +851,7 @@ class DockerExecutorTest(TestCase):
         mock_get_client.return_value = mock_client
 
         # Create job with container_id
-        self.job.container_id = "cleanup-with-job"
+        self.job.set_execution_identifier("cleanup-with-job")
         self.job.save()
 
         success = self.executor.cleanup("cleanup-with-job")
@@ -894,7 +894,7 @@ class DockerExecutorTest(TestCase):
         mock_get_client.return_value = mock_client
 
         # Set up job with container_id
-        self.job.container_id = "data-collection-container"
+        self.job.set_execution_identifier("data-collection-container")
         self.job.save()
 
         with patch.object(self.executor, "get_logs") as mock_get_logs, \
@@ -912,9 +912,9 @@ class DockerExecutorTest(TestCase):
             self.assertEqual(self.job.max_memory_usage, 1024000)
             self.assertEqual(self.job.cpu_usage_percent, 75.5)
             
-    def test_collect_data_no_container_id(self):
-        """Test data collection when job has no container_id"""
-        self.job.container_id = ""
+    def test_collect_data_no_execution_id(self):
+        """Test data collection when job has no execution_id"""
+        self.job.set_execution_identifier("")
         self.job.save()
 
         # Should return early without error
@@ -929,7 +929,7 @@ class DockerExecutorTest(TestCase):
         mock_client.containers.get.return_value = mock_container
         mock_get_client.return_value = mock_client
 
-        self.job.container_id = "stats-error-container"
+        self.job.set_execution_identifier("stats-error-container")
         self.job.save()
 
         with patch.object(self.executor, "get_logs") as mock_get_logs:
@@ -943,7 +943,7 @@ class DockerExecutorTest(TestCase):
         """Test data collection with general exception"""
         mock_get_client.side_effect = Exception("General error")
 
-        self.job.container_id = "general-error-container"
+        self.job.set_execution_identifier("general-error-container")
         self.job.save()
 
         # Should not raise exception
@@ -1010,7 +1010,7 @@ class DockerExecutorTest(TestCase):
         mock_client.containers.get.return_value = mock_container
         mock_get_client.return_value = mock_client
 
-        self.job.container_id = "cleanup-test-container"
+        self.job.set_execution_identifier("cleanup-test-container")
         self.job.save()
 
         with patch("container_manager.defaults.get_container_manager_setting") as mock_setting:
@@ -1022,7 +1022,7 @@ class DockerExecutorTest(TestCase):
 
     def test_immediate_cleanup_disabled(self):
         """Test _immediate_cleanup when cleanup is disabled"""
-        self.job.container_id = "no-cleanup-container"
+        self.job.set_execution_identifier("no-cleanup-container")
         self.job.save()
 
         with patch("container_manager.defaults.get_container_manager_setting") as mock_setting:

@@ -240,23 +240,15 @@ class ContainerJobTest(TestCase):
         job = ContainerJobFactory.create(execution_id="unified-exec-123")
         self.assertEqual(job.get_execution_identifier(), "unified-exec-123")
 
-    def test_get_execution_identifier_docker_fallback(self):
-        """Test get_execution_identifier fallback to container_id for Docker"""
-        docker_host = ExecutorHostFactory.create(executor_type="docker")
-        job = ContainerJobFactory.create(
-            execution_id="", docker_host=docker_host, container_id="docker-container-123"
-        )
-        self.assertEqual(job.get_execution_identifier(), "docker-container-123")
+    def test_get_execution_identifier_with_value(self):
+        """Test get_execution_identifier returns set value"""
+        job = ContainerJobFactory.create(execution_id="test-execution-123")
+        self.assertEqual(job.get_execution_identifier(), "test-execution-123")
 
-    def test_get_execution_identifier_external_fallback(self):
-        """Test get_execution_identifier fallback to external_execution_id"""
-        cloudrun_host = ExecutorHostFactory.create(executor_type="cloudrun")
-        job = ContainerJobFactory.create(
-            execution_id="",
-            docker_host=cloudrun_host,
-            external_execution_id="cloudrun-job-123",
-        )
-        self.assertEqual(job.get_execution_identifier(), "cloudrun-job-123")
+    def test_get_execution_identifier_empty_default(self):
+        """Test get_execution_identifier returns empty string when not set"""
+        job = ContainerJobFactory.create(execution_id="")
+        self.assertEqual(job.get_execution_identifier(), "")
 
     def test_set_execution_identifier_unified(self):
         """Test set_execution_identifier sets unified field"""
@@ -265,23 +257,21 @@ class ContainerJobTest(TestCase):
 
         self.assertEqual(job.execution_id, "new-exec-456")
 
-    def test_set_execution_identifier_docker_compatibility(self):
-        """Test set_execution_identifier sets container_id for Docker"""
+    def test_set_execution_identifier_docker(self):
+        """Test set_execution_identifier for Docker executor"""
         docker_host = ExecutorHostFactory.create(executor_type="docker")
         job = ContainerJobFactory.create(docker_host=docker_host)
         job.set_execution_identifier("docker-container-456")
 
         self.assertEqual(job.execution_id, "docker-container-456")
-        self.assertEqual(job.container_id, "docker-container-456")
 
-    def test_set_execution_identifier_external_compatibility(self):
-        """Test set_execution_identifier sets external_execution_id for non-Docker"""
+    def test_set_execution_identifier_cloudrun(self):
+        """Test set_execution_identifier for Cloud Run executor"""
         cloudrun_host = ExecutorHostFactory.create(executor_type="cloudrun")
         job = ContainerJobFactory.create(docker_host=cloudrun_host)
         job.set_execution_identifier("cloudrun-job-456")
 
         self.assertEqual(job.execution_id, "cloudrun-job-456")
-        self.assertEqual(job.external_execution_id, "cloudrun-job-456")
 
     def test_clean_output_processed_property(self):
         """Test clean_output_processed property strips Docker timestamps"""

@@ -188,8 +188,7 @@ class ContainerJobAdmin(admin.ModelAdmin):
     )
     readonly_fields = (
         "id",
-        "container_id",
-        "external_execution_id",
+        "execution_id",
         "exit_code",
         "started_at",
         "completed_at",
@@ -236,8 +235,7 @@ class ContainerJobAdmin(admin.ModelAdmin):
             "Execution Details",
             {
                 "fields": (
-                    "container_id",
-                    "external_execution_id",
+                    "execution_id",
                     "exit_code",
                     "started_at",
                     "completed_at",
@@ -505,8 +503,7 @@ class ContainerJobAdmin(admin.ModelAdmin):
 
                     # Reset job status
                     job.status = "pending"
-                    job.container_id = ""
-                    job.external_execution_id = ""
+                    job.set_execution_identifier("")
                     job.exit_code = None
                     job.started_at = None
                     job.completed_at = None

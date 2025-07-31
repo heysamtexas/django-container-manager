@@ -166,7 +166,7 @@ class BulkJobManagerTest(TestCase):
                 name=f"test-job-{i}",
                 # executor_type now determined by docker_host
                 status="running",
-                container_id=f"container_{i}",
+                execution_id=f"container_{i}",
                 created_by=self.user,
             )
             jobs.append(job)
@@ -204,7 +204,7 @@ class BulkJobManagerTest(TestCase):
             docker_host=self.mock_host,
             name="running-job",
             status="running",
-            container_id="container_1",
+            execution_id="container_1",
             created_by=self.user,
         )
 
@@ -249,7 +249,7 @@ class BulkJobManagerTest(TestCase):
             name="completed-job",
             status="completed",
             # executor_type now determined by docker_host
-            container_id="old_container",
+            execution_id="old_container",
             exit_code=0,
             created_by=self.user,
         )
@@ -271,11 +271,10 @@ class BulkJobManagerTest(TestCase):
         self.assertEqual(job.status, "running")
         self.assertIsNone(job.exit_code)
 
-        # Job is on mock host, so execution_id should go to external_execution_id
+        # Job is on mock host, so execution_id should be set
         self.assertEqual(job.docker_host.executor_type, "mock")
         self.assertEqual(job.docker_host.executor_type, "mock")  # Should match host type
-        self.assertEqual(job.container_id, "")  # Should be cleared
-        self.assertEqual(job.external_execution_id, "new_exec_123")  # Should be set
+        self.assertEqual(job.get_execution_identifier(), "new_exec_123")  # Should be set
         self.assertIsNotNone(job.started_at)
 
     def test_get_bulk_status(self):

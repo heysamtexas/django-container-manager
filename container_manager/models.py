@@ -229,24 +229,9 @@ class ContainerJob(models.Model):
         default="",
         help_text="Unified execution identifier for all executor types",
     )
-    container_id = models.CharField(
-        max_length=100, blank=True, default=""
-    )  # DEPRECATED: Remove after migration
     exit_code = models.IntegerField(null=True, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
-
-    # Multi-executor support - executor type determined by docker_host.executor_type
-
-    external_execution_id = models.CharField(
-        max_length=200,
-        blank=True,
-        default="",
-        help_text=(
-            "Cloud provider's execution/job ID "
-            "(e.g., Cloud Run job name, Fargate task ARN)"
-        ),
-    )
 
     executor_metadata = models.JSONField(
         default=dict,
@@ -306,25 +291,11 @@ class ContainerJob(models.Model):
 
     def get_execution_identifier(self) -> str:
         """Get execution identifier - unified interface for all executor types"""
-        # NEW: Use unified field first
-        if self.execution_id:
-            return self.execution_id
-
-        # FALLBACK: Legacy field support during migration
-        if self.docker_host and self.docker_host.executor_type == "docker":
-            return self.container_id or ""
-        return self.external_execution_id or ""
+        return self.execution_id or ""
 
     def set_execution_identifier(self, execution_id: str) -> None:
         """Set execution identifier - unified interface for all executor types"""
-        # NEW: Always set unified field
         self.execution_id = execution_id
-
-        # MIGRATION: Also set legacy fields for backward compatibility
-        if self.docker_host and self.docker_host.executor_type == "docker":
-            self.container_id = execution_id
-        else:
-            self.external_execution_id = execution_id
 
     @cached_property
     def clean_output_processed(self):

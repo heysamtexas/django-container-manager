@@ -41,7 +41,7 @@ class ContainerExecutor(ABC):
         Example:
             success, execution_id = executor.launch_job(job)
             if success:
-                job.external_execution_id = execution_id
+                job.set_execution_identifier(execution_id)
                 job.save()
             else:
                 logger.error(f"Launch failed: {execution_id}")

@@ -178,7 +178,7 @@ class IntegrationTest(TestCase):
 
         # Verify initial state
         self.assertEqual(job.status, "pending")
-        self.assertEqual(job.container_id, "")
+        self.assertEqual(job.get_execution_identifier(), "")
         self.assertIsNone(job.started_at)
         self.assertIsNone(job.completed_at)
 
@@ -190,7 +190,7 @@ class IntegrationTest(TestCase):
         # Test job state transitions
         job.status = "running"
         job.started_at = timezone.now()
-        job.container_id = "test-container-id"
+        job.set_execution_identifier("test-container-id")
         job.save()
 
         self.assertEqual(job.status, "running")
