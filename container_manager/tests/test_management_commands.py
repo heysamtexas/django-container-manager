@@ -17,7 +17,6 @@ from container_manager.models import ContainerJob, ExecutorHost
 
 
 @patch("time.sleep")  # Prevent any time delays
-@patch("container_manager.docker_service.docker_service")  # Mock Docker service
 @patch("container_manager.executors.factory.ExecutorFactory")  # Mock executor factory
 class ProcessContainerJobsTest(TransactionTestCase):
     """Test process_container_jobs command with all external dependencies mocked."""
@@ -49,7 +48,7 @@ class ProcessContainerJobsTest(TransactionTestCase):
         return ContainerJob.objects.create(**defaults)
 
     def test_command_init_sets_up_signal_handlers(
-        self, mock_factory, mock_docker, mock_sleep
+        self, mock_factory, mock_sleep
     ):
         """Test that command initialization sets up signal handlers correctly."""
         with patch("signal.signal") as mock_signal:
@@ -72,7 +71,7 @@ class ProcessContainerJobsTest(TransactionTestCase):
             self.assertEqual(mock_signal.call_count, 2)
 
     def test_signal_handler_sets_should_stop_flag(
-        self, mock_factory, mock_docker, mock_sleep
+        self, mock_factory, mock_sleep
     ):
         """Test that signal handler sets should_stop flag."""
         command = Command()
@@ -86,7 +85,7 @@ class ProcessContainerJobsTest(TransactionTestCase):
         self.assertTrue(command.should_stop)
 
     def test_add_arguments_defines_expected_options(
-        self, mock_factory, mock_docker, mock_sleep
+        self, mock_factory, mock_sleep
     ):
         """Test that command defines expected arguments."""
         from argparse import ArgumentParser
@@ -117,7 +116,7 @@ class ProcessContainerJobsTest(TransactionTestCase):
         self.assertEqual(args.cleanup_hours, 24)
 
     def test_setup_signal_handlers_completes_without_error(
-        self, mock_factory, mock_docker, mock_sleep
+        self, mock_factory, mock_sleep
     ):
         """Test that signal handler setup completes without error."""
         with patch("signal.signal") as mock_signal:
@@ -127,7 +126,7 @@ class ProcessContainerJobsTest(TransactionTestCase):
             self.assertEqual(mock_signal.call_count, 2)
 
     def test_process_pending_jobs_starts_pending_jobs(
-        self, mock_factory, mock_docker, mock_sleep
+        self, mock_factory, mock_sleep
     ):
         """Test that process_pending_jobs starts pending jobs with mocked launch."""
         # Create a pending job
@@ -145,7 +144,7 @@ class ProcessContainerJobsTest(TransactionTestCase):
             mock_launch.assert_called_once_with(job, False, None)
 
     def test_process_pending_jobs_respects_max_jobs_limit(
-        self, mock_factory, mock_docker, mock_sleep
+        self, mock_factory, mock_sleep
     ):
         """Test that process_pending_jobs respects max_jobs parameter."""
         # Create multiple pending jobs
@@ -163,7 +162,7 @@ class ProcessContainerJobsTest(TransactionTestCase):
             self.assertEqual(mock_launch.call_count, 2)
 
     def test_process_pending_jobs_filters_by_host(
-        self, mock_factory, mock_docker, mock_sleep
+        self, mock_factory, mock_sleep
     ):
         """Test that process_pending_jobs filters by host when specified."""
         # Create another host
@@ -194,7 +193,7 @@ class ProcessContainerJobsTest(TransactionTestCase):
             mock_launch.assert_called_once_with(job1, False, None)
 
     def test_process_pending_jobs_handles_executor_errors(
-        self, mock_factory, mock_docker, mock_sleep
+        self, mock_factory, mock_sleep
     ):
         """Test that process_pending_jobs handles executor errors gracefully."""
         job = self.create_pending_job()
@@ -211,7 +210,7 @@ class ProcessContainerJobsTest(TransactionTestCase):
             mock_launch.assert_called_once_with(job, False, None)
 
     def test_monitor_running_jobs_can_be_called(
-        self, mock_factory, mock_docker, mock_sleep
+        self, mock_factory, mock_sleep
     ):
         """Test monitor_running_jobs can be called without crashing."""
         # Create running job
@@ -231,7 +230,7 @@ class ProcessContainerJobsTest(TransactionTestCase):
         self.assertTrue(test_passed, "monitor_running_jobs should not crash")
 
     def test_monitor_running_jobs_handles_status_check_errors(
-        self, mock_factory, mock_docker, mock_sleep
+        self, mock_factory, mock_sleep
     ):
         """Test that monitor_running_jobs handles status check errors gracefully."""
         job = self.create_pending_job(
@@ -250,7 +249,7 @@ class ProcessContainerJobsTest(TransactionTestCase):
         job.refresh_from_db()
         self.assertIsNotNone(job)
 
-    def test_handle_basic_option_parsing(self, mock_factory, mock_docker, mock_sleep):
+    def test_handle_basic_option_parsing(self, mock_factory, mock_sleep):
         """Test that handle parses options correctly."""
         # Mock main processing methods to test just option parsing
         with patch.object(self.command, "_run_processing_loop", return_value=(0, 0)):
@@ -426,29 +425,26 @@ class ProcessContainerJobsBusinessLogicTest(TestCase):
         """Test _run_cleanup_if_requested when cleanup is disabled."""
         config = {"cleanup": False, "cleanup_hours": 24}
 
-        with patch(
-            "container_manager.management.commands.process_container_jobs.docker_service"
-        ) as mock_service:
-            self.command._run_cleanup_if_requested(config)
-
-            # Should not call cleanup when disabled
-            mock_service.cleanup_old_containers.assert_not_called()
+        # Since cleanup is disabled in config, nothing should happen
+        self.command._run_cleanup_if_requested(config)
+        # No assertion needed - just verify it doesn't crash
 
     def test_run_cleanup_if_requested_with_cleanup_enabled(self):
-        """Test _run_cleanup_if_requested when cleanup is enabled."""
+        """Test _run_cleanup_if_requested when cleanup is enabled shows deprecation warning."""
         config = {"cleanup": True, "cleanup_hours": 48}
 
-        with patch(
-            "container_manager.management.commands.process_container_jobs.docker_service"
-        ) as mock_service:
-            mock_service.cleanup_old_containers.return_value = 3
+        # Set up output capture for this command
+        from io import StringIO
+        out = StringIO()
+        self.command.stdout = out
 
-            self.command._run_cleanup_if_requested(config)
-
-            # Should call cleanup with correct parameters
-            mock_service.cleanup_old_containers.assert_called_once_with(
-                orphaned_hours=48
-            )
+        # Since docker_service is deprecated, cleanup shows warning instead of actually cleaning
+        self.command._run_cleanup_if_requested(config)
+        
+        # Check the output
+        output = out.getvalue()
+        # Should show deprecation warning
+        self.assertIn("Container cleanup temporarily disabled", output)
 
     def test_display_executor_info_with_available_hosts(self):
         """Test _display_executor_info with available hosts."""

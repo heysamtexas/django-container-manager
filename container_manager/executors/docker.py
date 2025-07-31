@@ -215,9 +215,7 @@ class DockerExecutor(ContainerExecutor):
         else:
             return True, ""
 
-    def estimate_cost(self, job: ContainerJob) -> float | None:
-        """Docker doesn't have direct cost estimation"""
-        return None
+    # estimate_cost method removed - deprecated cost tracking functionality
 
     def get_health_status(self) -> dict[str, Any]:
         """Get health status of Docker daemon"""

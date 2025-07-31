@@ -242,16 +242,18 @@ class ContainerJobTest(TestCase):
 
     def test_get_execution_identifier_docker_fallback(self):
         """Test get_execution_identifier fallback to container_id for Docker"""
+        docker_host = ExecutorHostFactory.create(executor_type="docker")
         job = ContainerJobFactory.create(
-            execution_id="", executor_type="docker", container_id="docker-container-123"
+            execution_id="", docker_host=docker_host, container_id="docker-container-123"
         )
         self.assertEqual(job.get_execution_identifier(), "docker-container-123")
 
     def test_get_execution_identifier_external_fallback(self):
         """Test get_execution_identifier fallback to external_execution_id"""
+        cloudrun_host = ExecutorHostFactory.create(executor_type="cloudrun")
         job = ContainerJobFactory.create(
             execution_id="",
-            executor_type="cloudrun",
+            docker_host=cloudrun_host,
             external_execution_id="cloudrun-job-123",
         )
         self.assertEqual(job.get_execution_identifier(), "cloudrun-job-123")
@@ -265,7 +267,8 @@ class ContainerJobTest(TestCase):
 
     def test_set_execution_identifier_docker_compatibility(self):
         """Test set_execution_identifier sets container_id for Docker"""
-        job = ContainerJobFactory.create(executor_type="docker")
+        docker_host = ExecutorHostFactory.create(executor_type="docker")
+        job = ContainerJobFactory.create(docker_host=docker_host)
         job.set_execution_identifier("docker-container-456")
 
         self.assertEqual(job.execution_id, "docker-container-456")
@@ -273,7 +276,8 @@ class ContainerJobTest(TestCase):
 
     def test_set_execution_identifier_external_compatibility(self):
         """Test set_execution_identifier sets external_execution_id for non-Docker"""
-        job = ContainerJobFactory.create(executor_type="cloudrun")
+        cloudrun_host = ExecutorHostFactory.create(executor_type="cloudrun")
+        job = ContainerJobFactory.create(docker_host=cloudrun_host)
         job.set_execution_identifier("cloudrun-job-456")
 
         self.assertEqual(job.execution_id, "cloudrun-job-456")
@@ -465,24 +469,27 @@ class ContainerJobTest(TestCase):
 
     def test_string_representation_with_name(self):
         """Test string representation with job name"""
+        docker_host = ExecutorHostFactory.create(executor_type="docker")
         job = ContainerJobFactory.create(
-            name="test-job", status="running", executor_type="docker"
+            name="test-job", status="running", docker_host=docker_host
         )
 
         self.assertEqual(str(job), "test-job (running)")
 
     def test_string_representation_unnamed_job(self):
         """Test string representation for unnamed job"""
+        docker_host = ExecutorHostFactory.create(executor_type="docker")
         job = ContainerJobFactory.create(
-            name="", status="completed", executor_type="docker"
+            name="", status="completed", docker_host=docker_host
         )
 
         self.assertEqual(str(job), "Unnamed Job (completed)")
 
     def test_string_representation_non_docker_executor(self):
         """Test string representation shows executor type for non-Docker"""
+        cloudrun_host = ExecutorHostFactory.create(executor_type="cloudrun")
         job = ContainerJobFactory.create(
-            name="cloudrun-job", status="running", executor_type="cloudrun"
+            name="cloudrun-job", status="running", docker_host=cloudrun_host
         )
 
         self.assertEqual(str(job), "cloudrun-job (running) (cloudrun)")

@@ -10,7 +10,7 @@ import logging
 from django.conf import settings
 from django.core.management.base import BaseCommand
 
-from container_manager.docker_service import docker_service
+# docker_service has been deprecated - cleanup functionality temporarily disabled
 
 logger = logging.getLogger(__name__)
 
@@ -71,9 +71,14 @@ class Command(BaseCommand):
             self._show_cleanup_preview(orphaned_hours)
         else:
             try:
-                total_cleaned = docker_service.cleanup_old_containers(
-                    orphaned_hours=orphaned_hours
+                # docker_service.cleanup_old_containers was deprecated
+                # TODO: Implement cleanup via ExecutorProvider
+                self.stdout.write(
+                    self.style.WARNING(
+                        "Container cleanup temporarily disabled - docker_service has been deprecated"
+                    )
                 )
+                total_cleaned = 0
 
                 if total_cleaned > 0:
                     self.stdout.write(

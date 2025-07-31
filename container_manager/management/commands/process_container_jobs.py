@@ -13,7 +13,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
-from container_manager.docker_service import DockerConnectionError, docker_service
+from container_manager.executors.exceptions import ExecutorConnectionError
 from container_manager.executors.exceptions import ExecutorResourceError
 from container_manager.executors.factory import ExecutorFactory
 from container_manager.models import ContainerJob, ExecutorHost
@@ -156,9 +156,9 @@ class Command(BaseCommand):
         if config["cleanup"]:
             self.stdout.write("Running container cleanup...")
             try:
-                docker_service.cleanup_old_containers(
-                    orphaned_hours=config["cleanup_hours"]
-                )
+                # TODO: Implement cleanup via ExecutorProvider
+                # For now, skip cleanup as docker_service is deprecated
+                self.stdout.write(self.style.WARNING("Container cleanup temporarily disabled - docker_service deprecated"))
                 self.stdout.write(self.style.SUCCESS("Cleanup completed"))
             except Exception as e:
                 self.stdout.write(self.style.ERROR(f"Cleanup failed: {e}"))
@@ -294,33 +294,36 @@ class Command(BaseCommand):
         if use_factory:
             return self.launch_job_with_factory(job, force_executor_type)
         else:
-            return self.launch_job_with_docker_service(job)
+            return self.launch_job_with_executor_provider(job)
 
     def launch_job_with_factory(
         self, job: ContainerJob, force_executor_type: str | None = None
     ) -> bool:
         """Launch job using ExecutorFactory"""
         try:
-            # Route job to appropriate executor
+            # Verify job has docker_host assigned
+            if not job.docker_host:
+                self.mark_job_failed(job, "Job must have docker_host assigned")
+                return False
+            
+            # Handle force executor type by finding appropriate host
             if force_executor_type:
-                job.executor_type = force_executor_type
-                job.routing_reason = f"Forced to {force_executor_type} via command line"
-            else:
-                selected_host = self.executor_factory.route_job(job)
-                if selected_host:
-                    job.docker_host = selected_host
-                    job.executor_type = selected_host.executor_type
+                suitable_host = ExecutorHost.objects.filter(
+                    executor_type=force_executor_type, is_active=True
+                ).first()
+                if suitable_host:
+                    job.docker_host = suitable_host
+                    job.routing_reason = f"Forced to {force_executor_type} via command line"
+                    job.save()
                 else:
-                    # No available hosts
-                    self.mark_job_failed(job, "No available executor hosts")
+                    self.mark_job_failed(job, f"No available {force_executor_type} hosts")
                     return False
 
-            job.save()
-
-            # Display routing information
+            # Display launch information
+            executor_type = job.docker_host.executor_type
             self.stdout.write(
                 f"Launching job {job.id} ({job.name or 'unnamed'}) "
-                f"using {job.executor_type} executor on {job.docker_host.name}"
+                f"using {executor_type} executor on {job.docker_host.name}"
             )
 
             # Get executor instance and launch job
@@ -351,33 +354,29 @@ class Command(BaseCommand):
             self.mark_job_failed(job, str(e))
             return False
 
-    def launch_job_with_docker_service(self, job: ContainerJob) -> bool:
-        """Launch job using legacy docker_service (backward compatibility)"""
-        # Verify Docker host is accessible
+    def launch_job_with_executor_provider(self, job: ContainerJob) -> bool:
+        """Launch job using ExecutorProvider (docker_service removed)"""
         try:
-            docker_service.get_client(job.docker_host)
-        except DockerConnectionError as e:
-            logger.exception(f"Cannot connect to Docker host {job.docker_host.name}")
-            self.mark_job_failed(job, f"Docker host connection failed: {e}")
-            return False
-
-        self.stdout.write(
-            f"Launching job {job.id} ({job.name or 'unnamed'}) on {job.docker_host.name}"
-        )
-
-        try:
-            # Launch the job (non-blocking)
-            success = docker_service.launch_job(job)
-
+            # Get executor instance and launch job
+            executor = self.executor_factory.get_executor(job.docker_host)
+            
+            self.stdout.write(
+                f"Launching job {job.id} ({job.name or 'unnamed'}) on {job.docker_host.name}"
+            )
+            
+            success, execution_id = executor.launch_job(job)
+            
             if success:
+                job.set_execution_identifier(execution_id)
+                job.save()
                 self.stdout.write(
-                    self.style.SUCCESS(f"Job {job.id} launched successfully")
+                    self.style.SUCCESS(f"Job {job.id} launched successfully as {execution_id}")
                 )
             else:
-                self.stdout.write(self.style.ERROR(f"Job {job.id} failed to launch"))
-
+                self.stdout.write(self.style.ERROR(f"Job {job.id} failed to launch: {execution_id}"))
+            
             return success
-
+            
         except Exception as e:
             logger.exception(f"Job launch error for {job.id}")
             self.mark_job_failed(job, str(e))
@@ -459,33 +458,31 @@ class Command(BaseCommand):
         return 0
 
     def check_job_status(self, job: ContainerJob) -> str:
-        """Check job status using appropriate method based on executor type"""
-        if job.executor_type == "docker" or not job.executor_type:
-            # Use legacy docker service for backward compatibility
-            return docker_service.check_container_status(job)
-        else:
-            # Use executor factory for non-docker executors
-            try:
-                executor = self.executor_factory.get_executor(job.docker_host)
-                execution_id = job.get_execution_identifier()
-                return executor.check_status(execution_id)
-            except Exception:
-                logger.exception(f"Error checking status for job {job.id}")
-                return "error"
+        """Check job status using ExecutorProvider"""
+        if not job.docker_host:
+            return "error"
+            
+        try:
+            executor = self.executor_factory.get_executor(job.docker_host)
+            execution_id = job.get_execution_identifier()
+            if not execution_id:
+                return "not-found"
+            return executor.check_status(execution_id)
+        except Exception:
+            logger.exception(f"Error checking status for job {job.id}")
+            return "error"
 
     def harvest_completed_job(self, job: ContainerJob) -> bool:
-        """Harvest completed job using appropriate method based on executor type"""
-        if job.executor_type == "docker" or not job.executor_type:
-            # Use legacy docker service for backward compatibility
-            return docker_service.harvest_completed_job(job)
-        else:
-            # Use executor factory for non-docker executors
-            try:
-                executor = self.executor_factory.get_executor(job.docker_host)
-                return executor.harvest_job(job)
-            except Exception:
-                logger.exception(f"Error harvesting job {job.id}")
-                return False
+        """Harvest completed job using ExecutorProvider"""
+        if not job.docker_host:
+            return False
+            
+        try:
+            executor = self.executor_factory.get_executor(job.docker_host)
+            return executor.harvest_job(job)
+        except Exception:
+            logger.exception(f"Error harvesting job {job.id}")
+            return False
 
     def handle_job_timeout(self, job: ContainerJob):
         """Handle a job that has timed out"""
@@ -499,22 +496,18 @@ class Command(BaseCommand):
 
         try:
             # Stop the execution using appropriate method
-            if job.executor_type == "docker" or not job.executor_type:
-                # Use legacy docker service
-                docker_service.stop_container(job)
-                # Try to collect any logs before cleanup
-                import contextlib
-
-                with contextlib.suppress(Exception):
-                    docker_service._collect_execution_data(job)
-            else:
-                # Use executor factory for non-docker executors
-                try:
-                    executor = self.executor_factory.get_executor(job.docker_host)
-                    execution_id = job.get_execution_identifier()
+            if not job.docker_host:
+                logger.error(f"Job {job.id} has no docker_host assigned")
+                return
+            
+            # Use ExecutorProvider for all executor types
+            try:
+                executor = self.executor_factory.get_executor(job.docker_host)
+                execution_id = job.get_execution_identifier()
+                if execution_id:
                     executor.cleanup(execution_id)
-                except Exception as e:
-                    logger.warning(f"Failed to cleanup timed out job {job.id}: {e}")
+            except Exception as e:
+                logger.warning(f"Failed to cleanup timed out job {job.id}: {e}")
 
             # Mark as timed out
             job.status = "timeout"

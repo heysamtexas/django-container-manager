@@ -370,6 +370,12 @@ class ServiceIntegrationTest(TestCase):
 
     def setUp(self):
         """Set up integration test fixtures."""
+        # Create test user
+        from django.contrib.auth.models import User
+        self.user = User.objects.create_user(
+            username="testuser", email="test@example.com"
+        )
+        
         self.docker_host = ExecutorHost.objects.create(
             name="integration-host",
             host_type="unix",
@@ -382,6 +388,7 @@ class ServiceIntegrationTest(TestCase):
             docker_image="nginx:latest",
             command="echo 'integration test'",
             docker_host=self.docker_host,
+            created_by=self.user,
         )
 
     def test_service_with_real_models(self):

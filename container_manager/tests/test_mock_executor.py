@@ -42,7 +42,6 @@ class MockExecutorTest(TestCase):
             memory_limit=128,
             cpu_limit=0.5,
             timeout_seconds=300,
-            executor_type="docker",
             created_by=self.user,
         )
 
@@ -84,7 +83,6 @@ class MockExecutorTest(TestCase):
             memory_limit=128,
             cpu_limit=0.5,
             timeout_seconds=300,
-            executor_type="docker",
             created_by=self.user,
         )
 
@@ -113,7 +111,7 @@ class MockExecutorTest(TestCase):
                 memory_limit=128,
                 cpu_limit=0.5,
                 timeout_seconds=300,
-                executor_type="docker",
+                # executor_type now determined by docker_host
                 created_by=self.user,
             )
 
@@ -148,7 +146,7 @@ class MockExecutorTest(TestCase):
                     memory_limit=128,
                     cpu_limit=0.5,
                     timeout_seconds=300,
-                    executor_type="docker",
+                    # executor_type now determined by docker_host
                     created_by=self.user,
                 )
 
@@ -185,7 +183,7 @@ class MockExecutorTest(TestCase):
                 memory_limit=128,
                 cpu_limit=0.5,
                 timeout_seconds=300,
-                executor_type="docker",
+                # executor_type now determined by docker_host
                 created_by=self.user,
             )
 
@@ -215,7 +213,6 @@ class MockExecutorTest(TestCase):
             memory_limit=128,
             cpu_limit=0.5,
             timeout_seconds=300,
-            executor_type="docker",
             created_by=self.user,
         )
 
@@ -240,7 +237,6 @@ class MockExecutorTest(TestCase):
             memory_limit=16384,
             cpu_limit=8.0,
             timeout_seconds=7200,
-            executor_type="docker",
             created_by=self.user,
         )
 
@@ -251,7 +247,6 @@ class MockExecutorTest(TestCase):
             memory_limit=128,
             cpu_limit=0.5,
             timeout_seconds=300,
-            executor_type="docker",
             created_by=self.user,
         )
 
@@ -277,7 +272,6 @@ class MockExecutorTest(TestCase):
             memory_limit=128,
             cpu_limit=0.5,
             timeout_seconds=300,
-            executor_type="docker",
             created_by=self.user,
         )
 
@@ -305,7 +299,6 @@ class MockExecutorTest(TestCase):
             memory_limit=128,
             cpu_limit=0.5,
             timeout_seconds=300,
-            executor_type="docker",
             created_by=self.user,
         )
 
@@ -343,7 +336,6 @@ class MockExecutorTest(TestCase):
             memory_limit=128,
             cpu_limit=0.5,
             timeout_seconds=300,
-            executor_type="docker",
             created_by=self.user,
         )
 
@@ -391,7 +383,7 @@ class MockExecutorTest(TestCase):
                 memory_limit=128,
                 cpu_limit=0.5,
                 timeout_seconds=300,
-                executor_type="docker",
+                # executor_type now determined by docker_host
                 created_by=self.user,
             )
 
@@ -420,7 +412,6 @@ class MockExecutorTest(TestCase):
             memory_limit=128,
             cpu_limit=0.5,
             timeout_seconds=300,
-            executor_type="docker",
             created_by=self.user,
         )
 
@@ -453,7 +444,6 @@ class MockExecutorTest(TestCase):
             memory_limit=128,
             cpu_limit=0.5,
             timeout_seconds=300,
-            executor_type="docker",
             created_by=self.user,
         )
 
@@ -485,7 +475,6 @@ class MockExecutorTest(TestCase):
             memory_limit=128,
             cpu_limit=0.5,
             timeout_seconds=300,
-            executor_type="docker",
             command="echo 'custom command'",
             override_environment="TEST_VAR=test_value",
             created_by=self.user,

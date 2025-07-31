@@ -166,7 +166,7 @@ class BulkJobManager:
                             memory_limit=memory_limit,
                             cpu_limit=cpu_limit,
                             timeout_seconds=timeout_seconds,
-                            executor_type=job_host.executor_type,  # Match host type
+                            # executor_type removed - comes from docker_host
                             created_by=user,
                             status="pending",
                         )

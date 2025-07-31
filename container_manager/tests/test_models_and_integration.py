@@ -8,10 +8,8 @@ from django.test import TestCase
 from django.utils import timezone
 from docker.errors import NotFound
 
-from ..docker_service import (
-    DockerConnectionError,
-    DockerService,
-)
+from ..executors.exceptions import ExecutorConnectionError
+from ..executors.factory import ExecutorProvider
 from ..models import (
     ContainerJob,
     ExecutorHost,
@@ -133,138 +131,6 @@ class ContainerJobModelTest(TestCase):
             job_with_override.get_override_environment_variables_dict(), expected_env
         )
 
-
-class DockerServiceTest(TestCase):
-    """Test cases for Docker service functionality"""
-
-    def setUp(self):
-        self.user = User.objects.create_user(
-            username="testuser", email="test@example.com", password="testpass123"
-        )
-
-        self.docker_host = ExecutorHost.objects.create(
-            name="test-host",
-            host_type="unix",
-            connection_string="unix:///var/run/docker.sock",
-            is_active=True,
-        )
-
-        self.job = ContainerJob.objects.create(
-            docker_host=self.docker_host,
-            docker_image="ubuntu:latest",
-            command='echo "Hello World"',
-            name="test-job",
-            created_by=self.user,
-        )
-
-        self.docker_service = DockerService()
-
-    @patch("docker.DockerClient")
-    def test_get_client_unix_socket(self, mock_docker_client):
-        """Test getting Docker client for Unix socket"""
-        mock_client = Mock()
-        mock_client.ping.return_value = True
-        mock_docker_client.return_value = mock_client
-
-        client = self.docker_service.get_client(self.docker_host)
-
-        mock_docker_client.assert_called_with(
-            base_url=self.docker_host.connection_string
-        )
-        mock_client.ping.assert_called_once()
-        self.assertEqual(client, mock_client)
-
-    @patch("docker.DockerClient")
-    def test_get_client_tcp(self, mock_docker_client):
-        """Test getting Docker client for TCP connection"""
-        tcp_host = ExecutorHost.objects.create(
-            name="tcp-host",
-            host_type="tcp",
-            connection_string="tcp://192.168.1.100:2376",
-            tls_enabled=True,
-            is_active=True,
-        )
-
-        mock_client = Mock()
-        mock_client.ping.return_value = True
-        mock_docker_client.return_value = mock_client
-
-        self.docker_service.get_client(tcp_host)
-
-        mock_docker_client.assert_called_with(
-            base_url=tcp_host.connection_string, tls=True, use_ssh_client=False
-        )
-        mock_client.ping.assert_called_once()
-
-    @patch("docker.DockerClient")
-    def test_get_client_connection_failure(self, mock_docker_client):
-        """Test Docker client connection failure"""
-        mock_docker_client.side_effect = Exception("Connection failed")
-
-        with self.assertRaises(DockerConnectionError):
-            self.docker_service.get_client(self.docker_host)
-
-    @patch("container_manager.executors.docker.DockerExecutor._get_client")
-    def test_create_container(self, mock_get_client):
-        """Test container creation"""
-        mock_client = Mock()
-        mock_container = Mock()
-        mock_container.id = "test-container-id"
-        mock_client.containers.create.return_value = mock_container
-        mock_client.images.get.side_effect = NotFound("Image not found")
-        mock_client.images.pull.return_value = None
-        mock_get_client.return_value = mock_client
-
-        # Add environment variable to job
-        self.job.override_environment = "TEST_VAR=test_value"
-        self.job.save()
-
-        container_id = self.docker_service.create_container(self.job)
-
-        self.assertEqual(container_id, "test-container-id")
-        mock_client.containers.create.assert_called_once()
-
-        # Check if environment variables were passed
-        call_args = mock_client.containers.create.call_args[1]
-        self.assertIn("environment", call_args)
-        self.assertEqual(call_args["environment"]["TEST_VAR"], "test_value")
-
-    @patch("container_manager.executors.docker.DockerExecutor._get_client")
-    def test_start_container(self, mock_get_client):
-        """Test container start"""
-        mock_client = Mock()
-        mock_container = Mock()
-        mock_client.containers.get.return_value = mock_container
-        mock_get_client.return_value = mock_client
-
-        self.job.container_id = "test-container-id"
-        self.job.save()
-
-        result = self.docker_service.start_container(self.job)
-
-        self.assertTrue(result)
-        mock_container.start.assert_called_once()
-
-        # Refresh job from database
-        self.job.refresh_from_db()
-        self.assertEqual(self.job.status, "running")
-        self.assertIsNotNone(self.job.started_at)
-
-    @patch.object(DockerService, "get_client")
-    def test_stop_container(self, mock_get_client):
-        """Test container stop"""
-        mock_client = Mock()
-        mock_container = Mock()
-        mock_client.containers.get.return_value = mock_container
-        mock_get_client.return_value = mock_client
-
-        self.job.container_id = "test-container-id"
-        self.job.save()
-
-        result = self.docker_service.stop_container(self.job)
-
-        self.assertTrue(result)
-        mock_container.stop.assert_called_once_with(timeout=10)
 
 
 class ManagementCommandTest(TestCase):

@@ -8,7 +8,8 @@ from django.urls import path
 from django.utils import timezone
 from django.utils.html import format_html
 
-from .docker_service import DockerConnectionError, docker_service
+from .executors.exceptions import ExecutorConnectionError
+from .executors.factory import ExecutorProvider
 from .models import (
     ContainerJob,
     EnvironmentVariableTemplate,
@@ -69,20 +70,28 @@ class ExecutorHostAdmin(admin.ModelAdmin):
             return format_html('<span style="color: gray;">●</span> Inactive')
 
         try:
-            docker_service.get_client(obj)
+            provider = ExecutorProvider()
+            executor = provider.get_executor(obj)
+            # Try to get executor - if it fails, connection is bad
             return format_html('<span style="color: green;">●</span> Connected')
-        except DockerConnectionError:
+        except ExecutorConnectionError:
+            return format_html('<span style="color: red;">●</span> Connection Failed')
+        except Exception:
             return format_html('<span style="color: red;">●</span> Connection Failed')
 
     connection_status.short_description = "Status"
 
     def test_connection(self, request, queryset):
-        """Test connection to selected Docker hosts"""
+        """Test connection to selected executor hosts"""
+        provider = ExecutorProvider()
         for host in queryset:
             try:
-                docker_service.get_client(host)
+                executor = provider.get_executor(host)
+                # If we can get executor, connection is good
                 messages.success(request, f"Connection to {host.name} successful")
-            except DockerConnectionError as e:
+            except ExecutorConnectionError as e:
+                messages.error(request, f"Connection to {host.name} failed: {e}")
+            except Exception as e:
                 messages.error(request, f"Connection to {host.name} failed: {e}")
 
     test_connection.short_description = "Test connection to selected hosts"
@@ -165,12 +174,12 @@ class ContainerJobAdmin(admin.ModelAdmin):
         "job_name",
         "docker_image",
         "docker_host",
-        "executor_type",
+        "get_executor_type",
         "status",
         "duration_display",
         "created_at",
     )
-    list_filter = ("status", "executor_type", "docker_host", "created_at")
+    list_filter = ("status", "docker_host", "created_at")
     search_fields = (
         "id",
         "name",
@@ -204,7 +213,6 @@ class ContainerJobAdmin(admin.ModelAdmin):
             "Executor Configuration",
             {
                 "fields": (
-                    "executor_type",
                     "executor_metadata",
                 ),
                 "classes": ("collapse",),
@@ -295,6 +303,14 @@ class ContainerJobAdmin(admin.ModelAdmin):
 
     duration_display.short_description = "Duration"
 
+    def get_executor_type(self, obj):
+        """Display executor type from docker_host"""
+        if obj.docker_host:
+            return obj.docker_host.executor_type
+        return "No Host"
+
+    get_executor_type.short_description = "Executor Type"
+
     def executor_metadata_display(self, obj):
         """Display executor metadata in readable format"""
         if obj.executor_metadata:
@@ -344,7 +360,7 @@ class ContainerJobAdmin(admin.ModelAdmin):
         """Multi-executor dashboard view"""
         # Get executor statistics
         executor_stats = (
-            ContainerJob.objects.values("executor_type")
+            ContainerJob.objects.values("docker_host__executor_type")
             .annotate(
                 total_jobs=Count("id"),
                 running_jobs=Count("id", filter=models.Q(status="running")),
@@ -352,7 +368,7 @@ class ContainerJobAdmin(admin.ModelAdmin):
                 failed_jobs=Count("id", filter=models.Q(status="failed")),
                 avg_duration=Avg("duration"),
             )
-            .order_by("executor_type")
+            .order_by("docker_host__executor_type")
         )
 
         # Get host information
@@ -419,7 +435,7 @@ class ContainerJobAdmin(admin.ModelAdmin):
                         job.save()
                         started_count += 1
                         messages.success(
-                            request, f"Started job {job.id} on {job.executor_type}"
+                            request, f"Started job {job.id} on {job.docker_host.executor_type if job.docker_host else 'unknown'}"
                         )
                     else:
                         messages.error(
@@ -457,7 +473,7 @@ class ContainerJobAdmin(admin.ModelAdmin):
                     job.save()
                     stopped_count += 1
                     messages.success(
-                        request, f"Stopped job {job.id} on {job.executor_type}"
+                        request, f"Stopped job {job.id} on {job.docker_host.executor_type if job.docker_host else 'unknown'}"
                     )
                 except Exception as e:
                     messages.error(request, f"Failed to stop job {job.id}: {e}")
@@ -505,7 +521,7 @@ class ContainerJobAdmin(admin.ModelAdmin):
                         job.save()
                         restarted_count += 1
                         messages.success(
-                            request, f"Restarted job {job.id} on {job.executor_type}"
+                            request, f"Restarted job {job.id} on {job.docker_host.executor_type if job.docker_host else 'unknown'}"
                         )
                     else:
                         messages.error(
@@ -547,7 +563,7 @@ class ContainerJobAdmin(admin.ModelAdmin):
                     job.save()
                     cancelled_count += 1
                     messages.success(
-                        request, f"Cancelled job {job.id} on {job.executor_type}"
+                        request, f"Cancelled job {job.id} on {job.docker_host.executor_type if job.docker_host else 'unknown'}"
                     )
                 except Exception as e:
                     messages.error(request, f"Failed to cancel job {job.id}: {e}")
@@ -563,86 +579,9 @@ class ContainerJobAdmin(admin.ModelAdmin):
 
     cancel_job_multi.short_description = "Cancel selected jobs (multi-executor)"
 
-    def route_jobs(self, request, queryset):
-        """Route jobs to optimal executors"""
-        routed_count = 0
-        for job in queryset:
-            if job.status == "pending":
-                try:
-                    from .executors.factory import ExecutorFactory
+    # Route jobs method removed - jobs now have direct docker_host assignment
 
-                    factory = ExecutorFactory()
-
-                    # Re-route the job
-                    executor_type = factory.route_job(job)
-
-                    # Find appropriate host for the selected executor
-                    from .models import ExecutorHost
-
-                    suitable_host = ExecutorHost.objects.filter(
-                        executor_type=executor_type, is_active=True
-                    ).first()
-
-                    if suitable_host:
-                        job.docker_host = suitable_host
-                        job.executor_type = executor_type
-                        job.save()
-                        routed_count += 1
-                        messages.success(
-                            request, f"Routed job {job.id} to {executor_type}"
-                        )
-                    else:
-                        messages.error(
-                            request, f"No available host found for {executor_type}"
-                        )
-
-                except Exception as e:
-                    messages.error(request, f"Failed to route job {job.id}: {e}")
-            else:
-                messages.warning(request, f"Job {job.id} is not in pending status")
-
-        if routed_count:
-            messages.success(request, f"Re-routed {routed_count} jobs")
-
-    route_jobs.short_description = "Re-route selected jobs to optimal executors"
-
-    def calculate_costs(self, request, queryset):
-        """Calculate costs for completed jobs"""
-        calculated_count = 0
-        for job in queryset:
-            if job.status in ["completed", "failed"]:
-                try:
-                    from .cost.tracker import CostTracker
-
-                    tracker = CostTracker()
-
-                    cost_record = tracker.finalize_job_cost(job)
-                    if cost_record:
-                        calculated_count += 1
-                        messages.success(
-                            request,
-                            f"Calculated cost for job {job.id}: "
-                            f"${cost_record.total_cost:.6f} {cost_record.currency}",
-                        )
-                    else:
-                        messages.warning(
-                            request, f"No cost profile available for job {job.id}"
-                        )
-
-                except ImportError:
-                    messages.error(request, "Cost tracking not available")
-                    break
-                except Exception as e:
-                    messages.error(
-                        request, f"Failed to calculate cost for job {job.id}: {e}"
-                    )
-            else:
-                messages.warning(request, f"Job {job.id} is not completed")
-
-        if calculated_count:
-            messages.success(request, f"Calculated costs for {calculated_count} jobs")
-
-    calculate_costs.short_description = "Calculate costs for completed jobs"
+    # calculate_costs method removed - deprecated cost tracking functionality
 
     def export_job_data(self, request, queryset):
         """Export job data to CSV"""
@@ -662,24 +601,21 @@ class ContainerJobAdmin(admin.ModelAdmin):
                 "Executor Type",
                 "Status",
                 "Duration (seconds)",
-                "Cost",
-                "Created At",
+                    "Created At",
             ]
         )
 
         for job in queryset:
             duration = job.duration.total_seconds() if job.duration else None
-            cost = f"${job.actual_cost:.6f}" if job.actual_cost else job.estimated_cost
 
             writer.writerow(
                 [
                     str(job.id),
                     job.name or "Unnamed Job",
                     job.docker_image,
-                    job.executor_type,
+                    job.docker_host.executor_type if job.docker_host else "No Host",
                     job.status,
                     duration,
-                    cost,
                     job.created_at.isoformat(),
                 ]
             )

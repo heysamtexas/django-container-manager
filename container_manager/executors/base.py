@@ -199,12 +199,8 @@ class ContainerExecutor(ABC):
         if not job.docker_host:
             errors.append("Job must have a docker_host")
 
-        # Validate executor type matches host
-        if job.docker_host and job.executor_type != job.docker_host.executor_type:
-            errors.append(
-                f"Job executor type '{job.executor_type}' doesn't match "
-                f"host executor type '{job.docker_host.executor_type}'"
-            )
+        # Executor type is now determined by docker_host.executor_type
+        # No additional validation needed since docker_host is required and determines executor type
 
         # Let subclasses add executor-specific validations
         errors.extend(self._validate_executor_specific(job))
@@ -258,110 +254,13 @@ class ContainerExecutor(ABC):
         """
         return job.status.title()
 
-    def estimate_cost(self, job) -> float | None:
-        """
-        Estimate the cost of executing a job.
+    # estimate_cost method removed - deprecated cost tracking functionality
 
-        Args:
-            job: ContainerJob instance
+    # start_cost_tracking method removed - deprecated cost tracking functionality
 
-        Returns:
-            Estimated cost in USD, or None if not available
+    # update_resource_usage method removed - deprecated cost tracking functionality
 
-        Example:
-            cost = executor.estimate_cost(job)
-            if cost:
-                job.estimated_cost = cost
-        """
-        return None
-
-    def start_cost_tracking(self, job: "ContainerJob") -> None:
-        """
-        Start cost tracking for a job.
-
-        Args:
-            job: ContainerJob to start tracking for
-        """
-        try:
-            from ..cost.tracker import CostTracker
-
-            tracker = CostTracker()
-            tracker.start_job_tracking(job)
-        except Exception as e:
-            # Cost tracking is optional - don't fail job execution
-            import logging
-
-            logger = logging.getLogger(__name__)
-            logger.warning(f"Failed to start cost tracking for job {job.id}: {e}")
-
-    def update_resource_usage(
-        self,
-        job: "ContainerJob",
-        cpu_cores: float = 0.0,
-        memory_mb: float = 0.0,
-        storage_mb: float = 0.0,
-        network_in_mb: float = 0.0,
-        network_out_mb: float = 0.0,
-        collection_method: str = "estimated",
-    ) -> None:
-        """
-        Update resource usage for a running job.
-
-        Args:
-            job: ContainerJob being tracked
-            cpu_cores: Current CPU cores used
-            memory_mb: Current memory MB used
-            storage_mb: Current storage MB used
-            network_in_mb: Network MB received
-            network_out_mb: Network MB sent
-            collection_method: How metrics were collected
-        """
-        try:
-            from ..cost.tracker import CostTracker
-
-            tracker = CostTracker()
-            tracker.update_resource_usage(
-                job,
-                cpu_cores,
-                memory_mb,
-                storage_mb,
-                network_in_mb,
-                network_out_mb,
-                collection_method,
-            )
-        except Exception as e:
-            # Cost tracking is optional - don't fail job execution
-            import logging
-
-            logger = logging.getLogger(__name__)
-            logger.warning(f"Failed to update resource usage for job {job.id}: {e}")
-
-    def finalize_cost_tracking(self, job: "ContainerJob") -> None:
-        """
-        Finalize cost tracking for a completed job.
-
-        Args:
-            job: Completed ContainerJob
-        """
-        try:
-            from ..cost.tracker import CostTracker
-
-            tracker = CostTracker()
-            cost_record = tracker.finalize_job_cost(job)
-            if cost_record:
-                import logging
-
-                logger = logging.getLogger(__name__)
-                logger.info(
-                    f"Finalized cost tracking for job {job.id}: "
-                    f"{cost_record.total_cost} {cost_record.currency}"
-                )
-        except Exception as e:
-            # Cost tracking is optional - don't fail job execution
-            import logging
-
-            logger = logging.getLogger(__name__)
-            logger.warning(f"Failed to finalize cost tracking for job {job.id}: {e}")
+    # finalize_cost_tracking method removed - deprecated cost tracking functionality
 
     def get_health_status(self) -> dict[str, any]:
         """

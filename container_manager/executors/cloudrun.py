@@ -385,7 +385,11 @@ class CloudRunExecutor(ContainerExecutor):
                 self._harvest_job_with_details(job, job_info)
             except Exception:
                 logger.exception("Error harvesting Cloud Run job details")
-                self._fallback_job_completion(job)
+                # Mark job as completed with minimal data when detailed harvest fails
+                job.status = "completed"
+                job.exit_code = 0
+                job.completed_at = timezone.now()
+                job.save()
 
             self._cleanup_job_tracking(execution_id)
         except Exception:
@@ -478,13 +482,6 @@ class CloudRunExecutor(ContainerExecutor):
         # Estimate resource usage (Cloud Run doesn't provide detailed metrics)
         job.max_memory_usage = self.memory_limit * 1024 * 1024  # Convert MB to bytes
         job.cpu_usage_percent = min(self.cpu_limit * 100, 100)  # Estimate CPU usage
-        job.save()
-
-    def _fallback_job_completion(self, job: ContainerJob) -> None:
-        """Mark job as completed with minimal data when detailed harvest fails"""
-        job.status = "completed"
-        job.exit_code = 0
-        job.completed_at = timezone.now()
         job.save()
 
     def _cleanup_job_tracking(self, execution_id: str) -> None:

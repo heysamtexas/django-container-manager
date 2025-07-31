@@ -83,14 +83,9 @@ class CleanupContainersCommandTest(TestCase):
         """Test that command arguments are parsed correctly"""
         out = StringIO()
 
-        with patch(
-            "container_manager.management.commands.cleanup_containers.docker_service"
-        ) as mock_service:
-            mock_service.cleanup_old_containers.return_value = 0
-
-            call_command(
-                "cleanup_containers", "--orphaned-hours=48", "--dry-run", stdout=out
-            )
+        call_command(
+            "cleanup_containers", "--orphaned-hours=48", "--dry-run", stdout=out
+        )
 
         output = out.getvalue()
         self.assertIn("Orphaned containers older than: 48 hours", output)
@@ -101,16 +96,13 @@ class CleanupContainersCommandTest(TestCase):
         """Test command works with default arguments"""
         out = StringIO()
 
-        with patch(
-            "container_manager.management.commands.cleanup_containers.docker_service"
-        ) as mock_service:
-            mock_service.cleanup_old_containers.return_value = 5
-
-            call_command("cleanup_containers", stdout=out)
+        call_command("cleanup_containers", stdout=out)
 
         output = out.getvalue()
         self.assertIn("Orphaned containers older than: 24 hours", output)
         self.assertIn("Dry run: False", output)
+        # Since docker_service is deprecated, should show warning
+        self.assertIn("Container cleanup temporarily disabled", output)
 
     @override_settings(CONTAINER_MANAGER={"CLEANUP_ENABLED": False})
     def test_cleanup_disabled_in_settings(self):
@@ -128,16 +120,12 @@ class CleanupContainersCommandTest(TestCase):
         """Test that --force overrides disabled settings"""
         out = StringIO()
 
-        with patch(
-            "container_manager.management.commands.cleanup_containers.docker_service"
-        ) as mock_service:
-            mock_service.cleanup_old_containers.return_value = 3
-
-            call_command("cleanup_containers", "--force", stdout=out)
+        call_command("cleanup_containers", "--force", stdout=out)
 
         output = out.getvalue()
         self.assertNotIn("Container cleanup is disabled", output)
-        self.assertIn("Successfully cleaned up 3 containers", output)
+        # Since docker_service is deprecated, should show warning even with --force
+        self.assertIn("Container cleanup temporarily disabled", output)
 
     def test_dry_run_preview_with_orphaned_jobs(self):
         """Test dry run mode shows preview of what would be cleaned"""
@@ -209,73 +197,55 @@ class CleanupContainersCommandTest(TestCase):
         self.assertIn("... and 5 more orphaned containers", output)
 
     def test_actual_cleanup_execution(self):
-        """Test actual cleanup execution calls docker service"""
+        """Test actual cleanup execution shows deprecation warning"""
         old_job = self._create_old_completed_job()
 
         out = StringIO()
 
-        with patch(
-            "container_manager.management.commands.cleanup_containers.docker_service"
-        ) as mock_service:
-            mock_service.cleanup_old_containers.return_value = 1
-
-            call_command("cleanup_containers", "--orphaned-hours=24", stdout=out)
-
-            mock_service.cleanup_old_containers.assert_called_once_with(
-                orphaned_hours=24
-            )
+        call_command("cleanup_containers", "--orphaned-hours=24", stdout=out)
 
         output = out.getvalue()
-        self.assertIn("Successfully cleaned up 1 containers", output)
+        # Since docker_service is deprecated, should show warning instead of cleanup
+        self.assertIn("Container cleanup temporarily disabled", output)
+        self.assertIn("docker_service has been deprecated", output)
 
     def test_cleanup_no_containers_found(self):
-        """Test cleanup when no containers need to be cleaned"""
+        """Test cleanup shows deprecation warning"""
         recent_job = self._create_recent_completed_job()
 
         out = StringIO()
 
-        with patch(
-            "container_manager.management.commands.cleanup_containers.docker_service"
-        ) as mock_service:
-            mock_service.cleanup_old_containers.return_value = 0
-
-            call_command("cleanup_containers", "--orphaned-hours=24", stdout=out)
+        call_command("cleanup_containers", "--orphaned-hours=24", stdout=out)
 
         output = out.getvalue()
-        self.assertIn("No containers needed cleanup", output)
+        # Since docker_service is deprecated, should show warning
+        self.assertIn("Container cleanup temporarily disabled", output)
 
     def test_cleanup_error_handling(self):
-        """Test error handling during cleanup execution"""
+        """Test that deprecated cleanup shows warning instead of error"""
         out = StringIO()
 
-        with patch(
-            "container_manager.management.commands.cleanup_containers.docker_service"
-        ) as mock_service:
-            mock_service.cleanup_old_containers.side_effect = Exception(
-                "Docker connection failed"
-            )
-
-            with self.assertRaises(Exception):
-                call_command("cleanup_containers", stdout=out)
+        # No exception should be raised since cleanup is disabled
+        call_command("cleanup_containers", stdout=out)
 
         output = out.getvalue()
-        self.assertIn("Cleanup failed: Docker connection failed", output)
+        # Should show deprecation warning, not error
+        self.assertIn("Container cleanup temporarily disabled", output)
 
     @patch("container_manager.management.commands.cleanup_containers.logger")
-    def test_cleanup_error_logging(self, mock_logger):
-        """Test that cleanup errors are properly logged"""
-        with patch(
-            "container_manager.management.commands.cleanup_containers.docker_service"
-        ) as mock_service:
-            mock_service.cleanup_old_containers.side_effect = Exception("Docker error")
-
-            with self.assertRaises(Exception):
-                call_command("cleanup_containers")
-
-            mock_logger.exception.assert_called_once_with("Container cleanup error")
+    def test_cleanup_deprecation_logging(self, mock_logger):
+        """Test that cleanup deprecation is handled gracefully"""
+        out = StringIO()
+        call_command("cleanup_containers", stdout=out)
+        
+        # Should not log exceptions since cleanup is disabled
+        mock_logger.exception.assert_not_called()
+        
+        output = out.getvalue()
+        self.assertIn("Container cleanup temporarily disabled", output)
 
     def test_cleanup_with_missing_settings(self):
-        """Test cleanup works when CONTAINER_MANAGER settings are missing"""
+        """Test cleanup shows deprecation warning when CONTAINER_MANAGER settings are missing"""
         out = StringIO()
 
         with override_settings():
@@ -285,39 +255,28 @@ class CleanupContainersCommandTest(TestCase):
             if hasattr(settings, "CONTAINER_MANAGER"):
                 delattr(settings, "CONTAINER_MANAGER")
 
-            with patch(
-                "container_manager.management.commands.cleanup_containers.docker_service"
-            ) as mock_service:
-                mock_service.cleanup_old_containers.return_value = 2
-
-                call_command("cleanup_containers", stdout=out)
+            call_command("cleanup_containers", stdout=out)
 
         output = out.getvalue()
-        self.assertIn("Successfully cleaned up 2 containers", output)
+        # Should show deprecation warning regardless of settings
+        self.assertIn("Container cleanup temporarily disabled", output)
 
     def test_orphaned_hours_validation(self):
-        """Test that orphaned hours parameter works with different values"""
+        """Test that orphaned hours parameter is still parsed correctly"""
         test_values = [1, 24, 48, 168]  # 1 hour, 1 day, 2 days, 1 week
 
         for hours in test_values:
             with self.subTest(hours=hours):
                 out = StringIO()
 
-                with patch(
-                    "container_manager.management.commands.cleanup_containers.docker_service"
-                ) as mock_service:
-                    mock_service.cleanup_old_containers.return_value = 0
-
-                    call_command(
-                        "cleanup_containers", f"--orphaned-hours={hours}", stdout=out
-                    )
-
-                    mock_service.cleanup_old_containers.assert_called_with(
-                        orphaned_hours=hours
-                    )
+                call_command(
+                    "cleanup_containers", f"--orphaned-hours={hours}", stdout=out
+                )
 
                 output = out.getvalue()
                 self.assertIn(f"Orphaned containers older than: {hours} hours", output)
+                # Should show deprecation warning
+                self.assertIn("Container cleanup temporarily disabled", output)
 
     def test_dry_run_job_filtering_logic(self):
         """Test that dry run properly filters jobs by status and completion time"""

@@ -124,14 +124,6 @@ class ExecutorHost(models.Model):
         default=0, help_text="Current number of running jobs on this host"
     )
 
-    # Health monitoring
-    health_check_failures = models.PositiveIntegerField(
-        default=0, help_text="Number of consecutive health check failures"
-    )
-    last_health_check = models.DateTimeField(
-        null=True, blank=True, help_text="Timestamp of last health check"
-    )
-
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -244,33 +236,7 @@ class ContainerJob(models.Model):
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
 
-    # Multi-executor support
-    executor_type = models.CharField(
-        max_length=50,
-        default="docker",
-        choices=[
-            ("docker", "Docker"),
-            ("cloudrun", "Google Cloud Run"),
-            ("fargate", "AWS Fargate"),
-            ("scaleway", "Scaleway Containers"),
-            ("mock", "Mock (Testing)"),
-        ],
-        help_text="Container execution backend to use for this job",
-    )
-
-    preferred_executor = models.CharField(
-        max_length=50,
-        blank=True,
-        default="",
-        choices=[
-            ("docker", "Docker"),
-            ("cloudrun", "Google Cloud Run"),
-            ("fargate", "AWS Fargate"),
-            ("scaleway", "Scaleway Containers"),
-            ("mock", "Mock (Testing)"),
-        ],
-        help_text="Preferred executor type for this job",
-    )
+    # Multi-executor support - executor type determined by docker_host.executor_type
 
     external_execution_id = models.CharField(
         max_length=200,
@@ -325,9 +291,9 @@ class ContainerJob(models.Model):
         ordering: ClassVar = ["-created_at"]
 
     def __str__(self):
-        executor_info = (
-            f" ({self.executor_type})" if self.executor_type != "docker" else ""
-        )
+        executor_info = ""
+        if self.docker_host and self.docker_host.executor_type != "docker":
+            executor_info = f" ({self.docker_host.executor_type})"
         display_name = self.name or "Unnamed Job"
         return f"{display_name} ({self.status}){executor_info}"
 
@@ -345,7 +311,7 @@ class ContainerJob(models.Model):
             return self.execution_id
 
         # FALLBACK: Legacy field support during migration
-        if self.executor_type == "docker":
+        if self.docker_host and self.docker_host.executor_type == "docker":
             return self.container_id or ""
         return self.external_execution_id or ""
 
@@ -355,7 +321,7 @@ class ContainerJob(models.Model):
         self.execution_id = execution_id
 
         # MIGRATION: Also set legacy fields for backward compatibility
-        if self.executor_type == "docker":
+        if self.docker_host and self.docker_host.executor_type == "docker":
             self.container_id = execution_id
         else:
             self.external_execution_id = execution_id

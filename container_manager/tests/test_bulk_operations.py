@@ -27,7 +27,7 @@ class BulkJobManagerTest(TestCase):
         # Create test hosts
         self.docker_host = ExecutorHost.objects.create(
             name="docker-host",
-            executor_type="docker",
+            # executor_type now determined by docker_host
             connection_string="unix:///var/run/docker.sock",
             is_active=True,
         )
@@ -131,7 +131,7 @@ class BulkJobManagerTest(TestCase):
                 docker_image="alpine:latest",
                 docker_host=self.mock_host,
                 name=f"test-job-{i}",
-                executor_type="mock",
+                # executor_type now determined by docker_host
                 status="pending",
                 created_by=self.user,
             )
@@ -164,7 +164,7 @@ class BulkJobManagerTest(TestCase):
                 docker_image="alpine:latest",
                 docker_host=self.mock_host,
                 name=f"test-job-{i}",
-                executor_type="mock",
+                # executor_type now determined by docker_host
                 status="running",
                 container_id=f"container_{i}",
                 created_by=self.user,
@@ -195,7 +195,6 @@ class BulkJobManagerTest(TestCase):
             docker_image="alpine:latest",
             docker_host=self.mock_host,
             name="pending-job",
-            executor_type="mock",
             status="pending",
             created_by=self.user,
         )
@@ -204,7 +203,6 @@ class BulkJobManagerTest(TestCase):
             docker_image="alpine:latest",
             docker_host=self.mock_host,
             name="running-job",
-            executor_type="mock",
             status="running",
             container_id="container_1",
             created_by=self.user,
@@ -214,7 +212,6 @@ class BulkJobManagerTest(TestCase):
             docker_image="alpine:latest",
             docker_host=self.mock_host,
             name="completed-job",
-            executor_type="mock",
             status="completed",
             created_by=self.user,
         )
@@ -251,7 +248,7 @@ class BulkJobManagerTest(TestCase):
             docker_host=self.mock_host,
             name="completed-job",
             status="completed",
-            executor_type="mock",  # Match host type
+            # executor_type now determined by docker_host
             container_id="old_container",
             exit_code=0,
             created_by=self.user,
@@ -276,7 +273,7 @@ class BulkJobManagerTest(TestCase):
 
         # Job is on mock host, so execution_id should go to external_execution_id
         self.assertEqual(job.docker_host.executor_type, "mock")
-        self.assertEqual(job.executor_type, "mock")  # Should match host type
+        self.assertEqual(job.docker_host.executor_type, "mock")  # Should match host type
         self.assertEqual(job.container_id, "")  # Should be cleared
         self.assertEqual(job.external_execution_id, "new_exec_123")  # Should be set
         self.assertIsNotNone(job.started_at)
@@ -293,7 +290,7 @@ class BulkJobManagerTest(TestCase):
                 docker_image="alpine:latest",
                 docker_host=host,
                 name=f"test-job-{i}",
-                executor_type=host.executor_type,
+                # executor_type is now determined by docker_host
                 status=status,
                 created_by=self.user,
             )
@@ -321,7 +318,7 @@ class BulkJobManagerTest(TestCase):
         # Create hosts with different job counts
         host1 = ExecutorHost.objects.create(
             name="host1",
-            executor_type="docker",
+            # executor_type now determined by docker_host
             connection_string="host1:2376",
             is_active=True,
             current_job_count=5,
@@ -329,7 +326,7 @@ class BulkJobManagerTest(TestCase):
 
         host2 = ExecutorHost.objects.create(
             name="host2",
-            executor_type="docker",
+            # executor_type now determined by docker_host
             connection_string="host2:2376",
             is_active=True,
             current_job_count=2,
@@ -339,7 +336,7 @@ class BulkJobManagerTest(TestCase):
             docker_image="alpine:latest",
             docker_host=host1,
             name="test-job",
-            executor_type="docker",
+            # executor_type now determined by docker_host
             status="pending",
             created_by=self.user,
         )
