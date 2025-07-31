@@ -401,7 +401,6 @@ class DockerExecutorTest(TestCase):
             # Django ORM exception is also acceptable for this test
             pass
 
-
     @patch("container_manager.executors.docker.DockerExecutor._get_client")
     def test_get_health_status_healthy(self, mock_get_client):
         """Test get_health_status with healthy Docker daemon"""
@@ -635,7 +634,9 @@ class DockerExecutorTest(TestCase):
     @patch.object(DockerExecutor, "_get_client")
     @patch.object(DockerExecutor, "_create_container")
     @patch.object(DockerExecutor, "_start_container")
-    def test_launch_job_start_container_failure(self, mock_start, mock_create, mock_get_client):
+    def test_launch_job_start_container_failure(
+        self, mock_start, mock_create, mock_get_client
+    ):
         """Test job launch when container start fails"""
         mock_create.return_value = "test-container-123"
         mock_start.return_value = False
@@ -666,11 +667,15 @@ class DockerExecutorTest(TestCase):
         mock_get_client.return_value = mock_client
 
         # Mock helper methods
-        with patch.object(self.executor, "_ensure_image_available"), \
-             patch.object(self.executor, "_build_container_config") as mock_build_config, \
-             patch.object(self.executor, "_setup_additional_networks"):
-            
-            mock_build_config.return_value = {"image": "alpine:latest", "command": "echo test"}
+        with (
+            patch.object(self.executor, "_ensure_image_available"),
+            patch.object(self.executor, "_build_container_config") as mock_build_config,
+            patch.object(self.executor, "_setup_additional_networks"),
+        ):
+            mock_build_config.return_value = {
+                "image": "alpine:latest",
+                "command": "echo test",
+            }
 
             container_id = self.executor._create_container(self.job)
 
@@ -684,10 +689,11 @@ class DockerExecutorTest(TestCase):
         mock_client.containers.create.side_effect = Exception("Docker error")
         mock_get_client.return_value = mock_client
 
-        with patch.object(self.executor, "_ensure_image_available"), \
-             patch.object(self.executor, "_build_container_config") as mock_build_config, \
-             patch.object(self.executor, "_setup_additional_networks"):
-            
+        with (
+            patch.object(self.executor, "_ensure_image_available"),
+            patch.object(self.executor, "_build_container_config") as mock_build_config,
+            patch.object(self.executor, "_setup_additional_networks"),
+        ):
             mock_build_config.return_value = {"image": "alpine:latest"}
 
             with self.assertRaises(ExecutorError):
@@ -706,7 +712,7 @@ class DockerExecutorTest(TestCase):
 
         self.assertTrue(success)
         mock_container.start.assert_called_once()
-        
+
         # Verify job was updated
         self.job.refresh_from_db()
         self.assertEqual(self.job.status, "running")
@@ -724,7 +730,7 @@ class DockerExecutorTest(TestCase):
         success = self.executor._start_container(self.job, container_id)
 
         self.assertFalse(success)
-        
+
         # Verify job was marked as failed
         self.job.refresh_from_db()
         self.assertEqual(self.job.status, "failed")
@@ -743,13 +749,14 @@ class DockerExecutorTest(TestCase):
         self.job.status = "running"
         self.job.save()
 
-        with patch.object(self.executor, "_collect_data"), \
-             patch.object(self.executor, "_immediate_cleanup"):
-
+        with (
+            patch.object(self.executor, "_collect_data"),
+            patch.object(self.executor, "_immediate_cleanup"),
+        ):
             success = self.executor.harvest_job(self.job)
 
             self.assertTrue(success)
-            
+
             # Verify job was updated
             self.job.refresh_from_db()
             self.assertEqual(self.job.status, "completed")
@@ -770,13 +777,14 @@ class DockerExecutorTest(TestCase):
         self.job.status = "running"
         self.job.save()
 
-        with patch.object(self.executor, "_collect_data"), \
-             patch.object(self.executor, "_immediate_cleanup"):
-
+        with (
+            patch.object(self.executor, "_collect_data"),
+            patch.object(self.executor, "_immediate_cleanup"),
+        ):
             success = self.executor.harvest_job(self.job)
 
             self.assertTrue(success)
-            
+
             # Verify job was marked as failed
             self.job.refresh_from_db()
             self.assertEqual(self.job.status, "failed")
@@ -805,7 +813,7 @@ class DockerExecutorTest(TestCase):
         success = self.executor.harvest_job(self.job)
 
         self.assertFalse(success)
-        
+
         # Verify job was marked as failed
         self.job.refresh_from_db()
         self.assertEqual(self.job.status, "failed")
@@ -829,7 +837,7 @@ class DockerExecutorTest(TestCase):
 
         self.assertTrue(success)
 
-    @patch('docker.from_env')
+    @patch("docker.from_env")
     def test_cleanup_success_no_job(self, mock_from_env):
         """Test successful cleanup when job not found"""
         mock_client = Mock()
@@ -859,7 +867,7 @@ class DockerExecutorTest(TestCase):
         self.assertTrue(success)
         mock_container.remove.assert_called_once_with(force=True)
 
-    @patch('docker.from_env')
+    @patch("docker.from_env")
     def test_cleanup_container_not_found(self, mock_from_env):
         """Test cleanup when container already removed"""
         mock_client = Mock()
@@ -870,7 +878,7 @@ class DockerExecutorTest(TestCase):
 
         self.assertTrue(success)  # Should succeed if already cleaned up
 
-    @patch('docker.from_env')
+    @patch("docker.from_env")
     def test_cleanup_exception(self, mock_from_env):
         """Test cleanup with exception"""
         mock_client = Mock()
@@ -888,7 +896,7 @@ class DockerExecutorTest(TestCase):
         mock_container = Mock()
         mock_container.stats.return_value = {
             "memory_usage": {"max_usage": 1024000},
-            "cpu_stats": {"cpu_usage": {"total_usage": 1000000}}
+            "cpu_stats": {"cpu_usage": {"total_usage": 1000000}},
         }
         mock_client.containers.get.return_value = mock_container
         mock_get_client.return_value = mock_client
@@ -897,9 +905,10 @@ class DockerExecutorTest(TestCase):
         self.job.set_execution_identifier("data-collection-container")
         self.job.save()
 
-        with patch.object(self.executor, "get_logs") as mock_get_logs, \
-             patch.object(self.executor, "_calculate_cpu_percent") as mock_calc_cpu:
-            
+        with (
+            patch.object(self.executor, "get_logs") as mock_get_logs,
+            patch.object(self.executor, "_calculate_cpu_percent") as mock_calc_cpu,
+        ):
             mock_get_logs.return_value = ("stdout logs", "stderr logs")
             mock_calc_cpu.return_value = 75.5
 
@@ -911,7 +920,7 @@ class DockerExecutorTest(TestCase):
             self.assertEqual(self.job.stderr_log, "stderr logs")
             self.assertEqual(self.job.max_memory_usage, 1024000)
             self.assertEqual(self.job.cpu_usage_percent, 75.5)
-            
+
     def test_collect_data_no_execution_id(self):
         """Test data collection when job has no execution_id"""
         self.job.set_execution_identifier("")
@@ -934,7 +943,7 @@ class DockerExecutorTest(TestCase):
 
         with patch.object(self.executor, "get_logs") as mock_get_logs:
             mock_get_logs.return_value = ("stdout", "stderr")
-            
+
             # Should not raise exception
             self.executor._collect_data(self.job)
 
@@ -966,13 +975,13 @@ class DockerExecutorTest(TestCase):
         """Test _should_pull_image falls back to global setting"""
         # Create host without auto_pull_images attribute by temporarily removing it
         mock_get_setting.return_value = True
-        
+
         # Mock hasattr to return False for auto_pull_images
-        with patch('builtins.hasattr') as mock_hasattr:
+        with patch("builtins.hasattr") as mock_hasattr:
             mock_hasattr.return_value = False
-            
+
             result = self.executor._should_pull_image(self.docker_host)
-            
+
             self.assertTrue(result)
             mock_get_setting.assert_called_once_with("AUTO_PULL_IMAGES", True)
 
@@ -983,10 +992,10 @@ class DockerExecutorTest(TestCase):
 
         with patch.object(self.executor, "_should_pull_image") as mock_should_pull:
             mock_should_pull.return_value = True
-            
+
             # Should not raise exception
             self.executor._ensure_image_available(mock_client, self.job)
-            
+
             mock_client.images.pull.assert_called_once_with(self.job.docker_image)
 
     @patch.object(DockerExecutor, "_get_client")
@@ -999,7 +1008,7 @@ class DockerExecutorTest(TestCase):
 
         # Should not raise exception and not pull
         self.executor._ensure_image_available(mock_client, self.job)
-        
+
         mock_client.images.pull.assert_not_called()
 
     @patch.object(DockerExecutor, "_get_client")
@@ -1013,11 +1022,13 @@ class DockerExecutorTest(TestCase):
         self.job.set_execution_identifier("cleanup-test-container")
         self.job.save()
 
-        with patch("container_manager.defaults.get_container_manager_setting") as mock_setting:
+        with patch(
+            "container_manager.defaults.get_container_manager_setting"
+        ) as mock_setting:
             mock_setting.return_value = True  # IMMEDIATE_CLEANUP = True
-            
+
             self.executor._immediate_cleanup(self.job)
-            
+
             mock_container.remove.assert_called_once_with(force=True)
 
     def test_immediate_cleanup_disabled(self):
@@ -1025,8 +1036,10 @@ class DockerExecutorTest(TestCase):
         self.job.set_execution_identifier("no-cleanup-container")
         self.job.save()
 
-        with patch("container_manager.defaults.get_container_manager_setting") as mock_setting:
+        with patch(
+            "container_manager.defaults.get_container_manager_setting"
+        ) as mock_setting:
             mock_setting.return_value = False  # IMMEDIATE_CLEANUP = False
-            
+
             # Should not attempt cleanup
             self.executor._immediate_cleanup(self.job)

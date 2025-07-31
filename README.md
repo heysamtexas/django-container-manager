@@ -10,10 +10,9 @@ A modern Django app for container orchestration with multi-executor support. Run
 ## ✨ Features
 
 - 🐳 **Multi-executor support**: Docker, Google Cloud Run, AWS Fargate, Mock executor
-- ⚖️ **Intelligent routing**: Weight-based load distribution across hosts
-- 📊 **Complete job tracking**: Lifecycle management with logs, metrics, and resource usage
+- 📊 **Job lifecycle tracking**: Status monitoring, logs, metrics, and resource usage
 - 🎛️ **Admin interface**: Beautiful Django admin integration with real-time updates
-- 🔧 **Management commands**: Powerful CLI tools for job and container management
+- 🔧 **Job processor**: Background daemon for container job execution
 - 📦 **Environment overrides**: Job-level customization of commands and variables
 - 🚀 **Production ready**: Comprehensive error handling, logging, and monitoring
 - 🔒 **Security first**: TLS support, resource limits, and safe container execution
@@ -48,15 +47,14 @@ INSTALLED_APPS = [
 python manage.py migrate
 ```
 
-3. **Create a superuser and access admin:**
+3. **Create a superuser (for development):**
 
 ```bash
-python manage.py createsuperuser
-python manage.py runserver
-# Visit http://localhost:8000/admin/
+python manage.py createsuperuser  # Only needed for local development
+python manage.py runserver        # Visit http://localhost:8000/admin/
 ```
 
-4. **Start the job processor:**
+4. **Start the job processor (CRITICAL for job execution):**
 
 ```bash
 python manage.py process_container_jobs
@@ -66,12 +64,12 @@ python manage.py process_container_jobs
 
 ### Creating Your First Container Job
 
-1. **Create Docker Host** (in Django admin or via shell):
+1. **Create Executor Host** (in Django admin or via shell):
 
 ```python
-from container_manager.models import DockerHost
+from container_manager.models import ExecutorHost
 
-host = DockerHost.objects.create(
+host = ExecutorHost.objects.create(
     name="local-docker",
     executor_type="docker",
     connection_string="unix:///var/run/docker.sock",
@@ -79,17 +77,13 @@ host = DockerHost.objects.create(
 )
 ```
 
-2. **Create Container Template:**
+2. **Create Environment Template (optional):**
 
 ```python
-from container_manager.models import ContainerTemplate
+from container_manager.models import EnvironmentVariableTemplate
 
-template = ContainerTemplate.objects.create(
-    name="hello-world",
-    docker_image="hello-world",
-    timeout_seconds=60,
-    memory_limit=128,  # MB
-    cpu_limit=0.5,     # cores
+env_template = EnvironmentVariableTemplate.objects.create(
+    name="hello-world-env",
     environment_variables_text="""
 DEBUG=true
 LOG_LEVEL=info
@@ -104,9 +98,13 @@ TIMEOUT=300
 from container_manager.models import ContainerJob
 
 job = ContainerJob.objects.create(
-    template=template,
     docker_host=host,
-    name="My First Container Job"
+    name="My First Container Job",
+    docker_image="hello-world",
+    timeout_seconds=60,
+    memory_limit=128,  # MB
+    cpu_limit=0.5,     # cores
+    environment_template=env_template  # optional
 )
 ```
 
@@ -117,7 +115,7 @@ The job will be automatically picked up by the job processor and executed!
 Environment variables can be easily added to templates using a simple text format:
 
 ```python
-template.environment_variables_text = """
+env_template.environment_variables_text = """
 # Database configuration
 DATABASE_URL=postgresql://user:pass@host:5432/db
 DB_POOL_SIZE=10
@@ -162,7 +160,7 @@ USE_EXECUTOR_FACTORY = True
 
 ```python
 # Configure Cloud Run executor
-host = DockerHost.objects.create(
+host = ExecutorHost.objects.create(
     name="gcp-cloud-run",
     executor_type="cloudrun",
     weight=150,
@@ -179,7 +177,7 @@ host = DockerHost.objects.create(
 
 ```python
 # Configure Fargate executor
-host = DockerHost.objects.create(
+host = ExecutorHost.objects.create(
     name="aws-fargate",
     executor_type="fargate",
     weight=120,
@@ -191,41 +189,43 @@ host = DockerHost.objects.create(
 )
 ```
 
-## 🔧 Management Commands
+## 🔧 Job Processing
 
-### Job Processing
+The core job processor daemon is started with:
 
 ```bash
-# Start job processor with custom settings
-python manage.py process_container_jobs --poll-interval=10 --max-jobs=5
+# Start the job processor (keeps running)
+python manage.py process_container_jobs
 
-# Process jobs for specific executor type
-python manage.py process_container_jobs --executor-type=docker
+# Run once and exit (useful for testing)
+python manage.py process_container_jobs --once
 
-# Run cleanup of old containers
-python manage.py process_container_jobs --cleanup --cleanup-hours=48
+# Custom poll interval
+python manage.py process_container_jobs --poll-interval=10
 ```
+
+**This command is essential** - without it running, no jobs will be executed. It continuously polls for pending jobs and manages their lifecycle.
 
 ### Job Management
 
 Job creation and management is handled through the Django admin interface, which provides:
 
 - **Interactive job creation** with real-time validation
-- **Advanced filtering and search** capabilities
+- **Status monitoring** and job lifecycle tracking
+- **Log viewing** directly in the admin interface
 - **Bulk operations** for managing multiple jobs
-- **Real-time monitoring** with status updates
-- **Integrated log viewing** and debugging tools
+- **Executor host management** and configuration
 
 ## 📊 Monitoring & Admin Interface
 
 The Django admin interface provides:
 
-- **Real-time job monitoring** with status indicators
-- **Log viewing** directly in the browser
-- **Resource usage metrics** and execution statistics
+- **Job status monitoring** with real-time updates
+- **Log viewing** directly in the browser  
+- **Execution tracking** with start/completion times
 - **Bulk operations** for managing multiple jobs
-- **Host connectivity testing** and health monitoring
-- **Environment variable management** with override support
+- **Executor host management** and configuration
+- **Environment variable templates** with override support
 
 ## 🔒 Security Features
 

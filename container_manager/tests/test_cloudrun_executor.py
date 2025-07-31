@@ -461,7 +461,6 @@ class CloudRunExecutorTest(TestCase):
         self.assertEqual(usage["cpu_usage_percent"], 100)  # Capped at 100%
         self.assertIn("execution_time_seconds", usage)
 
-
     @patch("google.cloud.run_v2")
     def test_job_spec_creation(self, mock_gcp_run):
         """Test Cloud Run job specification creation"""

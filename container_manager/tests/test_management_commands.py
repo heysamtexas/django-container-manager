@@ -47,9 +47,7 @@ class ProcessContainerJobsTest(TransactionTestCase):
         defaults.update(kwargs)
         return ContainerJob.objects.create(**defaults)
 
-    def test_command_init_sets_up_signal_handlers(
-        self, mock_factory, mock_sleep
-    ):
+    def test_command_init_sets_up_signal_handlers(self, mock_factory, mock_sleep):
         """Test that command initialization sets up signal handlers correctly."""
         with patch("signal.signal") as mock_signal:
             command = Command()
@@ -70,9 +68,7 @@ class ProcessContainerJobsTest(TransactionTestCase):
             # Just verify signal.signal was called (exact handler comparison is complex)
             self.assertEqual(mock_signal.call_count, 2)
 
-    def test_signal_handler_sets_should_stop_flag(
-        self, mock_factory, mock_sleep
-    ):
+    def test_signal_handler_sets_should_stop_flag(self, mock_factory, mock_sleep):
         """Test that signal handler sets should_stop flag."""
         command = Command()
 
@@ -84,9 +80,7 @@ class ProcessContainerJobsTest(TransactionTestCase):
 
         self.assertTrue(command.should_stop)
 
-    def test_add_arguments_defines_expected_options(
-        self, mock_factory, mock_sleep
-    ):
+    def test_add_arguments_defines_expected_options(self, mock_factory, mock_sleep):
         """Test that command defines expected arguments."""
         from argparse import ArgumentParser
 
@@ -125,9 +119,7 @@ class ProcessContainerJobsTest(TransactionTestCase):
             # Verify signal handlers were registered
             self.assertEqual(mock_signal.call_count, 2)
 
-    def test_process_pending_jobs_starts_pending_jobs(
-        self, mock_factory, mock_sleep
-    ):
+    def test_process_pending_jobs_starts_pending_jobs(self, mock_factory, mock_sleep):
         """Test that process_pending_jobs starts pending jobs with mocked launch."""
         # Create a pending job
         job = self.create_pending_job()
@@ -161,9 +153,7 @@ class ProcessContainerJobsTest(TransactionTestCase):
             self.assertEqual(launched, 2)
             self.assertEqual(mock_launch.call_count, 2)
 
-    def test_process_pending_jobs_filters_by_host(
-        self, mock_factory, mock_sleep
-    ):
+    def test_process_pending_jobs_filters_by_host(self, mock_factory, mock_sleep):
         """Test that process_pending_jobs filters by host when specified."""
         # Create another host
         other_host = ExecutorHost.objects.create(
@@ -209,14 +199,10 @@ class ProcessContainerJobsTest(TransactionTestCase):
             self.assertEqual(launched, 0)
             mock_launch.assert_called_once_with(job, False, None)
 
-    def test_monitor_running_jobs_can_be_called(
-        self, mock_factory, mock_sleep
-    ):
+    def test_monitor_running_jobs_can_be_called(self, mock_factory, mock_sleep):
         """Test monitor_running_jobs can be called without crashing."""
         # Create running job
-        job = self.create_pending_job(
-            status="running", execution_id="exec-123"
-        )
+        job = self.create_pending_job(status="running", execution_id="exec-123")
 
         # Test that monitor_running_jobs can be called without errors
         # We don't test detailed executor interactions here due to complexity
@@ -233,9 +219,7 @@ class ProcessContainerJobsTest(TransactionTestCase):
         self, mock_factory, mock_sleep
     ):
         """Test that monitor_running_jobs handles status check errors gracefully."""
-        job = self.create_pending_job(
-            status="running", execution_id="exec-123"
-        )
+        job = self.create_pending_job(status="running", execution_id="exec-123")
 
         # Set up executor mock to fail
         mock_executor = Mock()
@@ -435,12 +419,13 @@ class ProcessContainerJobsBusinessLogicTest(TestCase):
 
         # Set up output capture for this command
         from io import StringIO
+
         out = StringIO()
         self.command.stdout = out
 
         # Since docker_service is deprecated, cleanup shows warning instead of actually cleaning
         self.command._run_cleanup_if_requested(config)
-        
+
         # Check the output
         output = out.getvalue()
         # Should show deprecation warning

@@ -211,9 +211,7 @@ class ContainerJobAdmin(admin.ModelAdmin):
         (
             "Executor Configuration",
             {
-                "fields": (
-                    "executor_metadata",
-                ),
+                "fields": ("executor_metadata",),
                 "classes": ("collapse",),
             },
         ),
@@ -433,7 +431,8 @@ class ContainerJobAdmin(admin.ModelAdmin):
                         job.save()
                         started_count += 1
                         messages.success(
-                            request, f"Started job {job.id} on {job.docker_host.executor_type if job.docker_host else 'unknown'}"
+                            request,
+                            f"Started job {job.id} on {job.docker_host.executor_type if job.docker_host else 'unknown'}",
                         )
                     else:
                         messages.error(
@@ -471,7 +470,8 @@ class ContainerJobAdmin(admin.ModelAdmin):
                     job.save()
                     stopped_count += 1
                     messages.success(
-                        request, f"Stopped job {job.id} on {job.docker_host.executor_type if job.docker_host else 'unknown'}"
+                        request,
+                        f"Stopped job {job.id} on {job.docker_host.executor_type if job.docker_host else 'unknown'}",
                     )
                 except Exception as e:
                     messages.error(request, f"Failed to stop job {job.id}: {e}")
@@ -518,7 +518,8 @@ class ContainerJobAdmin(admin.ModelAdmin):
                         job.save()
                         restarted_count += 1
                         messages.success(
-                            request, f"Restarted job {job.id} on {job.docker_host.executor_type if job.docker_host else 'unknown'}"
+                            request,
+                            f"Restarted job {job.id} on {job.docker_host.executor_type if job.docker_host else 'unknown'}",
                         )
                     else:
                         messages.error(
@@ -560,7 +561,8 @@ class ContainerJobAdmin(admin.ModelAdmin):
                     job.save()
                     cancelled_count += 1
                     messages.success(
-                        request, f"Cancelled job {job.id} on {job.docker_host.executor_type if job.docker_host else 'unknown'}"
+                        request,
+                        f"Cancelled job {job.id} on {job.docker_host.executor_type if job.docker_host else 'unknown'}",
                     )
                 except Exception as e:
                     messages.error(request, f"Failed to cancel job {job.id}: {e}")
@@ -598,7 +600,7 @@ class ContainerJobAdmin(admin.ModelAdmin):
                 "Executor Type",
                 "Status",
                 "Duration (seconds)",
-                    "Created At",
+                "Created At",
             ]
         )
 

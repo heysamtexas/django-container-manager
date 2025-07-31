@@ -237,10 +237,10 @@ class CleanupContainersCommandTest(TestCase):
         """Test that cleanup deprecation is handled gracefully"""
         out = StringIO()
         call_command("cleanup_containers", stdout=out)
-        
+
         # Should not log exceptions since cleanup is disabled
         mock_logger.exception.assert_not_called()
-        
+
         output = out.getvalue()
         self.assertIn("Container cleanup temporarily disabled", output)
 

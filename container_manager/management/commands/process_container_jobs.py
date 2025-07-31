@@ -13,8 +13,9 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
-from container_manager.executors.exceptions import ExecutorConnectionError
-from container_manager.executors.exceptions import ExecutorResourceError
+from container_manager.executors.exceptions import (
+    ExecutorResourceError,
+)
 from container_manager.executors.factory import ExecutorFactory
 from container_manager.models import ContainerJob, ExecutorHost
 
@@ -158,7 +159,11 @@ class Command(BaseCommand):
             try:
                 # TODO: Implement cleanup via ExecutorProvider
                 # For now, skip cleanup as docker_service is deprecated
-                self.stdout.write(self.style.WARNING("Container cleanup temporarily disabled - docker_service deprecated"))
+                self.stdout.write(
+                    self.style.WARNING(
+                        "Container cleanup temporarily disabled - docker_service deprecated"
+                    )
+                )
                 self.stdout.write(self.style.SUCCESS("Cleanup completed"))
             except Exception as e:
                 self.stdout.write(self.style.ERROR(f"Cleanup failed: {e}"))
@@ -305,7 +310,7 @@ class Command(BaseCommand):
             if not job.docker_host:
                 self.mark_job_failed(job, "Job must have docker_host assigned")
                 return False
-            
+
             # Handle force executor type by finding appropriate host
             if force_executor_type:
                 suitable_host = ExecutorHost.objects.filter(
@@ -313,10 +318,14 @@ class Command(BaseCommand):
                 ).first()
                 if suitable_host:
                     job.docker_host = suitable_host
-                    job.routing_reason = f"Forced to {force_executor_type} via command line"
+                    job.routing_reason = (
+                        f"Forced to {force_executor_type} via command line"
+                    )
                     job.save()
                 else:
-                    self.mark_job_failed(job, f"No available {force_executor_type} hosts")
+                    self.mark_job_failed(
+                        job, f"No available {force_executor_type} hosts"
+                    )
                     return False
 
             # Display launch information
@@ -359,41 +368,116 @@ class Command(BaseCommand):
         try:
             # Get executor instance and launch job
             executor = self.executor_factory.get_executor(job.docker_host)
-            
+
             self.stdout.write(
                 f"Launching job {job.id} ({job.name or 'unnamed'}) on {job.docker_host.name}"
             )
-            
+
             success, execution_id = executor.launch_job(job)
-            
+
             if success:
                 job.set_execution_identifier(execution_id)
                 job.save()
                 self.stdout.write(
-                    self.style.SUCCESS(f"Job {job.id} launched successfully as {execution_id}")
+                    self.style.SUCCESS(
+                        f"Job {job.id} launched successfully as {execution_id}"
+                    )
                 )
             else:
-                self.stdout.write(self.style.ERROR(f"Job {job.id} failed to launch: {execution_id}"))
-            
+                self.stdout.write(
+                    self.style.ERROR(f"Job {job.id} failed to launch: {execution_id}")
+                )
+
             return success
-            
+
         except Exception as e:
             logger.exception(f"Job launch error for {job.id}")
             self.mark_job_failed(job, str(e))
             return False
 
     def monitor_running_jobs(self, host_filter: str | None = None) -> int:
-        """Monitor running jobs and harvest completed ones"""
+        """Monitor running jobs and harvest completed ones using batch status checking"""
         running_jobs = self._get_running_jobs(host_filter)
 
         if not running_jobs:
             return 0
 
-        harvested = 0
+        # Use batch status checking for better performance
+        return self._monitor_jobs_batch(running_jobs)
+
+    def _monitor_jobs_batch(self, running_jobs) -> int:
+        """Monitor jobs using batch status checking to avoid N+1 Docker API calls"""
+        from collections import defaultdict
+
+        from django.utils import timezone
+
+        # Group jobs by Docker host for batch processing
+        jobs_by_host = defaultdict(list)
         for job in running_jobs:
+            jobs_by_host[job.docker_host].append(job)
+
+        harvested = 0
+        now = timezone.now()
+
+        for host, jobs in jobs_by_host.items():
             if self.should_stop:
                 break
 
+            try:
+                # Check timeouts first (no Docker API calls needed)
+                active_jobs = []
+                for job in jobs:
+                    if self._job_has_timed_out(job, now):
+                        self.handle_job_timeout(job)
+                        harvested += 1
+                    else:
+                        active_jobs.append(job)
+
+                if not active_jobs:
+                    continue
+
+                # Batch status check for remaining jobs
+                harvested += self._batch_status_check_for_host(host, active_jobs)
+
+            except Exception as e:
+                logger.exception(f"Error monitoring jobs for host {host.name}")
+                # Mark all jobs as failed for this host
+                for job in jobs:
+                    if not self._job_has_timed_out(job, now):
+                        self.mark_job_failed(job, f"Host monitoring error: {e}")
+                        harvested += 1
+
+        return harvested
+
+    def _batch_status_check_for_host(self, host, jobs) -> int:
+        """Perform batch status checking for jobs on a single host"""
+        try:
+            executor = self.executor_factory.get_executor(host)
+
+            # Only do batch checking for Docker executors
+            if hasattr(executor, "_get_client") and hasattr(
+                executor, "_batch_check_statuses"
+            ):
+                return executor._batch_check_statuses(jobs, self)
+            else:
+                # Fallback to individual checks for non-Docker executors
+                return self._monitor_jobs_individually(jobs)
+
+        except Exception as e:
+            logger.exception(f"Error getting executor for host {host.name}")
+            # Mark all jobs as failed
+            harvested = 0
+            for job in jobs:
+                self.mark_job_failed(job, f"Executor error: {e}")
+                harvested += 1
+            return harvested
+
+    def _monitor_jobs_individually(self, jobs) -> int:
+        """Fallback to individual job monitoring (original N+1 approach)"""
+        harvested = 0
+        for job in jobs:
+            if self.should_stop:
+                break
             try:
                 job_harvested = self._monitor_single_job(job)
                 harvested += job_harvested
@@ -401,7 +485,6 @@ class Command(BaseCommand):
                 logger.exception(f"Error monitoring job {job.id}")
                 self.mark_job_failed(job, str(e))
                 harvested += 1
-
         return harvested
 
     def _get_running_jobs(self, host_filter: str | None = None):
@@ -461,7 +544,7 @@ class Command(BaseCommand):
         """Check job status using ExecutorProvider"""
         if not job.docker_host:
             return "error"
-            
+
         try:
             executor = self.executor_factory.get_executor(job.docker_host)
             execution_id = job.get_execution_identifier()
@@ -476,7 +559,7 @@ class Command(BaseCommand):
         """Harvest completed job using ExecutorProvider"""
         if not job.docker_host:
             return False
-            
+
         try:
             executor = self.executor_factory.get_executor(job.docker_host)
             return executor.harvest_job(job)
@@ -499,7 +582,7 @@ class Command(BaseCommand):
             if not job.docker_host:
                 logger.error(f"Job {job.id} has no docker_host assigned")
                 return
-            
+
             # Use ExecutorProvider for all executor types
             try:
                 executor = self.executor_factory.get_executor(job.docker_host)

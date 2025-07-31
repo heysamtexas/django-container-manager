@@ -1,15 +1,10 @@
 import uuid
 from datetime import timedelta
-from unittest.mock import Mock, patch
 
 from django.contrib.auth.models import User
-from django.core.management import call_command
 from django.test import TestCase
 from django.utils import timezone
-from docker.errors import NotFound
 
-from ..executors.exceptions import ExecutorConnectionError
-from ..executors.factory import ExecutorProvider
 from ..models import (
     ContainerJob,
     ExecutorHost,
@@ -132,7 +127,6 @@ class ContainerJobModelTest(TestCase):
         )
 
 
-
 class ManagementCommandTest(TestCase):
     """Test cases for management commands"""
 
@@ -147,7 +141,6 @@ class ManagementCommandTest(TestCase):
             connection_string="unix:///var/run/docker.sock",
             is_active=True,
         )
-
 
 
 class IntegrationTest(TestCase):

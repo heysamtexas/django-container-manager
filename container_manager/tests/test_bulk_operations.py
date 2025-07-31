@@ -273,8 +273,12 @@ class BulkJobManagerTest(TestCase):
 
         # Job is on mock host, so execution_id should be set
         self.assertEqual(job.docker_host.executor_type, "mock")
-        self.assertEqual(job.docker_host.executor_type, "mock")  # Should match host type
-        self.assertEqual(job.get_execution_identifier(), "new_exec_123")  # Should be set
+        self.assertEqual(
+            job.docker_host.executor_type, "mock"
+        )  # Should match host type
+        self.assertEqual(
+            job.get_execution_identifier(), "new_exec_123"
+        )  # Should be set
         self.assertIsNotNone(job.started_at)
 
     def test_get_bulk_status(self):

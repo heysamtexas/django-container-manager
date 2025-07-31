@@ -10,8 +10,13 @@ import time
 from typing import Any
 
 import docker
+from django.db import transaction
 from django.utils import timezone as django_timezone
-from docker.errors import NotFound
+from docker.errors import (
+    APIError,
+    DockerException,
+    NotFound,
+)
 
 from ..models import ContainerJob, ExecutorHost
 from .base import ContainerExecutor
@@ -31,8 +36,14 @@ class DockerExecutor(ContainerExecutor):
         self._clients: dict[str, docker.DockerClient] = {}
         self.docker_host = config.get("docker_host")
 
+    @transaction.atomic
     def launch_job(self, job: ContainerJob) -> tuple[bool, str]:
-        """Launch a container job in the background"""
+        """Launch a container job in the background with transaction safety and cleanup"""
+        # Mark job as launching (two-phase commit pattern)
+        job.status = "launching"
+        job.save()
+
+        container_id = None
         try:
             # Validate job can be executed
             self._validate_job(job)
@@ -40,16 +51,34 @@ class DockerExecutor(ContainerExecutor):
             # Create container
             container_id = self._create_container(job)
             if not container_id:
+                job.status = "failed"
+                job.save()
                 return False, "Failed to create container"
 
             # Start container
             success = self._start_container(job, container_id)
             if not success:
+                # Container was created but failed to start - clean it up
+                self._safe_container_cleanup(container_id)
+                job.status = "failed"
+                job.save()
                 return False, "Failed to start container"
+
         except ExecutorError as e:
+            logger.error(f"Executor error launching job {job.id}: {e}")
+            # Clean up any partially created container
+            if container_id:
+                self._safe_container_cleanup(container_id)
+            job.status = "failed"
+            job.save()
             return False, str(e)
         except Exception as e:
-            logger.exception(f"Unexpected error launching job {job.id}")
+            logger.exception(f"Unexpected error launching job {job.id}: {e}")
+            # Clean up any partially created container
+            if container_id:
+                self._safe_container_cleanup(container_id)
+            job.status = "failed"
+            job.save()
             return False, f"Unexpected error: {e}"
         else:
             return True, container_id
@@ -81,9 +110,18 @@ class DockerExecutor(ContainerExecutor):
                 return "failed"
 
         except NotFound:
+            logger.debug(f"Container {execution_id} not found")
             return "not-found"
-        except Exception:
-            logger.exception(f"Error checking container status {execution_id}")
+        except APIError as e:
+            logger.error(f"Docker API error checking status for {execution_id}: {e}")
+            return "failed"
+        except DockerException as e:
+            logger.error(f"Docker error checking status for {execution_id}: {e}")
+            return "failed"
+        except Exception as e:
+            logger.exception(
+                f"Unexpected error checking container status {execution_id}: {e}"
+            )
             return "failed"
 
     def get_logs(self, execution_id: str) -> tuple[str, str]:
@@ -100,8 +138,11 @@ class DockerExecutor(ContainerExecutor):
             client = self._get_client(job.docker_host)
             container = client.containers.get(execution_id)
 
-            # Get logs
-            logs = container.logs(timestamps=True, stderr=True)
+            # Get logs with timeout
+            from ..defaults import get_container_manager_setting
+
+            logs_timeout = get_container_manager_setting("DOCKER_LOGS_TIMEOUT", 30)
+            logs = container.logs(timestamps=True, stderr=True, timeout=logs_timeout)
             logs_str = (
                 logs.decode("utf-8", errors="replace")
                 if isinstance(logs, bytes)
@@ -111,9 +152,16 @@ class DockerExecutor(ContainerExecutor):
             # Split logs into stdout/stderr
             stdout, stderr = self._split_docker_logs(logs_str)
         except NotFound:
+            logger.debug(f"Container {execution_id} not found for log retrieval")
             return "", ""
-        except Exception:
-            logger.exception(f"Error getting logs for {execution_id}")
+        except APIError as e:
+            logger.error(f"Docker API error getting logs for {execution_id}: {e}")
+            return "", ""
+        except DockerException as e:
+            logger.error(f"Docker error getting logs for {execution_id}: {e}")
+            return "", ""
+        except Exception as e:
+            logger.exception(f"Unexpected error getting logs for {execution_id}: {e}")
             return "", ""
         else:
             return stdout, stderr
@@ -162,13 +210,27 @@ class DockerExecutor(ContainerExecutor):
             # Immediate cleanup if configured
             self._immediate_cleanup(job)
         except NotFound:
-            logger.warning(f"Container {execution_id} not found during harvest")
+            logger.warning(
+                f"Container {execution_id} not found during harvest - job {job.id}"
+            )
             job.status = "failed"
             job.completed_at = django_timezone.now()
             job.save()
             return False
-        except Exception:
-            logger.exception(f"Error harvesting job {job.id}")
+        except APIError as e:
+            logger.error(f"Docker API error harvesting job {job.id}: {e}")
+            job.status = "failed"
+            job.completed_at = django_timezone.now()
+            job.save()
+            return False
+        except DockerException as e:
+            logger.error(f"Docker error harvesting job {job.id}: {e}")
+            job.status = "failed"
+            job.completed_at = django_timezone.now()
+            job.save()
+            return False
+        except Exception as e:
+            logger.exception(f"Unexpected error harvesting job {job.id}: {e}")
             return False
         else:
             logger.info(f"Harvested job {job.id} with exit code {exit_code}")
@@ -187,10 +249,18 @@ class DockerExecutor(ContainerExecutor):
             container = client.containers.get(execution_id)
             container.remove(force=True)
         except NotFound:
-            # Already cleaned up
+            logger.debug(f"Container {execution_id} already cleaned up")
             return True
-        except Exception:
-            logger.exception(f"Error cleaning up container {execution_id}")
+        except APIError as e:
+            logger.error(f"Docker API error cleaning up container {execution_id}: {e}")
+            return False
+        except DockerException as e:
+            logger.error(f"Docker error cleaning up container {execution_id}: {e}")
+            return False
+        except Exception as e:
+            logger.exception(
+                f"Unexpected error cleaning up container {execution_id}: {e}"
+            )
             return False
         else:
             logger.info(f"Cleaned up container {execution_id}")
@@ -244,6 +314,109 @@ class DockerExecutor(ContainerExecutor):
                 "response_time": None,
             }
 
+    def _batch_check_statuses(self, jobs, command_handler) -> int:
+        """
+        Batch status checking to avoid N+1 Docker API calls.
+
+        Instead of calling check_status() for each job individually,
+        this method makes a single containers.list() call and creates
+        a lookup table for O(1) status checking.
+
+        Args:
+            jobs: List of ContainerJob instances to check
+            command_handler: Management command instance for job handling
+
+        Returns:
+            int: Number of jobs harvested/completed
+        """
+        if not jobs:
+            return 0
+
+        try:
+            # Single Docker API call to get all containers
+            client = self._get_client(jobs[0].docker_host)  # All jobs have same host
+            all_containers = {c.id: c for c in client.containers.list(all=True)}
+
+            harvested = 0
+            for job in jobs:
+                if command_handler.should_stop:
+                    break
+
+                execution_id = job.get_execution_identifier()
+                if not execution_id:
+                    harvested += command_handler._handle_job_status(job, "not-found")
+                    continue
+
+                # O(1) lookup instead of Docker API call
+                container = all_containers.get(execution_id)
+                if container:
+                    # Map Docker status to our standard status
+                    status = self._map_container_status(container.status)
+                    harvested += command_handler._handle_job_status(job, status)
+                else:
+                    # Container disappeared
+                    harvested += command_handler._handle_job_status(job, "not-found")
+
+            return harvested
+
+        except Exception as e:
+            logger.exception(f"Error in batch status checking: {e}")
+            # Fallback to individual checking
+            return command_handler._monitor_jobs_individually(jobs)
+
+    def _map_container_status(self, docker_status: str) -> str:
+        """Map Docker container status to our standard status"""
+        docker_status = docker_status.lower()
+
+        if docker_status == "running":
+            return "running"
+        elif docker_status in ["exited", "stopped"]:
+            return "exited"
+        elif docker_status in ["paused", "restarting"]:
+            return "running"  # Consider these as still running
+        else:
+            return "failed"
+
+    def _safe_container_cleanup(self, container_id: str) -> None:
+        """
+        Safely clean up a container without raising exceptions.
+        Used for cleanup during error conditions.
+        """
+        if not container_id:
+            return
+
+        try:
+            # Try to find the job to get the proper Docker host
+            job = ContainerJob.objects.filter(execution_id=container_id).first()
+            if job and job.docker_host:
+                client = self._get_client(job.docker_host)
+            else:
+                # Fallback to default client if we can't determine the host
+                client = docker.from_env()
+
+            try:
+                container = client.containers.get(container_id)
+                # Stop the container if it's running
+                if container.status.lower() in ["running", "restarting"]:
+                    container.stop(timeout=10)
+                # Remove the container
+                container.remove(force=True)
+                logger.info(f"Cleaned up orphaned container {container_id}")
+            except NotFound:
+                # Container already gone - that's fine
+                logger.debug(f"Container {container_id} already removed")
+            except Exception as cleanup_error:
+                # Log but don't raise - we're in cleanup mode
+                logger.warning(
+                    f"Failed to cleanup container {container_id}: {cleanup_error}"
+                )
+
+        except Exception as outer_error:
+            # Even client creation failed - log but don't raise
+            logger.warning(
+                f"Failed to initialize cleanup for container {container_id}: {outer_error}"
+            )
+
     def _validate_executor_specific(self, job) -> list[str]:
         """Docker-specific validation logic"""
         errors = []
@@ -288,7 +461,7 @@ class DockerExecutor(ContainerExecutor):
         if not job:
             raise ExecutorError("Job is None")
 
-        if job.status != "pending":
+        if job.status not in ["pending", "launching"]:
             raise ExecutorError(f"Invalid status: {job.status}")
 
         if not job.docker_image:
@@ -340,12 +513,20 @@ class DockerExecutor(ContainerExecutor):
 
     def _create_docker_client(self, docker_host: ExecutorHost) -> docker.DockerClient:
         """Create new Docker client based on host configuration"""
+        from ..defaults import get_container_manager_setting
+
+        # Get timeout for Docker client operations
+        docker_timeout = get_container_manager_setting("DOCKER_TIMEOUT", 30)
+
         if docker_host.host_type == "unix":
-            return docker.DockerClient(base_url=docker_host.connection_string)
+            return docker.DockerClient(
+                base_url=docker_host.connection_string, timeout=docker_timeout
+            )
         elif docker_host.host_type == "tcp":
             client_kwargs = {
                 "base_url": docker_host.connection_string,
                 "use_ssh_client": False,
+                "timeout": docker_timeout,
             }
             if docker_host.tls_enabled:
                 client_kwargs["tls"] = True
@@ -356,13 +537,21 @@ class DockerExecutor(ContainerExecutor):
             ) from None
 
     def _create_container(self, job: ContainerJob) -> str:
-        """Create Docker container for job"""
+        """Create Docker container for job with proper cleanup on failure"""
+        from ..defaults import get_container_manager_setting
+
         client = self._get_client(job.docker_host)
+        create_timeout = get_container_manager_setting("DOCKER_CREATE_TIMEOUT", 60)
+        container = None
 
         try:
             self._ensure_image_available(client, job)
             container_config = self._build_container_config(job)
+
+            # Use Docker client's native timeout support
             container = client.containers.create(**container_config)
+            
+            # Setup additional networks - if this fails, we need to cleanup the container
             self._setup_additional_networks(client, job, container)
 
             logger.info(f"Created container {container.id} for job {job.id}")
@@ -370,6 +559,14 @@ class DockerExecutor(ContainerExecutor):
 
         except Exception as e:
             logger.exception(f"Failed to create container for job {job.id}")
+            # Clean up the container if it was created but setup failed
+            if container:
+                try:
+                    container.remove(force=True)
+                    logger.info(f"Cleaned up failed container {container.id}")
+                except Exception as cleanup_error:
+                    logger.warning(f"Failed to cleanup container after creation failure: {cleanup_error}")
+            
             raise ExecutorError(f"Container creation failed: {e}") from e
 
     def _build_container_environment(self, job: ContainerJob) -> dict:
@@ -453,6 +650,9 @@ class DockerExecutor(ContainerExecutor):
         try:
             client = self._get_client(job.docker_host)
             container = client.containers.get(container_id)
+            
+            # Docker client start() doesn't support timeout parameter directly
+            # The timeout is handled at the client level
             container.start()
 
             # Update job status
@@ -460,8 +660,6 @@ class DockerExecutor(ContainerExecutor):
             job.status = "running"
             job.started_at = django_timezone.now()
             job.save()
-
-            # Execution record is now part of the job model
 
             logger.info(f"Started container {container_id} for job {job.id}")
             return True

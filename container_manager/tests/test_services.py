@@ -372,10 +372,11 @@ class ServiceIntegrationTest(TestCase):
         """Set up integration test fixtures."""
         # Create test user
         from django.contrib.auth.models import User
+
         self.user = User.objects.create_user(
             username="testuser", email="test@example.com"
         )
-        
+
         self.docker_host = ExecutorHost.objects.create(
             name="integration-host",
             host_type="unix",
@@ -391,11 +392,11 @@ class ServiceIntegrationTest(TestCase):
             created_by=self.user,
         )
 
-
     def test_host_display_info_integration(self):
         """Test host display info integration with real models."""
         # Create a fresh service instance with a real factory to avoid test pollution
         from ..executors.factory import ExecutorFactory
+
         service = JobManagementService(ExecutorFactory())
 
         info = service.get_host_display_info(self.docker_host)

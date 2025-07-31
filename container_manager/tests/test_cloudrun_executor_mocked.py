@@ -236,7 +236,6 @@ class CloudRunExecutorMockedTest(TestCase):
         self.assertFalse(is_valid)
         self.assertIn("None", message)
 
-
     def test_connection_string_parsing_valid(self):
         """Test connection string parsing with valid format"""
         from container_manager.executors.cloudrun import CloudRunExecutor

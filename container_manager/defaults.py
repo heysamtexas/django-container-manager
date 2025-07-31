@@ -24,6 +24,12 @@ DEFAULT_CONTAINER_MANAGER_SETTINGS = {
     "MAX_CONCURRENT_JOBS": 10,
     "POLL_INTERVAL": 5,
     "JOB_TIMEOUT_SECONDS": 3600,
+    # Docker Operation Timeouts (seconds)
+    "DOCKER_TIMEOUT": 30,  # General Docker API operations
+    "DOCKER_CREATE_TIMEOUT": 60,  # Container creation
+    "DOCKER_START_TIMEOUT": 30,  # Container start
+    "DOCKER_LOGS_TIMEOUT": 30,  # Log retrieval
+    "DOCKER_WAIT_TIMEOUT": 120,  # Container wait operations
     # Resource Limits
     "DEFAULT_MEMORY_LIMIT": 512,  # MB
     "DEFAULT_CPU_LIMIT": 1.0,  # cores

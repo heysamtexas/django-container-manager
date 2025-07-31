@@ -154,6 +154,7 @@ class ContainerJob(models.Model):
 
     STATUS_CHOICES: ClassVar = [
         ("pending", "Pending"),
+        ("launching", "Launching"),
         ("running", "Running"),
         ("completed", "Completed"),
         ("failed", "Failed"),
@@ -274,6 +275,16 @@ class ContainerJob(models.Model):
         verbose_name = "Container Job"
         verbose_name_plural = "Container Jobs"
         ordering: ClassVar = ["-created_at"]
+        indexes = [
+            models.Index(
+                fields=["status", "created_at"], name="cjob_status_created_idx"
+            ),
+            models.Index(
+                fields=["created_by", "status"], name="cjob_created_by_status_idx"
+            ),
+            models.Index(fields=["docker_host", "status"], name="cjob_host_status_idx"),
+            models.Index(fields=["status"], name="cjob_status_idx"),
+        ]
 
     def __str__(self):
         executor_info = ""

@@ -2,12 +2,16 @@
 Tests for ExecutorProvider (formerly ExecutorFactory) executor instantiation.
 """
 
-from django.contrib.auth.models import User
-from django.test import TestCase
 from unittest.mock import patch
 
+from django.contrib.auth.models import User
+from django.test import TestCase
+
 from ..executors.exceptions import ExecutorConfigurationError
-from ..executors.factory import ExecutorProvider, ExecutorFactory  # Test backward compatibility
+from ..executors.factory import (
+    ExecutorFactory,
+    ExecutorProvider,
+)  # Test backward compatibility
 from ..models import ContainerJob, ExecutorHost
 
 
@@ -72,7 +76,7 @@ class ExecutorProviderTest(TestCase):
 
         self.assertEqual(executor.__class__.__name__, "DockerExecutor")
 
-    @patch('container_manager.executors.cloudrun.CloudRunExecutor')
+    @patch("container_manager.executors.cloudrun.CloudRunExecutor")
     def test_get_executor_cloudrun(self, mock_cloudrun_class):
         """Test getting CloudRun executor instance"""
         job = ContainerJob.objects.create(
@@ -82,7 +86,7 @@ class ExecutorProviderTest(TestCase):
         )
 
         executor = self.provider.get_executor(job)
-        
+
         # Verify CloudRunExecutor was instantiated
         mock_cloudrun_class.assert_called_once()
 
@@ -157,7 +161,7 @@ class ExecutorProviderTest(TestCase):
         """Test that ExecutorFactory alias still works"""
         # Should be the same class
         self.assertIs(ExecutorFactory, ExecutorProvider)
-        
+
         # Should instantiate successfully
         factory = ExecutorFactory()
         self.assertIsInstance(factory, ExecutorProvider)

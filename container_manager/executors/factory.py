@@ -7,9 +7,9 @@ executor types (Docker, CloudRun, Mock, etc.).
 
 import logging
 
-from ..models import ContainerJob, ExecutorHost
+from ..models import ExecutorHost
 from .base import ContainerExecutor
-from .exceptions import ExecutorConfigurationError, ExecutorResourceError
+from .exceptions import ExecutorConfigurationError
 
 logger = logging.getLogger(__name__)
 
