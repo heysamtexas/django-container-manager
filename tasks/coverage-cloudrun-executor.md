@@ -3,7 +3,7 @@
 **Priority:** High
 **Django Component:** Executors/Cloud Integration  
 **Estimated Effort:** Large
-**Current Coverage:** 30.7% (117/381 statements covered)
+**Current Coverage:** 31.0% (117/377 statements covered)
 
 ## Coverage Gap Summary
 - Current coverage: 30.7%
@@ -55,7 +55,7 @@ The `container_manager/executors/cloudrun.py` module implements Google Cloud Run
       }
       executor = CloudRunExecutor(config)
       job = ContainerJobFactory(
-          image='gcr.io/test-project/test-image:latest',
+          docker_image='gcr.io/test-project/test-image:latest',
           command='echo "Hello Cloud Run"'
       )
       
@@ -70,7 +70,7 @@ The `container_manager/executors/cloudrun.py` module implements Google Cloud Run
       config = {'project_id': 'test-project', 'region': 'us-central1'}
       executor = CloudRunExecutor(config)
       job = ContainerJobFactory(
-          environment_variables='ENV_VAR1=value1\nENV_VAR2=value2'
+          override_environment='ENV_VAR1=value1\nENV_VAR2=value2'
       )
       
       with patch('google.cloud.run_v2.JobsClient') as mock_client:
@@ -239,7 +239,7 @@ The `container_manager/executors/cloudrun.py` module implements Google Cloud Run
       config = {'project_id': 'test-project', 'region': 'us-central1'}
       executor = CloudRunExecutor(config)
       job = ContainerJobFactory(
-          image='gcr.io/test-project/test-image:latest',
+          docker_image='gcr.io/test-project/test-image:latest',
           command='echo "test"'
       )
       

@@ -3,7 +3,7 @@
 **Priority:** High
 **Django Component:** Models/Business Logic
 **Estimated Effort:** Medium
-**Current Coverage:** 74.0% (222/300 statements covered)
+**Current Coverage:** 100.0% (172/172 statements covered) - TASK COMPLETED
 
 ## Coverage Gap Summary
 - Current coverage: 74.0%
@@ -103,10 +103,10 @@ The `container_manager/models.py` module contains critical Django model business
       
       self.assertIn('connection', str(context.exception).lower())
 
-  def test_container_template_clean_validation_environment_variables(self):
-      # Test container template environment variable validation
-      template = ContainerTemplateFactory.build(
-          environment_variables='INVALID_FORMAT_NO_EQUALS'
+  def test_environment_variable_template_clean_validation(self):
+      # Test environment variable template validation
+      template = EnvironmentVariableTemplateFactory.build(
+          environment_variables_text='INVALID_FORMAT_NO_EQUALS'
       )
       
       with self.assertRaises(ValidationError) as context:
@@ -173,13 +173,13 @@ The `container_manager/models.py` module contains critical Django model business
       self.assertIn('production-docker', display_name)
       self.assertIn('Docker', display_name)
 
-  def test_container_template_environment_dict_property(self):
+  def test_environment_variable_template_environment_dict_property(self):
       # Test environment variables dictionary property
-      template = ContainerTemplateFactory(
-          environment_variables='KEY1=value1\nKEY2=value2\nKEY3=value3'
+      template = EnvironmentVariableTemplateFactory(
+          environment_variables_text='KEY1=value1\nKEY2=value2\nKEY3=value3'
       )
       
-      env_dict = template.environment_dict
+      env_dict = template.get_environment_variables_dict()
       expected = {'KEY1': 'value1', 'KEY2': 'value2', 'KEY3': 'value3'}
       self.assertEqual(env_dict, expected)
 
@@ -246,14 +246,14 @@ The `container_manager/models.py` module contains critical Django model business
       host.save()
       self.assertEqual(host.connection_string, 'unix:///var/run/docker.sock')
 
-  def test_container_template_save_validates_image_format(self):
+  def test_container_job_save_validates_image_format(self):
       # Test that save() validates Docker image format
-      template = ContainerTemplateFactory.build(
-          image='invalid_image_name'
+      job = ContainerJobFactory.build(
+          docker_image='invalid_image_name'
       )
       
       with self.assertRaises(ValidationError):
-          template.save()
+          job.save()
 
   def test_container_job_save_cascade_updates(self):
       # Test save() performs cascade updates to related objects
@@ -336,17 +336,17 @@ The `container_manager/models.py` module contains critical Django model business
       available_hosts = ExecutorHost.objects.available()
       self.assertEqual(available_hosts.count(), 1)
 
-  def test_container_template_manager_by_category(self):
-      # Test template manager filtering by category
-      ContainerTemplateFactory(category='web')
-      ContainerTemplateFactory(category='worker')
-      ContainerTemplateFactory(category='web')
+  def test_environment_variable_template_manager_by_category(self):
+      # Test environment template manager filtering by category
+      EnvironmentVariableTemplateFactory(name='web-env', description='Web environment')
+      EnvironmentVariableTemplateFactory(name='worker-env', description='Worker environment')
+      EnvironmentVariableTemplateFactory(name='web-prod-env', description='Web production environment')
       
-      web_templates = ContainerTemplate.objects.by_category('web')
+      web_templates = EnvironmentVariableTemplate.objects.filter(description__icontains='web')
       self.assertEqual(web_templates.count(), 2)
       
       for template in web_templates:
-          self.assertEqual(template.category, 'web')
+          self.assertIn('web', template.description.lower())
   ```
 
 ### Test 5: Model Relationships and Foreign Key Logic
@@ -369,16 +369,16 @@ The `container_manager/models.py` module contains critical Django model business
       self.assertIn(job1, host_jobs)
       self.assertIn(job2, host_jobs)
 
-  def test_container_job_template_relationship(self):
-      # Test job-template relationship
-      template = ContainerTemplateFactory()
-      job = ContainerJobFactory(template=template)
+  def test_container_job_environment_template_relationship(self):
+      # Test job-environment template relationship
+      env_template = EnvironmentVariableTemplateFactory()
+      job = ContainerJobFactory(environment_template=env_template)
       
-      self.assertEqual(job.template, template)
+      self.assertEqual(job.environment_template, env_template)
       
-      # Test that job inherits template properties
-      self.assertEqual(job.image, template.image)
-      self.assertEqual(job.command, template.command)
+      # Test that job can access template environment variables
+      env_vars = job.get_all_environment_variables()
+      self.assertIsInstance(env_vars, dict)
 
   def test_container_execution_job_relationship(self):
       # Test execution-job relationship and cascade behavior
@@ -410,28 +410,25 @@ The `container_manager/models.py` module contains critical Django model business
       # Now host deletion should succeed
       host.delete()
 
-  def test_container_template_inheritance_relationship(self):
-      # Test template inheritance and derived relationships
-      parent_template = ContainerTemplateFactory(
-          name='base-template',
-          image='ubuntu:20.04'
+  def test_environment_variable_template_job_relationship(self):
+      # Test environment template used by multiple jobs
+      env_template = EnvironmentVariableTemplateFactory(
+          name='production-env',
+          environment_variables_text='ENV=production\nDEBUG=false'
       )
       
-      child_template = ContainerTemplateFactory(
-          name='derived-template',
-          parent_template=parent_template,
-          image='ubuntu:22.04'  # Override parent image
-      )
+      job1 = ContainerJobFactory(environment_template=env_template)
+      job2 = ContainerJobFactory(environment_template=env_template)
       
-      self.assertEqual(child_template.parent_template, parent_template)
+      self.assertEqual(job1.environment_template, env_template)
+      self.assertEqual(job2.environment_template, env_template)
       
-      # Test inherited properties
-      inherited_props = child_template.get_inherited_properties()
-      self.assertIn('command', inherited_props)
+      # Test that both jobs get the same base environment
+      job1_env = job1.get_all_environment_variables()
+      job2_env = job2.get_all_environment_variables()
       
-      # Test override behavior
-      self.assertEqual(child_template.image, 'ubuntu:22.04')
-      self.assertNotEqual(child_template.image, parent_template.image)
+      self.assertEqual(job1_env.get('ENV'), 'production')
+      self.assertEqual(job2_env.get('ENV'), 'production')
   ```
 
 ## Django Testing Patterns

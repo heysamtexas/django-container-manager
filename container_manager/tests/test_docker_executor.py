@@ -588,3 +588,449 @@ class DockerExecutorTest(TestCase):
 
         expected = "This is a log line\nAnother log line\nNo timestamp here"
         self.assertEqual(clean_log, expected)
+
+    # New tests for uncovered code paths
+
+    @patch.object(DockerExecutor, "_get_client")
+    def test_launch_job_success(self, mock_get_client):
+        """Test successful job launch through the full pipeline"""
+        # Setup mocks
+        mock_client = Mock()
+        mock_container = Mock()
+        mock_container.id = "test-container-123"
+        mock_client.containers.create.return_value = mock_container
+        mock_client.containers.get.return_value = mock_container
+        mock_get_client.return_value = mock_client
+
+        # Launch job
+        success, execution_id = self.executor.launch_job(self.job)
+
+        # Verify success
+        self.assertTrue(success)
+        self.assertEqual(execution_id, "test-container-123")
+
+        # Verify job was updated
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.status, "running")
+        self.assertEqual(self.job.container_id, "test-container-123")
+        self.assertIsNotNone(self.job.started_at)
+
+    @patch.object(DockerExecutor, "_validate_job")
+    def test_launch_job_validation_failure(self, mock_validate):
+        """Test job launch with validation failure"""
+        mock_validate.side_effect = ExecutorError("Invalid job")
+
+        success, error_message = self.executor.launch_job(self.job)
+
+        self.assertFalse(success)
+        self.assertEqual(error_message, "Invalid job")
+
+    @patch.object(DockerExecutor, "_get_client")
+    @patch.object(DockerExecutor, "_create_container")
+    def test_launch_job_create_container_failure(self, mock_create, mock_get_client):
+        """Test job launch when container creation fails"""
+        mock_create.return_value = None
+
+        success, error_message = self.executor.launch_job(self.job)
+
+        self.assertFalse(success)
+        self.assertEqual(error_message, "Failed to create container")
+
+    @patch.object(DockerExecutor, "_get_client")
+    @patch.object(DockerExecutor, "_create_container")
+    @patch.object(DockerExecutor, "_start_container")
+    def test_launch_job_start_container_failure(self, mock_start, mock_create, mock_get_client):
+        """Test job launch when container start fails"""
+        mock_create.return_value = "test-container-123"
+        mock_start.return_value = False
+
+        success, error_message = self.executor.launch_job(self.job)
+
+        self.assertFalse(success)
+        self.assertEqual(error_message, "Failed to start container")
+
+    @patch.object(DockerExecutor, "_get_client")
+    def test_launch_job_unexpected_exception(self, mock_get_client):
+        """Test job launch with unexpected exception"""
+        mock_get_client.side_effect = Exception("Unexpected error")
+
+        success, error_message = self.executor.launch_job(self.job)
+
+        self.assertFalse(success)
+        self.assertIn("Unexpected error", error_message)
+
+    @patch.object(DockerExecutor, "_get_client")
+    def test_create_container_success(self, mock_get_client):
+        """Test successful container creation"""
+        # Setup mocks
+        mock_client = Mock()
+        mock_container = Mock()
+        mock_container.id = "created-container-456"
+        mock_client.containers.create.return_value = mock_container
+        mock_get_client.return_value = mock_client
+
+        # Mock helper methods
+        with patch.object(self.executor, "_ensure_image_available"), \
+             patch.object(self.executor, "_build_container_config") as mock_build_config, \
+             patch.object(self.executor, "_setup_additional_networks"):
+            
+            mock_build_config.return_value = {"image": "alpine:latest", "command": "echo test"}
+
+            container_id = self.executor._create_container(self.job)
+
+            self.assertEqual(container_id, "created-container-456")
+            mock_client.containers.create.assert_called_once()
+
+    @patch.object(DockerExecutor, "_get_client")
+    def test_create_container_failure(self, mock_get_client):
+        """Test container creation failure"""
+        mock_client = Mock()
+        mock_client.containers.create.side_effect = Exception("Docker error")
+        mock_get_client.return_value = mock_client
+
+        with patch.object(self.executor, "_ensure_image_available"), \
+             patch.object(self.executor, "_build_container_config") as mock_build_config, \
+             patch.object(self.executor, "_setup_additional_networks"):
+            
+            mock_build_config.return_value = {"image": "alpine:latest"}
+
+            with self.assertRaises(ExecutorError):
+                self.executor._create_container(self.job)
+
+    @patch.object(DockerExecutor, "_get_client")
+    def test_start_container_success(self, mock_get_client):
+        """Test successful container start"""
+        mock_client = Mock()
+        mock_container = Mock()
+        mock_client.containers.get.return_value = mock_container
+        mock_get_client.return_value = mock_client
+
+        container_id = "test-start-container"
+        success = self.executor._start_container(self.job, container_id)
+
+        self.assertTrue(success)
+        mock_container.start.assert_called_once()
+        
+        # Verify job was updated
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.status, "running")
+        self.assertEqual(self.job.container_id, container_id)
+        self.assertIsNotNone(self.job.started_at)
+
+    @patch.object(DockerExecutor, "_get_client")
+    def test_start_container_failure(self, mock_get_client):
+        """Test container start failure"""
+        mock_client = Mock()
+        mock_client.containers.get.side_effect = Exception("Start failed")
+        mock_get_client.return_value = mock_client
+
+        container_id = "test-fail-container"
+        success = self.executor._start_container(self.job, container_id)
+
+        self.assertFalse(success)
+        
+        # Verify job was marked as failed
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.status, "failed")
+
+    @patch.object(DockerExecutor, "_get_client")
+    def test_harvest_job_success(self, mock_get_client):
+        """Test successful job harvest"""
+        mock_client = Mock()
+        mock_container = Mock()
+        mock_container.attrs = {"State": {"ExitCode": 0}}
+        mock_client.containers.get.return_value = mock_container
+        mock_get_client.return_value = mock_client
+
+        # Set up job with container_id
+        self.job.container_id = "harvest-test-container"
+        self.job.status = "running"
+        self.job.save()
+
+        with patch.object(self.executor, "_collect_data"), \
+             patch.object(self.executor, "_immediate_cleanup"):
+
+            success = self.executor.harvest_job(self.job)
+
+            self.assertTrue(success)
+            
+            # Verify job was updated
+            self.job.refresh_from_db()
+            self.assertEqual(self.job.status, "completed")
+            self.assertEqual(self.job.exit_code, 0)
+            self.assertIsNotNone(self.job.completed_at)
+
+    @patch.object(DockerExecutor, "_get_client")
+    def test_harvest_job_failed_exit_code(self, mock_get_client):
+        """Test job harvest with non-zero exit code"""
+        mock_client = Mock()
+        mock_container = Mock()
+        mock_container.attrs = {"State": {"ExitCode": 1}}
+        mock_client.containers.get.return_value = mock_container
+        mock_get_client.return_value = mock_client
+
+        # Set up job with container_id
+        self.job.container_id = "harvest-failed-container"
+        self.job.status = "running"
+        self.job.save()
+
+        with patch.object(self.executor, "_collect_data"), \
+             patch.object(self.executor, "_immediate_cleanup"):
+
+            success = self.executor.harvest_job(self.job)
+
+            self.assertTrue(success)
+            
+            # Verify job was marked as failed
+            self.job.refresh_from_db()
+            self.assertEqual(self.job.status, "failed")
+            self.assertEqual(self.job.exit_code, 1)
+
+    def test_harvest_job_no_container_id(self):
+        """Test harvest job without container_id"""
+        self.job.container_id = ""
+        self.job.save()
+
+        success = self.executor.harvest_job(self.job)
+
+        self.assertFalse(success)
+
+    @patch.object(DockerExecutor, "_get_client")
+    def test_harvest_job_container_not_found(self, mock_get_client):
+        """Test harvest job when container not found"""
+        mock_client = Mock()
+        mock_client.containers.get.side_effect = NotFound("Container not found")
+        mock_get_client.return_value = mock_client
+
+        self.job.container_id = "missing-container"
+        self.job.status = "running"
+        self.job.save()
+
+        success = self.executor.harvest_job(self.job)
+
+        self.assertFalse(success)
+        
+        # Verify job was marked as failed
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.status, "failed")
+        self.assertIsNotNone(self.job.completed_at)
+
+    @patch.object(DockerExecutor, "_get_client")
+    def test_harvest_job_exception(self, mock_get_client):
+        """Test harvest job with exception"""
+        mock_get_client.side_effect = Exception("Harvest error")
+
+        self.job.container_id = "error-container"
+        self.job.save()
+
+        success = self.executor.harvest_job(self.job)
+
+        self.assertFalse(success)
+
+    def test_cleanup_empty_execution_id(self):
+        """Test cleanup with empty execution_id"""
+        success = self.executor.cleanup("")
+
+        self.assertTrue(success)
+
+    @patch('docker.from_env')
+    def test_cleanup_success_no_job(self, mock_from_env):
+        """Test successful cleanup when job not found"""
+        mock_client = Mock()
+        mock_container = Mock()
+        mock_client.containers.get.return_value = mock_container
+        mock_from_env.return_value = mock_client
+
+        success = self.executor.cleanup("cleanup-container")
+
+        self.assertTrue(success)
+        mock_container.remove.assert_called_once_with(force=True)
+
+    @patch.object(DockerExecutor, "_get_client")
+    def test_cleanup_success_with_job(self, mock_get_client):
+        """Test successful cleanup with job found"""
+        mock_client = Mock()
+        mock_container = Mock()
+        mock_client.containers.get.return_value = mock_container
+        mock_get_client.return_value = mock_client
+
+        # Create job with container_id
+        self.job.container_id = "cleanup-with-job"
+        self.job.save()
+
+        success = self.executor.cleanup("cleanup-with-job")
+
+        self.assertTrue(success)
+        mock_container.remove.assert_called_once_with(force=True)
+
+    @patch('docker.from_env')
+    def test_cleanup_container_not_found(self, mock_from_env):
+        """Test cleanup when container already removed"""
+        mock_client = Mock()
+        mock_client.containers.get.side_effect = NotFound("Container not found")
+        mock_from_env.return_value = mock_client
+
+        success = self.executor.cleanup("missing-cleanup-container")
+
+        self.assertTrue(success)  # Should succeed if already cleaned up
+
+    @patch('docker.from_env')
+    def test_cleanup_exception(self, mock_from_env):
+        """Test cleanup with exception"""
+        mock_client = Mock()
+        mock_client.containers.get.side_effect = Exception("Cleanup error")
+        mock_from_env.return_value = mock_client
+
+        success = self.executor.cleanup("error-cleanup-container")
+
+        self.assertFalse(success)
+
+    @patch.object(DockerExecutor, "_get_client")
+    def test_collect_data_success(self, mock_get_client):
+        """Test successful data collection from container"""
+        mock_client = Mock()
+        mock_container = Mock()
+        mock_container.stats.return_value = {
+            "memory_usage": {"max_usage": 1024000},
+            "cpu_stats": {"cpu_usage": {"total_usage": 1000000}}
+        }
+        mock_client.containers.get.return_value = mock_container
+        mock_get_client.return_value = mock_client
+
+        # Set up job with container_id
+        self.job.container_id = "data-collection-container"
+        self.job.save()
+
+        with patch.object(self.executor, "get_logs") as mock_get_logs, \
+             patch.object(self.executor, "_calculate_cpu_percent") as mock_calc_cpu:
+            
+            mock_get_logs.return_value = ("stdout logs", "stderr logs")
+            mock_calc_cpu.return_value = 75.5
+
+            self.executor._collect_data(self.job)
+
+            # Verify job was updated with collected data
+            self.job.refresh_from_db()
+            self.assertEqual(self.job.stdout_log, "stdout logs")
+            self.assertEqual(self.job.stderr_log, "stderr logs")
+            self.assertEqual(self.job.max_memory_usage, 1024000)
+            self.assertEqual(self.job.cpu_usage_percent, 75.5)
+            
+    def test_collect_data_no_container_id(self):
+        """Test data collection when job has no container_id"""
+        self.job.container_id = ""
+        self.job.save()
+
+        # Should return early without error
+        self.executor._collect_data(self.job)
+
+    @patch.object(DockerExecutor, "_get_client")
+    def test_collect_data_stats_exception(self, mock_get_client):
+        """Test data collection when stats collection fails"""
+        mock_client = Mock()
+        mock_container = Mock()
+        mock_container.stats.side_effect = Exception("Stats error")
+        mock_client.containers.get.return_value = mock_container
+        mock_get_client.return_value = mock_client
+
+        self.job.container_id = "stats-error-container"
+        self.job.save()
+
+        with patch.object(self.executor, "get_logs") as mock_get_logs:
+            mock_get_logs.return_value = ("stdout", "stderr")
+            
+            # Should not raise exception
+            self.executor._collect_data(self.job)
+
+    @patch.object(DockerExecutor, "_get_client")
+    def test_collect_data_general_exception(self, mock_get_client):
+        """Test data collection with general exception"""
+        mock_get_client.side_effect = Exception("General error")
+
+        self.job.container_id = "general-error-container"
+        self.job.save()
+
+        # Should not raise exception
+        self.executor._collect_data(self.job)
+
+    def test_should_pull_image_host_setting_true(self):
+        """Test _should_pull_image with host setting True"""
+        self.docker_host.auto_pull_images = True
+        result = self.executor._should_pull_image(self.docker_host)
+        self.assertTrue(result)
+
+    def test_should_pull_image_host_setting_false(self):
+        """Test _should_pull_image with host setting False"""
+        self.docker_host.auto_pull_images = False
+        result = self.executor._should_pull_image(self.docker_host)
+        self.assertFalse(result)
+
+    @patch("container_manager.defaults.get_container_manager_setting")
+    def test_should_pull_image_global_setting(self, mock_get_setting):
+        """Test _should_pull_image falls back to global setting"""
+        # Create host without auto_pull_images attribute by temporarily removing it
+        mock_get_setting.return_value = True
+        
+        # Mock hasattr to return False for auto_pull_images
+        with patch('builtins.hasattr') as mock_hasattr:
+            mock_hasattr.return_value = False
+            
+            result = self.executor._should_pull_image(self.docker_host)
+            
+            self.assertTrue(result)
+            mock_get_setting.assert_called_once_with("AUTO_PULL_IMAGES", True)
+
+    def test_ensure_image_available_pull_needed(self):
+        """Test _ensure_image_available when image pull is needed"""
+        mock_client = Mock()
+        mock_client.images.get.side_effect = NotFound("Image not found")
+
+        with patch.object(self.executor, "_should_pull_image") as mock_should_pull:
+            mock_should_pull.return_value = True
+            
+            # Should not raise exception
+            self.executor._ensure_image_available(mock_client, self.job)
+            
+            mock_client.images.pull.assert_called_once_with(self.job.docker_image)
+
+    @patch.object(DockerExecutor, "_get_client")
+    def test_ensure_image_available_no_pull_needed(self, mock_get_client):
+        """Test _ensure_image_available when image exists"""
+        mock_client = Mock()
+        mock_image = Mock()
+        mock_client.images.get.return_value = mock_image
+        mock_get_client.return_value = mock_client
+
+        # Should not raise exception and not pull
+        self.executor._ensure_image_available(mock_client, self.job)
+        
+        mock_client.images.pull.assert_not_called()
+
+    @patch.object(DockerExecutor, "_get_client")
+    def test_immediate_cleanup_success(self, mock_get_client):
+        """Test _immediate_cleanup when cleanup is enabled"""
+        mock_client = Mock()
+        mock_container = Mock()
+        mock_client.containers.get.return_value = mock_container
+        mock_get_client.return_value = mock_client
+
+        self.job.container_id = "cleanup-test-container"
+        self.job.save()
+
+        with patch("container_manager.defaults.get_container_manager_setting") as mock_setting:
+            mock_setting.return_value = True  # IMMEDIATE_CLEANUP = True
+            
+            self.executor._immediate_cleanup(self.job)
+            
+            mock_container.remove.assert_called_once_with(force=True)
+
+    def test_immediate_cleanup_disabled(self):
+        """Test _immediate_cleanup when cleanup is disabled"""
+        self.job.container_id = "no-cleanup-container"
+        self.job.save()
+
+        with patch("container_manager.defaults.get_container_manager_setting") as mock_setting:
+            mock_setting.return_value = False  # IMMEDIATE_CLEANUP = False
+            
+            # Should not attempt cleanup
+            self.executor._immediate_cleanup(self.job)
