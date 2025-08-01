@@ -149,6 +149,83 @@ class ExecutorHost(models.Model):
         return f"{self.name} ({self.executor_type.title()})"
 
 
+class JobManager(models.Manager):
+    """Custom manager for ContainerJob with convenience methods."""
+
+    def create_job(
+        self,
+        image: str,
+        command: str = "",
+        name: str = "",
+        environment_template=None,
+        environment_vars: dict[str, str] | None = None,
+        **kwargs,
+    ):
+        """
+        Create a ContainerJob with convenient environment variable handling.
+
+        Args:
+            image: Docker image to use
+            command: Command to run in the container (optional)
+            name: Job name (optional)
+            environment_template: Template name (str) or instance (optional)
+            environment_vars: Environment variables as dict (optional)
+            **kwargs: Additional ContainerJob fields
+
+        Returns:
+            ContainerJob: Created job instance
+
+        Example:
+            job = ContainerJob.objects.create_job(
+                image="python:3.11",
+                command="python app.py",
+                environment_vars={"DEBUG": "true", "WORKERS": "4"}
+            )
+        """
+        # Handle environment template lookup if string provided
+        template_instance = None
+        if environment_template:
+            if isinstance(environment_template, str):
+                try:
+                    template_instance = EnvironmentVariableTemplate.objects.get(
+                        name=environment_template
+                    )
+                except EnvironmentVariableTemplate.DoesNotExist:
+                    raise ValueError(
+                        f"Environment template '{environment_template}' not found"
+                    ) from None
+            else:
+                template_instance = environment_template
+
+        # Merge environment variables
+        final_env_dict = {}
+
+        # Start with template variables if provided
+        if template_instance:
+            final_env_dict.update(template_instance.get_environment_variables_dict())
+
+        # Override with provided environment_vars
+        if environment_vars:
+            final_env_dict.update(environment_vars)
+
+        # Convert dict to text format for override_environment field
+        override_env_text = ""
+        if final_env_dict:
+            override_env_text = "\n".join(
+                f"{key}={value}" for key, value in final_env_dict.items()
+            )
+
+        # Create the job with processed environment variables
+        return self.create(
+            docker_image=image,
+            command=command,
+            name=name,
+            environment_template=template_instance,
+            override_environment=override_env_text,
+            **kwargs,
+        )
+
+
 class ContainerJob(models.Model):
     """Individual container job instances"""
 
@@ -270,6 +347,9 @@ class ContainerJob(models.Model):
     created_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True
     )
+
+    # Custom manager with convenience methods
+    objects = JobManager()
 
     class Meta:
         verbose_name = "Container Job"

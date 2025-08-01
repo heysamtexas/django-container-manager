@@ -563,7 +563,9 @@ class DockerExecutor(ContainerExecutor):
                     container.remove(force=True)
                     logger.info(f"Cleaned up failed container {container.id}")
                 except Exception as cleanup_error:
-                    logger.warning(f"Failed to cleanup container after creation failure: {cleanup_error}")
+                    logger.warning(
+                        f"Failed to cleanup container after creation failure: {cleanup_error}"
+                    )
 
             raise ExecutorError(f"Container creation failed: {e}") from e
 

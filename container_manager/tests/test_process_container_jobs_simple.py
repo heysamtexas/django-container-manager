@@ -487,9 +487,7 @@ class ProcessContainerJobsSimpleTest(TestCase):
 
             result = self.command.monitor_running_jobs()
 
-            self.assertEqual(
-                result, 1
-            )  # Job was counted as harvested due to failure
+            self.assertEqual(result, 1)  # Job was counted as harvested due to failure
 
     def test_monitor_running_jobs_should_stop(self):
         """Test monitor_running_jobs respects should_stop flag"""
@@ -515,6 +513,7 @@ class ProcessContainerJobsSimpleTest(TestCase):
             self.command.executor_factory, "get_executor"
         ) as mock_get_executor:
             mock_executor = Mock()
+
             # Set should_stop after first call to simulate early termination
             def batch_side_effect(*args):
                 self.command.should_stop = True

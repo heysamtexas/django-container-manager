@@ -483,3 +483,196 @@ class ContainerJobTest(TestCase):
         )
 
         self.assertEqual(str(job), "cloudrun-job (running) (cloudrun)")
+
+
+class JobManagerTest(TestCase):
+    """Test JobManager convenience methods"""
+
+    def test_create_job_basic(self):
+        """Test basic job creation with minimal parameters"""
+        docker_host = ExecutorHostFactory.create()
+        user = UserFactory.create()
+
+        job = ContainerJob.objects.create_job(
+            image="python:3.11", docker_host=docker_host, created_by=user
+        )
+
+        self.assertEqual(job.docker_image, "python:3.11")
+        self.assertEqual(job.docker_host, docker_host)
+        self.assertEqual(job.created_by, user)
+        self.assertEqual(job.status, "pending")
+        self.assertEqual(job.command, "")
+        self.assertEqual(job.name, "")
+        self.assertEqual(job.override_environment, "")
+
+    def test_create_job_with_all_parameters(self):
+        """Test job creation with all convenience parameters"""
+        docker_host = ExecutorHostFactory.create()
+        user = UserFactory.create()
+
+        job = ContainerJob.objects.create_job(
+            image="node:18",
+            command="npm start",
+            name="web-server",
+            environment_vars={"NODE_ENV": "production", "PORT": "3000"},
+            memory_limit=512,
+            cpu_limit=1.5,
+            timeout_seconds=7200,
+            docker_host=docker_host,
+            created_by=user,
+        )
+
+        self.assertEqual(job.docker_image, "node:18")
+        self.assertEqual(job.command, "npm start")
+        self.assertEqual(job.name, "web-server")
+        self.assertEqual(job.memory_limit, 512)
+        self.assertEqual(job.cpu_limit, 1.5)
+        self.assertEqual(job.timeout_seconds, 7200)
+
+        # Check environment variables were converted to text format
+        expected_env = "NODE_ENV=production\nPORT=3000"
+        self.assertEqual(job.override_environment, expected_env)
+
+        # Check parsed environment variables
+        env_dict = job.get_override_environment_variables_dict()
+        expected_dict = {"NODE_ENV": "production", "PORT": "3000"}
+        self.assertEqual(env_dict, expected_dict)
+
+    def test_create_job_with_environment_template_name(self):
+        """Test job creation with environment template by name"""
+        template = EnvironmentVariableTemplateFactory.create(
+            name="web-template", environment_variables_text="DEBUG=false\nWORKERS=4"
+        )
+        docker_host = ExecutorHostFactory.create()
+        user = UserFactory.create()
+
+        job = ContainerJob.objects.create_job(
+            image="python:3.11",
+            environment_template="web-template",
+            docker_host=docker_host,
+            created_by=user,
+        )
+
+        self.assertEqual(job.environment_template, template)
+
+        # Check template variables were set in override_environment
+        expected_env = "DEBUG=false\nWORKERS=4"
+        self.assertEqual(job.override_environment, expected_env)
+
+        # Check merged environment variables
+        env_dict = job.get_all_environment_variables()
+        expected_dict = {"DEBUG": "false", "WORKERS": "4"}
+        self.assertEqual(env_dict, expected_dict)
+
+    def test_create_job_with_environment_template_instance(self):
+        """Test job creation with environment template instance"""
+        template = EnvironmentVariableTemplateFactory.create(
+            name="api-template",
+            environment_variables_text="API_VERSION=v2\nRATE_LIMIT=1000",
+        )
+        docker_host = ExecutorHostFactory.create()
+        user = UserFactory.create()
+
+        job = ContainerJob.objects.create_job(
+            image="api:latest",
+            environment_template=template,
+            docker_host=docker_host,
+            created_by=user,
+        )
+
+        self.assertEqual(job.environment_template, template)
+
+        # Check template variables were set
+        expected_env = "API_VERSION=v2\nRATE_LIMIT=1000"
+        self.assertEqual(job.override_environment, expected_env)
+
+    def test_create_job_template_with_overrides(self):
+        """Test job creation with template and override variables"""
+        template = EnvironmentVariableTemplateFactory.create(
+            name="db-template",
+            environment_variables_text="DB_HOST=localhost\nDB_PORT=5432\nDEBUG=true",
+        )
+        docker_host = ExecutorHostFactory.create()
+        user = UserFactory.create()
+
+        job = ContainerJob.objects.create_job(
+            image="postgres:15",
+            environment_template="db-template",
+            environment_vars={"DEBUG": "false", "DB_NAME": "production"},
+            docker_host=docker_host,
+            created_by=user,
+        )
+
+        self.assertEqual(job.environment_template, template)
+
+        # Check merged environment variables (overrides should win)
+        env_dict = job.get_all_environment_variables()
+        expected_dict = {
+            "DB_HOST": "localhost",
+            "DB_PORT": "5432",
+            "DEBUG": "false",  # Override value
+            "DB_NAME": "production",  # New variable
+        }
+        self.assertEqual(env_dict, expected_dict)
+
+    def test_create_job_template_not_found(self):
+        """Test job creation with non-existent template name"""
+        docker_host = ExecutorHostFactory.create()
+        user = UserFactory.create()
+
+        with self.assertRaises(ValueError) as context:
+            ContainerJob.objects.create_job(
+                image="python:3.11",
+                environment_template="nonexistent-template",
+                docker_host=docker_host,
+                created_by=user,
+            )
+
+        self.assertIn(
+            "Environment template 'nonexistent-template' not found",
+            str(context.exception),
+        )
+
+    def test_create_job_empty_environment_vars(self):
+        """Test job creation with empty environment_vars dict"""
+        docker_host = ExecutorHostFactory.create()
+        user = UserFactory.create()
+
+        job = ContainerJob.objects.create_job(
+            image="alpine:latest",
+            environment_vars={},
+            docker_host=docker_host,
+            created_by=user,
+        )
+
+        self.assertEqual(job.override_environment, "")
+
+    def test_create_job_none_environment_vars(self):
+        """Test job creation with None environment_vars"""
+        docker_host = ExecutorHostFactory.create()
+        user = UserFactory.create()
+
+        job = ContainerJob.objects.create_job(
+            image="alpine:latest",
+            environment_vars=None,
+            docker_host=docker_host,
+            created_by=user,
+        )
+
+        self.assertEqual(job.override_environment, "")
+
+    def test_create_job_backwards_compatibility(self):
+        """Test that regular create() method still works unchanged"""
+        docker_host = ExecutorHostFactory.create()
+        user = UserFactory.create()
+
+        # Use the old create() method directly
+        job = ContainerJob.objects.create(
+            docker_image="ubuntu:22.04",
+            docker_host=docker_host,
+            created_by=user,
+            override_environment="LEGACY=true",
+        )
+
+        self.assertEqual(job.docker_image, "ubuntu:22.04")
+        self.assertEqual(job.override_environment, "LEGACY=true")
