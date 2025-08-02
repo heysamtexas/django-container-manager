@@ -360,3 +360,8 @@ def test_harvest_job_with_failed_execution_updates_exit_code(self):
 ### Version Control Best Practices
 - Remember to commit often as a means of checkpointing your progress. Do not be shy to rollback, branch, or use git to its fullest potential.
 - **Testing discipline must be as rigorous as code quality standards**
+
+## System Design Notes
+
+### Subagent Management
+- **CRITICAL NOTE**: Please verify that your subagents have the right tools to do their job. We don't want any silent failures.

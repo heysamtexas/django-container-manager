@@ -13,7 +13,57 @@ from django.db import models
 
 
 class EnvironmentVariableTemplate(models.Model):
-    """Reusable environment variable templates"""
+    """
+    Template for reusable environment variable configurations across jobs.
+    
+    Provides a way to define and reuse common environment variable sets,
+    promoting consistency and reducing duplication in job configurations.
+    Supports standard KEY=VALUE format with validation and parsing.
+    
+    Format Requirements:
+    - One variable per line: KEY=VALUE
+    - No spaces around equals sign: KEY=VALUE (not KEY = VALUE)
+    - Quotes for values with spaces: KEY="value with spaces"
+    - Comments not supported in variable text
+    - Empty lines are ignored
+    
+    Variable Resolution:
+        Templates are resolved at job execution time, allowing for
+        dynamic value injection and validation.
+    
+    Example Usage:
+        # Create environment template
+        env_template = EnvironmentVariableTemplate.objects.create(
+            name='python-production',
+            description='Production Python application environment',
+            environment_variables_text='''
+PYTHONPATH=/app
+ENV=production
+DEBUG=False
+LOG_LEVEL=INFO
+DATABASE_URL=postgresql://user:pass@db:5432/app
+REDIS_URL=redis://redis:6379/0
+            '''.strip()
+        )
+        
+        # Use in job
+        job = ContainerJob.objects.create(
+            docker_image='myapp:latest',
+            command='python manage.py runserver',
+            docker_host=docker_host,
+            environment_template=env_template
+        )
+        
+        # Verify parsed variables
+        env_dict = env_template.get_environment_variables_dict()
+        assert env_dict['ENV'] == 'production'
+        assert env_dict['DEBUG'] == 'False'
+    
+    Security Considerations:
+        - Avoid storing secrets directly in templates
+        - Use external secret management for sensitive values
+        - Template content is stored in plaintext in database
+    """
 
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True)
@@ -38,9 +88,25 @@ class EnvironmentVariableTemplate(models.Model):
     def get_environment_variables_dict(self):
         """
         Parse environment_variables_text into a dictionary.
-
+        
+        Processes the environment_variables_text field into a structured
+        dictionary format for use in job execution. Handles empty lines,
+        comments, and various value formats.
+        
         Returns:
             dict: Environment variables as key-value pairs
+            
+        Raises:
+            No exceptions - malformed lines are silently skipped
+            
+        Example:
+            template = EnvironmentVariableTemplate.objects.get(name='web-config')
+            env_vars = template.get_environment_variables_dict()
+            # Returns: {'DEBUG': 'true', 'PORT': '8000', 'DB_HOST': 'localhost'}
+            
+            # Use in container execution
+            for key, value in env_vars.items():
+                print(f"Setting {key}={value}")
         """
         env_vars = {}
         if not self.environment_variables_text:
@@ -59,7 +125,73 @@ class EnvironmentVariableTemplate(models.Model):
 
 
 class ExecutorHost(models.Model):
-    """Host configuration for any executor type (Docker, Cloud Run, etc.)"""
+    """
+    Represents an execution environment for containerized jobs.
+    
+    ExecutorHost defines where and how jobs are executed. It abstracts different
+    execution backends (Docker daemons, Cloud Run, etc.) behind a unified interface
+    while maintaining specific configuration for each executor type.
+    
+    Supported Executor Types:
+    - 'docker': Local or remote Docker daemon execution
+    - 'cloudrun': Google Cloud Run serverless execution
+    - 'fargate': AWS Fargate serverless execution
+    - 'scaleway': Scaleway Container instances
+    
+    Connection String Formats:
+        Docker:
+        - unix:///var/run/docker.sock (local Unix socket)
+        - tcp://docker.example.com:2376 (remote TCP)
+        - tcp://docker.example.com:2376 (secure TCP with TLS)
+        
+        Cloud Run:
+        - projects/PROJECT_ID/locations/REGION (GCP project and region)
+        
+        AWS Fargate:
+        - cluster/CLUSTER_NAME (ECS cluster name)
+        
+        Custom:
+        - Any format your custom executor implementation expects
+    
+    Health Monitoring:
+        Hosts are automatically health-checked to ensure availability.
+        Inactive hosts are excluded from job scheduling.
+    
+    Example Usage:
+        # Create Docker host
+        docker_host = ExecutorHost.objects.create(
+            name='production-docker',
+            executor_type='docker',
+            connection_string='unix:///var/run/docker.sock',
+            is_active=True,
+            max_concurrent_jobs=5
+        )
+        
+        # Create Cloud Run host
+        cloudrun_host = ExecutorHost.objects.create(
+            name='gcp-cloudrun',
+            executor_type='cloudrun',
+            connection_string='projects/my-project/locations/us-central1',
+            executor_config={
+                'project': 'my-project',
+                'region': 'us-central1',
+                'service_account': 'jobs@my-project.iam.gserviceaccount.com'
+            },
+            is_active=True
+        )
+        
+        # Use in job creation
+        job = ContainerJob.objects.create(
+            docker_image='nginx:latest',
+            command='nginx -g "daemon off;"',
+            docker_host=docker_host
+        )
+    
+    Resource Management:
+        - max_concurrent_jobs: Limits simultaneous job execution
+        - weight: Influences job routing preferences (1-1000)
+        - current_job_count: Tracks active job load
+    """
 
     name = models.CharField(max_length=100, unique=True)
     host_type = models.CharField(
@@ -135,7 +267,23 @@ class ExecutorHost(models.Model):
         return self.name
 
     def is_available(self) -> bool:
-        """Check if this executor is available for new jobs"""
+        """
+        Check if this executor is available for new jobs.
+        
+        Determines availability based on active status and current capacity.
+        Does not perform network connectivity checks - use health checks
+        for detailed availability testing.
+        
+        Returns:
+            bool: True if executor can accept new jobs
+            
+        Example:
+            host = ExecutorHost.objects.get(name='production')
+            if host.is_available():
+                # Safe to assign jobs to this host
+                job.docker_host = host
+                job.save()
+        """
         return self.is_active
 
     def get_display_name(self) -> str:
@@ -150,7 +298,31 @@ class ExecutorHost(models.Model):
 
 
 class JobManager(models.Manager):
-    """Custom manager for ContainerJob with convenience methods."""
+    """
+    Custom manager for ContainerJob with common query patterns.
+    
+    Provides convenient methods for filtering jobs by status, timing,
+    and execution characteristics. All methods return QuerySets that
+    can be further filtered or chained.
+    
+    Manager Methods:
+        - create_job(): Convenient job creation with environment handling
+        - Standard Django manager methods (filter, exclude, etc.)
+        
+    Usage Patterns:
+        # Use custom creation method
+        job = ContainerJob.objects.create_job(
+            image='python:3.9',
+            command='python script.py',
+            environment_vars={'DEBUG': 'true'}
+        )
+        
+        # Standard QuerySet operations
+        pending_jobs = ContainerJob.objects.filter(status='pending')
+        recent_jobs = ContainerJob.objects.filter(
+            created_at__gte=timezone.now() - timedelta(hours=24)
+        )
+    """
 
     def create_job(
         self,
@@ -227,7 +399,70 @@ class JobManager(models.Manager):
 
 
 class ContainerJob(models.Model):
-    """Individual container job instances"""
+    """
+    Represents a containerized job execution request with full lifecycle tracking.
+    
+    This is the core model for managing Docker container jobs. It handles the complete
+    lifecycle from job creation through execution to completion, including resource
+    monitoring, log collection, and status tracking.
+    
+    Key Features:
+    - Multi-executor support (Docker, Cloud Run, Fargate, custom)
+    - Resource limit enforcement (memory, CPU)
+    - Environment variable template integration
+    - Automatic log harvesting and storage
+    - Comprehensive status tracking and transitions
+    - Network configuration support
+    - Execution metadata tracking for different executor types
+    
+    Status Lifecycle:
+        pending -> launching -> running -> completed/failed/timeout/cancelled
+        
+    Typical Usage:
+        # Create and execute a simple job
+        job = ContainerJob.objects.create_job(
+            image='python:3.9',
+            command='python -c "print(\'Hello World\')"',
+            environment_vars={'ENV': 'production'}
+        )
+        
+        # Assign to executor host
+        job.docker_host = ExecutorHost.objects.get(name='production')
+        job.save()
+        
+        # Monitor execution (handled by process_container_jobs command)
+        while job.status not in ['completed', 'failed', 'timeout', 'cancelled']:
+            time.sleep(5)
+            job.refresh_from_db()
+        
+        # Retrieve results
+        logs = job.stdout_log
+        exit_code = job.exit_code
+        duration = job.duration
+    
+    Environment Variable Handling:
+        Jobs support layered environment variable configuration:
+        1. Template variables (from environment_template)
+        2. Override variables (from override_environment)
+        
+        Combined variables available via get_all_environment_variables()
+    
+    Related Models:
+        - ExecutorHost: Defines where the job executes
+        - EnvironmentVariableTemplate: Provides base environment configuration
+        
+    Resource Management:
+        - memory_limit: Container memory limit in MB
+        - cpu_limit: Container CPU limit in cores (e.g., 1.5)
+        - timeout_seconds: Maximum execution time before forced termination
+        
+    Execution Tracking:
+        - execution_id: Unified identifier across all executor types
+        - executor_metadata: Executor-specific runtime data
+        - stdout_log/stderr_log: Captured container output
+        - max_memory_usage: Peak memory consumption
+        - cpu_usage_percent: Average CPU utilization
+    """
 
     STATUS_CHOICES: ClassVar = [
         ("pending", "Pending"),
@@ -375,27 +610,123 @@ class ContainerJob(models.Model):
 
     @property
     def duration(self):
-        """Calculate job duration if available"""
+        """
+        Calculate job execution duration.
+        
+        For completed jobs, returns the time between started_at and completed_at.
+        For active jobs, returns None since completion time is unknown.
+        For jobs that never started, returns None.
+        
+        Returns:
+            timedelta or None: Job execution duration, or None if not calculable
+            
+        Example:
+            job = ContainerJob.objects.get(id=job_id)
+            
+            if job.duration:
+                duration = job.duration
+                print(f"Job ran for {duration.total_seconds()} seconds")
+                
+                # Format for display
+                hours, remainder = divmod(duration.total_seconds(), 3600)
+                minutes, seconds = divmod(remainder, 60)
+                print(f"Duration: {int(hours):02d}:{int(minutes):02d}:{int(seconds):02d}")
+            else:
+                print("Job duration not available (not started or not completed)")
+        """
         if self.started_at and self.completed_at:
             return self.completed_at - self.started_at
         return None
 
     def get_execution_identifier(self) -> str:
-        """Get execution identifier - unified interface for all executor types"""
+        """
+        Get execution identifier - unified interface for all executor types.
+        
+        Returns the execution identifier used to track this job across
+        different executor implementations. The format varies by executor:
+        - Docker: container ID (e.g., 'a1b2c3d4e5f6')
+        - Cloud Run: job name (e.g., 'job-abc123-def456')
+        - Fargate: task ARN or task ID
+        
+        Returns:
+            str: Execution identifier, or empty string if not set
+            
+        Example:
+            job = ContainerJob.objects.get(id=job_id)
+            exec_id = job.get_execution_identifier()
+            if exec_id:
+                print(f"Job {job.id} is running as {exec_id}")
+            else:
+                print("Job has not been launched yet")
+        """
         return self.execution_id or ""
 
     def set_execution_identifier(self, execution_id: str) -> None:
-        """Set execution identifier - unified interface for all executor types"""
+        """
+        Set execution identifier - unified interface for all executor types.
+        
+        Records the execution identifier returned by the executor when
+        the job is launched. This identifier is used for status monitoring,
+        log collection, and cleanup operations.
+        
+        Args:
+            execution_id: Identifier from the executor system
+            
+        Example:
+            # Called by executor during job launch
+            success, container_id = executor.launch_job(job)
+            if success:
+                job.set_execution_identifier(container_id)
+                job.save()
+        """
         self.execution_id = execution_id
 
     @cached_property
     def clean_output_processed(self):
-        """Get stdout with Docker timestamps and metadata stripped"""
+        """
+        Get stdout with Docker timestamps and metadata stripped.
+        
+        Processes the raw stdout_log to remove Docker-specific timestamps
+        and formatting, leaving only the actual application output. Useful
+        for parsing application results or displaying clean output to users.
+        
+        Returns:
+            str: Cleaned stdout content without timestamps
+            
+        Example:
+            job = ContainerJob.objects.get(id=job_id)
+            clean_output = job.clean_output_processed
+            # Original: "2024-01-26T10:30:45.123456789Z Hello World"
+            # Cleaned:  "Hello World"
+        """
         return self._strip_docker_timestamps(self.stdout_log)
 
     @cached_property
     def parsed_output(self):
-        """Attempt to parse clean_output as JSON, fallback to string"""
+        """
+        Attempt to parse clean_output as JSON, fallback to string.
+        
+        Tries to parse the cleaned output as JSON for structured data
+        processing. If parsing fails, returns the output as a string.
+        Useful for jobs that output JSON results.
+        
+        Returns:
+            dict/list/str/None: Parsed JSON object, or string if not JSON, or None if empty
+            
+        Example:
+            job = ContainerJob.objects.get(id=job_id)
+            result = job.parsed_output
+            
+            if isinstance(result, dict):
+                # Job output was JSON object
+                print(f"Status: {result.get('status')}")
+            elif isinstance(result, str):
+                # Job output was plain text
+                print(f"Output: {result}")
+            else:
+                # No output or empty
+                print("No output available")
+        """
         clean = self.clean_output_processed
         if not clean.strip():
             return None
@@ -454,11 +785,26 @@ class ContainerJob(models.Model):
     def get_all_environment_variables(self):
         """
         Get merged environment variables from template and overrides.
+        
+        Combines environment variables from the linked template with
+        job-specific overrides. Override variables take precedence
+        over template variables with the same key.
 
         Precedence: Template → Override Environment
 
         Returns:
             dict: Merged environment variables as key-value pairs
+            
+        Example:
+            # Template has: DEBUG=False, LOG_LEVEL=INFO
+            # Override has: DEBUG=True, CUSTOM_VAR=value
+            job = ContainerJob.objects.get(id=job_id)
+            env_vars = job.get_all_environment_variables()
+            # Result: {'DEBUG': 'True', 'LOG_LEVEL': 'INFO', 'CUSTOM_VAR': 'value'}
+            
+            # Use in container execution
+            for key, value in env_vars.items():
+                print(f"Setting environment: {key}={value}")
         """
         env_vars = {}
 
@@ -472,7 +818,25 @@ class ContainerJob(models.Model):
         return env_vars
 
     def get_network_names(self) -> list:
-        """Get list of network names from network configuration"""
+        """
+        Get list of network names from network configuration.
+        
+        Extracts network names from the network_configuration JSON field
+        for use in container networking setup. Filters out empty or
+        invalid network configurations.
+        
+        Returns:
+            list: List of network names configured for this job
+            
+        Example:
+            job = ContainerJob.objects.get(id=job_id)
+            networks = job.get_network_names()
+            # Returns: ['app-network', 'database-network']
+            
+            # Use in container setup
+            for network in networks:
+                print(f"Job will connect to network: {network}")
+        """
         return [
             network.get("network_name", "")
             for network in (self.network_configuration or [])
@@ -480,7 +844,31 @@ class ContainerJob(models.Model):
         ]
 
     def can_use_executor(self, executor_type: str) -> bool:
-        """Check if this job can run on the specified executor type"""
+        """
+        Check if this job can run on the specified executor type.
+        
+        Validates whether this job's configuration is compatible with
+        the specified executor type. Currently all jobs are compatible
+        with all executor types, but this method provides a hook for
+        future executor-specific validation.
+        
+        Args:
+            executor_type: Type of executor to check ('docker', 'cloudrun', etc.)
+            
+        Returns:
+            bool: True if job can run on this executor type
+            
+        Example:
+            job = ContainerJob.objects.get(id=job_id)
+            
+            if job.can_use_executor('cloudrun'):
+                # Safe to assign to Cloud Run host
+                cloudrun_host = ExecutorHost.objects.filter(
+                    executor_type='cloudrun', is_active=True
+                ).first()
+                job.docker_host = cloudrun_host
+                job.save()
+        """
         # All jobs can run on any executor type
         return True
 

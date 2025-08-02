@@ -10,6 +10,7 @@ Thank you for your interest in contributing to Django Docker Container Manager! 
 - [Making Changes](#making-changes)
 - [Testing](#testing)
 - [Code Style](#code-style)
+- [Documentation Guidelines](#documentation-guidelines)
 - [Submitting Changes](#submitting-changes)
 - [Reporting Issues](#reporting-issues)
 - [Feature Requests](#feature-requests)
@@ -124,8 +125,21 @@ Recommended extensions:
 
 ### Development Workflow
 
+#### Pre-Commit Requirements (MANDATORY)
+Before any commit, run this exact sequence:
+```bash
+1. uv run python manage.py test          # ALL tests must pass
+2. uv run ruff check .                   # Linting must pass  
+3. uv run ruff format .                  # Code formatting
+4. git add <files>                       # Stage changes
+5. git commit -m "message"               # Only then commit
+```
+
+**No exceptions**: If any test fails, fix ALL failures before committing.
+
+#### Standard Workflow
 1. **Make atomic commits** with clear messages
-2. **Test your changes** thoroughly
+2. **Test your changes** thoroughly 
 3. **Update documentation** if needed
 4. **Add tests** for new functionality
 5. **Ensure code style compliance**
@@ -147,6 +161,13 @@ git commit -m \"Update stuff\"
 
 ## Testing
 
+### Testing Requirements
+- **Mandatory testing**: Every feature change must have passing tests
+- **Test organization**: Use `tests/` module structure, never single `tests.py` files
+- **Django testing focus**: Write tests for Django models, views, and business logic
+- **Mock external services**: Don't require actual Docker/cloud credentials for basic tests
+- **Coverage expectations**: Aim for ≥75% overall, ≥90% for new features
+
 ### Running Tests
 
 ```bash
@@ -159,8 +180,11 @@ uv run python manage.py test container_manager.tests.DockerServiceTest
 # Run with verbose output
 uv run python manage.py test --verbosity=2
 
-# Run specific test method
+# Run specific test method  
 uv run python manage.py test container_manager.tests.DockerServiceTest.test_container_creation
+
+# Use --failfast during development
+uv run python manage.py test --failfast
 ```
 
 ### Test Coverage
@@ -302,11 +326,100 @@ class ContainerService:
 - Prefer Django's testing tools
 - Use Django's form validation
 
+#### Code Complexity and Design Guidelines
+- **McCabe Complexity**: ≤8 per function (enforced by ruff C901)
+- **Error handling**: Use `logger.exception()` for full tracebacks
+- **Function Length**: Aim for <50 lines per function
+- **Parameter Count**: Limit to 6 parameters maximum
+- **Magic Numbers**: Extract to named constants
+
 #### Documentation
 - Add docstrings to all public classes and methods
 - Include type hints where helpful
 - Document complex algorithms
 - Keep comments up to date
+
+## Documentation Guidelines
+
+This project maintains comprehensive documentation for both users and developers. Contributors must follow these documentation standards.
+
+### Documentation Types
+- **User Documentation**: README.md, INSTALL.md, DOCKER.md, TROUBLESHOOTING.md
+- **API Documentation**: API.md with complete model and method reference
+- **Developer Documentation**: CLAUDE.md for internal development guidance
+- **Code Documentation**: Inline docstrings and comments
+
+### Documentation Standards
+- **Technical writing style**: Direct, helpful, avoid marketing language
+- **Code examples**: All examples must be tested and working
+- **Cross-references**: Link between related documentation sections
+- **User-focused**: Assume intelligent users, don't assume domain knowledge
+- **Machine-readable**: Structure content for both human and AI readers
+
+### Documentation Workflow
+1. **Small changes**: Edit documentation directly, test examples
+2. **New documentation**: Create task file in `tasks/` folder first
+3. **Major restructuring**: Discuss in issue before starting work
+4. **Code documentation**: Update docstrings with code changes
+
+### Documentation Testing
+- Test all code examples in clean environment
+- Verify external links are functional
+- Check cross-references for accuracy
+- Validate installation instructions on multiple platforms
+
+### Model Documentation Requirements
+When updating models, ensure:
+- Comprehensive class docstrings with usage examples
+- Field purposes and validation rules clearly documented
+- All custom methods documented with parameters and return values
+- Property behaviors and calculations explained
+- Manager methods documented with usage examples
+- Relationship patterns explained in model docstrings
+
+### Management Command Documentation
+When creating or updating management commands:
+- Comprehensive help text with usage examples
+- All arguments clearly documented with defaults and constraints
+- Error conditions and troubleshooting guidance included
+- Performance and resource considerations documented
+- Security implications noted for potentially dangerous commands
+
+### LLM Agent Guidelines Integration
+
+This project includes comprehensive guidelines for LLM (Large Language Model) agents working with the codebase. These guidelines ensure safe, effective collaboration between human developers and AI coding assistants.
+
+#### Behavioral Constraints for AI Agents
+- **DO**: Follow existing project structure and coding standards
+- **DO**: Test all code examples before documenting them
+- **DO**: Maintain consistency with project's development philosophy
+- **DO NOT**: Remove or override existing contribution guidelines
+- **DO NOT**: Add requirements that conflict with current development workflow
+- **DO NOT**: Create barriers that discourage community contributions
+- **LIMITS**: Documentation and enhancement only, no removal of existing processes
+
+#### Security Requirements for AI Contributions
+- **Process integrity**: Ensure changes don't bypass code review
+- **Quality gates**: Document validation steps that maintain code quality
+- **Access control**: Don't document processes that could compromise security
+- **Contribution safety**: Ensure AI guidelines promote secure development
+
+#### Safe Operation Patterns for AI Agents
+- **Enhancement approach**:
+  1. Read existing documentation and code thoroughly
+  2. Identify gaps without changing core functionality
+  3. Add improvements that align with existing standards
+  4. Test all documented procedures with actual workflow
+  5. Ensure new requirements don't burden contributors unnecessarily
+
+#### Validation Requirements for AI Contributions
+- [ ] All documented procedures tested with actual contribution workflow
+- [ ] Documentation standards align with existing code quality requirements
+- [ ] No conflicts with existing contribution guidelines
+- [ ] Clear examples provided for documentation expectations
+- [ ] Validation steps are practical and enforceable
+- [ ] AI agent guidelines don't restrict human contributor flexibility
+- [ ] Review process integrates smoothly with existing code review
 
 ## Submitting Changes
 
@@ -360,10 +473,20 @@ class ContainerService:
    - [ ] All tests pass
    - [ ] New tests added for new functionality
    - [ ] Manual testing completed
+   - [ ] Code coverage meets standards (≥75% overall, ≥90% for new features)
    
    ## Documentation
    - [ ] Documentation updated
+   - [ ] Code examples tested and verified
+   - [ ] Model docstrings updated (if applicable)
+   - [ ] Management command help text enhanced (if applicable)
    - [ ] CHANGELOG.md updated (if applicable)
+   
+   ## Code Quality
+   - [ ] Pre-commit checklist completed (test, lint, format)
+   - [ ] Code complexity within limits (≤8 McCabe complexity)
+   - [ ] No magic numbers or unclear variable names
+   - [ ] Error handling includes proper logging
    
    ## Related Issues
    Closes #123

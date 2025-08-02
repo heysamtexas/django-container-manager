@@ -23,7 +23,63 @@ logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
-    help = "Process pending container jobs continuously"
+    help = """
+    Process pending container jobs and manage their execution lifecycle.
+    
+    This command handles the core job processing workflow:
+    - Discovers pending jobs in the database
+    - Launches jobs on available executor hosts
+    - Monitors running jobs for completion
+    - Harvests logs and results from completed jobs
+    - Updates job status throughout the lifecycle
+    
+    Usage Examples:
+        # Process all pending jobs once
+        python manage.py process_container_jobs --single-run
+        
+        # Run in continuous mode (daemon-like)
+        python manage.py process_container_jobs
+        
+        # Process only jobs for specific host
+        python manage.py process_container_jobs --host production-docker
+        
+        # Limit concurrent jobs and poll faster
+        python manage.py process_container_jobs --max-jobs 5 --poll-interval 10
+        
+        # Force specific executor type
+        python manage.py process_container_jobs --executor-type cloudrun
+        
+        # Run cleanup before processing
+        python manage.py process_container_jobs --cleanup --cleanup-hours 48
+    
+    Job Processing Flow:
+        1. Query database for pending jobs
+        2. Check executor host availability and capacity
+        3. Launch jobs within resource limits
+        4. Monitor running jobs for status changes
+        5. Harvest completed jobs for logs and exit codes
+        6. Update database with final results
+    
+    Monitoring and Logging:
+        - Progress logged to console and Django logging system
+        - Job execution details logged for debugging
+        - Resource usage tracked and reported
+        - Errors logged with context for troubleshooting
+    
+    Signal Handling:
+        - SIGTERM: Graceful shutdown, finish current operations
+        - SIGINT (Ctrl+C): Immediate shutdown with cleanup
+    
+    Exit Codes:
+        0: Success, all jobs processed normally
+        1: General error (configuration, database, etc.)
+        2: Executor error (Docker daemon unavailable, etc.)
+        3: Job processing error (job failures, resource limits)
+    
+    IMPORTANT: This command should run continuously in production to ensure
+    jobs are processed promptly. Use process managers like systemd, supervisor,
+    or Docker for reliable operation.
+    """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -50,42 +106,74 @@ class Command(BaseCommand):
             "--poll-interval",
             type=int,
             default=5,
-            help="Polling interval in seconds (default: 5)",
+            help=(
+                "Polling interval in seconds (default: 5). "
+                "Lower values increase responsiveness but CPU usage. "
+                "Recommended: 5-30 seconds for production."
+            ),
         )
         parser.add_argument(
             "--max-jobs",
             type=int,
             default=10,
-            help="Maximum number of concurrent jobs to process (default: 10)",
+            help=(
+                "Maximum number of concurrent jobs to process (default: 10). "
+                "Consider host resources when setting this value. "
+                "Higher values may overwhelm the system."
+            ),
         )
         parser.add_argument(
-            "--host", type=str, help="Only process jobs for the specified Docker host"
+            "--host", 
+            type=str, 
+            help=(
+                "Only process jobs for the specified executor host. "
+                "Use host name as configured in ExecutorHost model. "
+                "Useful for dedicated processing nodes."
+            )
         )
         parser.add_argument(
             "--single-run",
             action="store_true",
-            help="Process jobs once and exit (don't run continuously)",
+            help=(
+                "Process jobs once and exit (don't run continuously). "
+                "Useful for testing, debugging, or scheduled execution via cron."
+            ),
         )
         parser.add_argument(
             "--cleanup",
             action="store_true",
-            help="Run cleanup of old containers before processing jobs",
+            help=(
+                "Run cleanup of old containers before processing jobs. "
+                "WARNING: Currently disabled due to service refactoring. "
+                "Use cleanup_containers command separately."
+            ),
         )
         parser.add_argument(
             "--cleanup-hours",
             type=int,
             default=24,
-            help="Hours after which to cleanup old containers (default: 24)",
+            help=(
+                "Hours after which to cleanup old containers (default: 24). "
+                "Only used with --cleanup flag. Currently non-functional."
+            ),
         )
         parser.add_argument(
             "--use-factory",
             action="store_true",
-            help="Use ExecutorFactory for intelligent job routing (default: auto-detect from settings)",
+            help=(
+                "Use ExecutorFactory for intelligent job routing. "
+                "Default: auto-detect from settings. "
+                "Enable for multi-executor environments."
+            ),
         )
         parser.add_argument(
             "--executor-type",
             type=str,
-            help="Force specific executor type (docker, mock, etc.)",
+            help=(
+                "Force specific executor type (docker, cloudrun, fargate, mock). "
+                "Jobs will only run on hosts matching this type. "
+                "Useful for testing specific executors."
+            ),
         )
 
     def handle(self, *args, **options):

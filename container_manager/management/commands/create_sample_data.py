@@ -9,19 +9,71 @@ from container_manager.models import (
 
 
 class Command(BaseCommand):
-    help = "Create sample data for testing the container management system"
+    help = """
+    Create sample data for testing and demonstrating the container management system.
+    
+    This command creates a complete set of sample data including:
+    - Docker/Executor host configurations
+    - Environment variable templates
+    - Sample container jobs with different configurations
+    - Realistic test scenarios for development and demonstration
+    
+    Usage Examples:
+        # Create complete sample data set
+        python manage.py create_sample_data
+        
+        # Use existing Docker host instead of creating new one
+        python manage.py create_sample_data --skip-host --host-name production
+        
+        # Create with custom host name
+        python manage.py create_sample_data --host-name development-docker
+    
+    Sample Data Created:
+        - ExecutorHost: Local Docker daemon configuration
+        - Environment Templates: Python, Alpine, Ubuntu configurations
+        - Sample Jobs: Echo test, Python script, Bash commands
+        - Realistic resource limits and timeout settings
+    
+    Sample Job Types:
+        1. Alpine Echo Test: Simple container validation
+        2. Python Script Runner: Environment variable demonstration
+        3. Ubuntu Bash Test: Multi-step command execution
+    
+    After Creation:
+        1. Visit Django admin to explore created objects
+        2. Start jobs manually through admin interface
+        3. Run: python manage.py process_container_jobs --single-run
+        4. Monitor job execution and results
+    
+    Development Workflow:
+        This command is designed for:
+        - New system setup and configuration
+        - Feature development and testing
+        - Demonstration of system capabilities
+        - Learning the system's data model
+    
+    SAFE TO RUN MULTIPLE TIMES: Uses get_or_create to avoid duplicates.
+    """
 
     def add_arguments(self, parser):
         parser.add_argument(
             "--skip-host",
             action="store_true",
-            help="Skip creating Docker host (use existing)",
+            help=(
+                "Skip creating Docker host (use existing). "
+                "Requires existing host with name specified in --host-name. "
+                "Useful when working with pre-configured environments."
+            ),
         )
         parser.add_argument(
             "--host-name",
             type=str,
             default="local-docker",
-            help="Name for Docker host (default: local-docker)",
+            help=(
+                "Name for Docker host (default: local-docker). "
+                "Used for both creating new hosts and finding existing ones. "
+                "Should match your ExecutorHost configuration."
+            ),
         )
 
     def handle(self, *args, **options):

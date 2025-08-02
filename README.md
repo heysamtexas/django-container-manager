@@ -1,33 +1,97 @@
-# Django Container Manager
+# Django Docker Container Manager
 
 [![PyPI version](https://badge.fury.io/py/django-container-manager.svg)](https://badge.fury.io/py/django-container-manager)
 [![Python Support](https://img.shields.io/pypi/pyversions/django-container-manager.svg)](https://pypi.org/project/django-container-manager/)
 [![Django Support](https://img.shields.io/badge/django-4.2%20|%205.0%20|%205.1%20|%205.2-blue.svg)](https://docs.djangoproject.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A modern Django app for container orchestration with multi-executor support. Run containerized jobs across Docker, Google Cloud Run, AWS Fargate, and custom platforms with unified management, monitoring, and scaling.
+**The most comprehensive Docker container management system for Django.** Execute Django commands inside Docker containers with complete lifecycle tracking, resource monitoring, and multi-platform support. Eliminate the complexity of Celery/RQ while gaining powerful containerized job execution.
 
-## ✨ Features
+Transform your Django application into a container orchestration platform with full observability, automatic resource management, and production-ready security controls.
 
-- 🐳 **Multi-executor support**: Docker, Google Cloud Run, AWS Fargate, Mock executor
-- 📊 **Job lifecycle tracking**: Status monitoring, logs, metrics, and resource usage
-- 🎛️ **Admin interface**: Beautiful Django admin integration with real-time updates
-- 🔧 **Job processor**: Background daemon for container job execution
-- 📦 **Environment overrides**: Job-level customization of commands and variables
-- 🚀 **Production ready**: Comprehensive error handling, logging, and monitoring
-- 🔒 **Security first**: TLS support, resource limits, and safe container execution
+## Why Choose This Over Celery?
+
+- **🎯 Django-native design**: Built for Django from the ground up, not adapted from generic queuing
+- **🐳 Container-first architecture**: Docker containers as first-class execution environments with full isolation
+- **📊 Complete observability**: Track every aspect of job execution - logs, metrics, resource usage, timings
+- **🔧 Zero infrastructure dependencies**: No Redis, RabbitMQ, or external queue management required
+- **🌐 Multi-cloud ready**: Single codebase supports local Docker, remote hosts, Google Cloud Run, AWS Fargate
+- **⚡ Production hardened**: Built-in security controls, resource limits, error handling, and monitoring
+- **🔍 Real-time visibility**: Django admin integration with live job status and log viewing
+
+## ✨ Key Features
+
+- 🐳 **Multi-executor support**: Docker local/remote, Google Cloud Run, AWS Fargate, Mock executor
+- 📊 **Complete lifecycle tracking**: Status monitoring, logs, metrics, and resource usage
+- 🎛️ **Django admin integration**: Beautiful web interface with real-time job monitoring
+- 🔧 **Background job processor**: Automatic container job execution and management
+- 📦 **Environment management**: Template-based environment variables with job-level overrides
+- 🔒 **Production security**: TLS support, resource limits, container isolation, and safe execution
+- 📈 **Resource monitoring**: Memory and CPU usage tracking with configurable limits
+- 🌐 **Cloud-native**: Built for containerized environments and cloud deployment
+
+## 🏗️ Architecture Overview
+
+```mermaid
+graph TD
+    A[Django Management Command] --> B[ContainerJob Model]
+    B --> C[ExecutorHost Selection]
+    C --> D[Docker/Cloud Executor]
+    D --> E[Container Launch]
+    E --> F[Real-time Monitoring]
+    F --> G[Log Collection]
+    G --> H[Resource Tracking]
+    H --> I[Cleanup & Results]
+    
+    subgraph "Django Application"
+        B --> J[Admin Interface]
+        B --> K[Django ORM]
+        K --> L[Database Storage]
+    end
+    
+    subgraph "Execution Environment"
+        D --> M[Local Docker]
+        D --> N[Remote Docker]
+        D --> O[Cloud Run]
+        D --> P[AWS Fargate]
+    end
+```
+
+**Core Components:**
+
+- **ContainerJob**: Django model representing a containerized task
+- **ExecutorHost**: Defines where containers run (local, remote, cloud)
+- **Executors**: Pluggable backends for different container platforms
+- **Job Processor**: Background service that manages the job lifecycle
+- **Admin Interface**: Web UI for job creation, monitoring, and management
 
 ## 🚀 Quick Start
+
+### Prerequisites
+
+- **Docker**: [Install Docker](https://docs.docker.com/get-docker/) and ensure it's running
+- **Python 3.8+**: Compatible with Python 3.8, 3.9, 3.10, 3.11, 3.12
+- **Django 4.2+**: Compatible with Django 4.2, 5.0, 5.1, 5.2
+
+```bash
+# Verify Docker is running
+docker --version
+docker ps
+```
 
 ### Installation
 
 ```bash
+# Install from PyPI
 pip install django-container-manager
+
+# Or with uv (recommended)
+uv add django-container-manager
 ```
 
-### Basic Setup
+### 5-Minute Setup
 
-1. **Add to your Django project:**
+1. **Add to Django settings:**
 
 ```python
 # settings.py
@@ -37,7 +101,7 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     # ... your other apps
-    'container_manager',  # Add this
+    'container_manager',  # Add this line
 ]
 ```
 
@@ -47,68 +111,144 @@ INSTALLED_APPS = [
 python manage.py migrate
 ```
 
-3. **Create a superuser (for development):**
+3. **Create superuser and start admin:**
 
 ```bash
-python manage.py createsuperuser  # Only needed for local development
-python manage.py runserver        # Visit http://localhost:8000/admin/
+python manage.py createsuperuser
+python manage.py runserver  # Visit http://localhost:8000/admin/
 ```
 
-4. **Start the job processor (CRITICAL for job execution):**
+4. **Start the job processor (required for job execution):**
 
 ```bash
+# In a separate terminal
 python manage.py process_container_jobs
 ```
 
-## 📖 Usage
+### Your First Container Job
 
-### Creating Your First Container Job
+Create and run your first containerized task in under 2 minutes:
 
-1. **Create Executor Host** (in Django admin or via shell):
+1. **Set up Docker executor** (via Django shell):
 
 ```python
+python manage.py shell
+
 from container_manager.models import ExecutorHost
 
-host = ExecutorHost.objects.create(
+# Create local Docker executor
+docker_host = ExecutorHost.objects.create(
     name="local-docker",
     executor_type="docker",
     connection_string="unix:///var/run/docker.sock",
-    weight=100
+    is_active=True
 )
 ```
 
-2. **Create Environment Template (optional):**
-
-```python
-from container_manager.models import EnvironmentVariableTemplate
-
-env_template = EnvironmentVariableTemplate.objects.create(
-    name="hello-world-env",
-    environment_variables_text="""
-DEBUG=true
-LOG_LEVEL=info
-TIMEOUT=300
-"""
-)
-```
-
-3. **Create and Run Job:**
+2. **Create a simple job:**
 
 ```python
 from container_manager.models import ContainerJob
 
-job = ContainerJob.objects.create(
-    docker_host=host,
+# Create a "Hello World" container job
+job = ContainerJob.objects.create_job(
+    image="hello-world",
     name="My First Container Job",
-    docker_image="hello-world",
-    timeout_seconds=60,
-    memory_limit=128,  # MB
-    cpu_limit=0.5,     # cores
-    environment_template=env_template  # optional
+    memory_limit=128,  # 128MB
+    cpu_limit=0.5,     # 0.5 CPU cores
+    timeout_seconds=300
+)
+
+print(f"Created job: {job.id}")
+```
+
+3. **Monitor execution** (the job processor will automatically pick it up):
+
+```python
+# Refresh the job to see updated status
+job.refresh_from_db()
+print(f"Status: {job.status}")
+print(f"Output: {job.clean_output}")
+```
+
+**That's it!** Your first container job is running. Visit the Django admin to see real-time status updates and logs.
+
+## 📖 Real-World Usage Examples
+
+### Example 1: Data Processing Pipeline
+
+Run a Python data processing script in an isolated container:
+
+```python
+from container_manager.models import ContainerJob
+
+# Process CSV data with pandas
+job = ContainerJob.objects.create_job(
+    image="python:3.11-slim",
+    command="pip install pandas && python -c \"import pandas as pd; print('Processing complete')\"",
+    name="Data Processing Job",
+    memory_limit=1024,  # 1GB for data processing
+    cpu_limit=2.0,      # 2 CPU cores
+    timeout_seconds=1800  # 30 minutes
 )
 ```
 
-The job will be automatically picked up by the job processor and executed!
+### Example 2: Automated Testing
+
+Run tests in a clean container environment:
+
+```python
+# Run pytest in isolated environment
+test_job = ContainerJob.objects.create_job(
+    image="python:3.11",
+    command="/bin/bash -c 'pip install pytest && pytest --verbose'",
+    name="Test Suite Execution",
+    environment_vars={
+        "PYTHONPATH": "/app",
+        "TEST_ENV": "container",
+        "PYTEST_ARGS": "--tb=short"
+    },
+    memory_limit=512,
+    cpu_limit=1.0
+)
+```
+
+### Example 3: Image Processing
+
+Process images with ImageMagick in a containerized environment:
+
+```python
+# Image processing pipeline
+image_job = ContainerJob.objects.create_job(
+    image="dpokidov/imagemagick:latest",
+    command="convert -version && echo 'ImageMagick ready for processing'",
+    name="Image Processing Pipeline",
+    memory_limit=2048,  # 2GB for image processing
+    cpu_limit=1.5,
+    timeout_seconds=3600  # 1 hour
+)
+```
+
+### Example 4: Database Operations
+
+Run database migrations or data imports:
+
+```python
+# Database migration in container
+db_job = ContainerJob.objects.create_job(
+    image="postgres:15",
+    command="psql --version && echo 'Database operations ready'",
+    name="Database Migration",
+    environment_vars={
+        "POSTGRES_HOST": "db.example.com",
+        "POSTGRES_DB": "myapp",
+        "POSTGRES_USER": "admin"
+        # Note: Use secrets management for passwords in production
+    },
+    memory_limit=256,
+    cpu_limit=0.5
+)
+```
 
 ### Environment Variables
 
@@ -189,51 +329,98 @@ host = ExecutorHost.objects.create(
 )
 ```
 
-## 🔧 Job Processing
+## 🔧 Job Processing & Monitoring
 
-The core job processor daemon is started with:
+### Starting the Job Processor
+
+The background job processor is essential for job execution:
 
 ```bash
-# Start the job processor (keeps running)
+# Production: Keep running continuously
 python manage.py process_container_jobs
 
-# Run once and exit (useful for testing)
+# Development: Run once and exit
 python manage.py process_container_jobs --once
 
-# Custom poll interval
+# Custom polling: Check for jobs every 10 seconds
 python manage.py process_container_jobs --poll-interval=10
 ```
 
-**This command is essential** - without it running, no jobs will be executed. It continuously polls for pending jobs and manages their lifecycle.
+> **Critical**: Without the job processor running, no containers will be executed. This service manages the complete job lifecycle from container creation to cleanup.
 
-### Job Management
+### Real-time Monitoring
 
-Job creation and management is handled through the Django admin interface, which provides:
+Monitor job execution through multiple interfaces:
 
-- **Interactive job creation** with real-time validation
-- **Status monitoring** and job lifecycle tracking
-- **Log viewing** directly in the admin interface
+#### Django Admin Interface
+- **Live job status updates** with automatic refresh
+- **Real-time log viewing** directly in the browser
+- **Resource usage tracking** (memory, CPU, execution time)
 - **Bulk operations** for managing multiple jobs
-- **Executor host management** and configuration
+- **Executor host management** and health monitoring
 
-## 📊 Monitoring & Admin Interface
+#### Command Line Monitoring
+```python
+# Check job status programmatically
+from container_manager.models import ContainerJob
 
-The Django admin interface provides:
+# View recent jobs
+recent_jobs = ContainerJob.objects.filter(
+    created_at__gte=timezone.now() - timedelta(hours=24)
+)
 
-- **Job status monitoring** with real-time updates
-- **Log viewing** directly in the browser  
-- **Execution tracking** with start/completion times
-- **Bulk operations** for managing multiple jobs
-- **Executor host management** and configuration
-- **Environment variable templates** with override support
+for job in recent_jobs:
+    print(f"{job.name}: {job.status} ({job.duration})")
+```
 
-## 🔒 Security Features
+#### Production Monitoring
+```python
+# Health check endpoint example
+def health_check():
+    from container_manager.models import ExecutorHost
+    
+    unhealthy_hosts = []
+    for host in ExecutorHost.objects.filter(is_active=True):
+        # Check host health (implement based on your needs)
+        if not host.is_available():
+            unhealthy_hosts.append(host.name)
+    
+    return {
+        'healthy': len(unhealthy_hosts) == 0,
+        'unhealthy_hosts': unhealthy_hosts
+    }
+```
 
-- **Resource limits**: Memory and CPU constraints per job
-- **Network isolation**: Configurable network policies
-- **TLS support**: Secure connections to remote Docker hosts
-- **Environment variable masking**: Hide sensitive data in logs
-- **Privileged container controls**: Disable dangerous operations
+## 🔒 Production Security
+
+Built-in security features for production deployment:
+
+- **Resource limits**: Strict memory (max 2GB) and CPU (max 2 cores) constraints
+- **Container isolation**: Non-privileged containers with security contexts
+- **Network isolation**: Configurable network policies and container networking
+- **TLS support**: Secure connections to remote Docker hosts and registries
+- **Secret management**: Environment variable masking and secure credential handling
+- **Access controls**: Role-based permissions through Django's auth system
+
+### Security Best Practices
+
+```python
+# Secure job creation with resource limits
+secure_job = ContainerJob.objects.create_job(
+    image="trusted-registry.company.com/app:latest",
+    command="python secure_task.py",
+    memory_limit=512,    # Always set memory limits
+    cpu_limit=1.0,       # Always set CPU limits
+    timeout_seconds=900, # 15-minute timeout
+    environment_vars={
+        "LOG_LEVEL": "INFO",
+        # Never put secrets in environment_vars in code
+        # Use Django secrets management instead
+    }
+)
+```
+
+See the **[Docker Integration Guide](DOCKER.md)** for comprehensive security configuration.
 
 ## 🛠️ Development
 
@@ -278,9 +465,69 @@ uv run mypy container_manager
 
 ## 📚 Documentation
 
-- **Full Documentation**: [django-container-manager.readthedocs.io](https://django-container-manager.readthedocs.io/)
-- **API Reference**: [API Documentation](https://django-container-manager.readthedocs.io/en/latest/api/)
-- **Deployment Guide**: [Production Deployment](https://django-container-manager.readthedocs.io/en/latest/deployment/)
+### Core Documentation
+
+- **[Docker Integration Guide](DOCKER.md)** - Comprehensive Docker setup, configuration, and best practices
+- **[Installation Guide](INSTALL.md)** - Detailed installation instructions for all platforms
+- **[API Reference](API.md)** - Complete API documentation and examples
+- **[Troubleshooting Guide](TROUBLESHOOTING.md)** - Common issues and solutions
+
+### Development Documentation
+
+- **[Contributing Guide](CONTRIBUTING.md)** - Development setup, testing, and contribution guidelines
+- **[Internal Documentation](CLAUDE.md)** - Technical implementation details and development notes
+
+### External Resources
+
+- **PyPI Package**: [django-container-manager](https://pypi.org/project/django-container-manager/)
+- **Source Code**: [GitHub Repository](https://github.com/samtexas/django-container-manager)
+- **Issue Tracker**: [GitHub Issues](https://github.com/samtexas/django-container-manager/issues)
+
+## 🤖 LLM Agent Guidelines
+
+### Behavioral Constraints
+
+- **DO**: Test every code example in a clean environment before including
+- **DO**: Verify all installation commands work on the target system
+- **DO**: Keep examples simple and immediately runnable
+- **DO**: Link to detailed documentation for complex topics
+- **DO NOT**: Include misleading performance claims or unsupported features
+- **DO NOT**: Add examples that require external services without clear setup
+- **DO NOT**: Promise functionality that doesn't exist or is experimental
+- **LIMITS**: README should be scannable in under 5 minutes
+
+### Security Requirements
+
+- **Never include**: Real credentials, API keys, or production URLs in examples
+- **Always use**: Placeholder values like `your-registry.com` or `your-project-id`
+- **Validate examples**: Ensure no security anti-patterns in code samples
+- **Credential guidance**: Direct users to proper credential management documentation
+
+### Safe Operation Patterns
+
+- **Example validation process**:
+  1. Create clean test environment
+  2. Follow README instructions exactly as written
+  3. Verify each step produces expected output
+  4. Document any prerequisites or assumptions
+- **Link validation**: Test all internal and external links for accuracy
+- **Version consistency**: Ensure examples match current codebase capabilities
+
+### Error Handling
+
+- **If examples fail**: Update examples, don't ignore failures
+- **If installation doesn't work**: Revise instructions, add troubleshooting notes
+- **If technical accuracy questioned**: Cross-reference with CLAUDE.md and codebase
+- **When unsure**: Ask for clarification rather than guessing
+
+### Validation Requirements
+
+- [ ] All code examples tested in clean environment
+- [ ] Installation steps verified on target platforms
+- [ ] No credentials or sensitive information in examples
+- [ ] All links functional and point to correct resources
+- [ ] Technical claims verified against actual codebase capabilities
+- [ ] Examples use only documented, stable features
 
 ## 🤝 Contributing
 

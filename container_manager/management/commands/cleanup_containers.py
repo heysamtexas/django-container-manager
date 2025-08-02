@@ -19,24 +19,81 @@ ORPHANED_CONTAINERS_DISPLAY_LIMIT = 10  # Limit for displaying orphaned containe
 
 
 class Command(BaseCommand):
-    help = "Clean up old Docker containers based on retention policies"
+    help = """
+    Clean up old Docker containers based on retention policies.
+    
+    This command removes old container artifacts to free up disk space and
+    maintain system performance. It identifies containers from completed
+    jobs that exceed configured retention periods.
+    
+    WARNING: Currently disabled due to service refactoring. This command
+    is being updated to work with the new ExecutorFactory system.
+    
+    Usage Examples:
+        # Preview what would be cleaned (recommended first)
+        python manage.py cleanup_containers --dry-run
+        
+        # Clean containers older than 48 hours
+        python manage.py cleanup_containers --orphaned-hours 48
+        
+        # Force cleanup even if disabled in settings
+        python manage.py cleanup_containers --force
+        
+        # Combine options for careful cleanup
+        python manage.py cleanup_containers --dry-run --orphaned-hours 24
+    
+    Cleanup Process:
+        1. Identify completed jobs older than retention period
+        2. Find associated container artifacts
+        3. Verify containers are not actively running
+        4. Remove containers and associated data
+        5. Update database records as needed
+    
+    Safety Features:
+        - Dry-run mode shows preview without making changes
+        - Settings-based enable/disable control
+        - Force flag required when cleanup disabled
+        - Retention period prevents accidental deletion
+        - Active container protection
+    
+    Retention Policy:
+        - Only processes completed, failed, timeout, or cancelled jobs
+        - Respects configured retention periods
+        - Preserves recent jobs for debugging
+        - Logs all cleanup actions for audit trail
+    
+    IMPORTANT: Always test with --dry-run first to verify cleanup scope.
+    Consider running this command via cron for automated maintenance.
+    """
 
     def add_arguments(self, parser):
         parser.add_argument(
             "--orphaned-hours",
             type=int,
             default=24,
-            help="Hours after which to clean orphaned containers (default: 24)",
+            help=(
+                "Hours after which to clean orphaned containers (default: 24). "
+                "Containers from jobs completed longer than this are eligible. "
+                "Minimum recommended: 12 hours for debugging access."
+            ),
         )
         parser.add_argument(
             "--dry-run",
             action="store_true",
-            help="Show what would be cleaned up without actually removing containers",
+            help=(
+                "Show what would be cleaned up without making changes. "
+                "RECOMMENDED: Always run this first to verify cleanup scope. "
+                "Safe to run in production for impact assessment."
+            ),
         )
         parser.add_argument(
             "--force",
             action="store_true",
-            help="Force cleanup even if disabled in settings",
+            help=(
+                "Force cleanup even if disabled in settings. "
+                "WARNING: Use with caution in production environments. "
+                "Overrides CLEANUP_ENABLED=False setting."
+            ),
         )
 
     def handle(self, *args, **options):
