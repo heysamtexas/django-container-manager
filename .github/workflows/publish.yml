@@ -40,7 +40,7 @@ jobs:
         version: "latest"
     - name: Install dependencies and run tests
       run: |
-        uv sync
+        uv sync --extra dev
         uv run python manage.py test
     - name: Run code quality checks
       run: |
