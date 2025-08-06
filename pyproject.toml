@@ -75,6 +75,7 @@ Issues = "https://github.com/heysamtexas/django-container-manager/issues"
 Changelog = "https://github.com/heysamtexas/django-container-manager/blob/main/CHANGELOG.md"
 
 
+
 [tool.hatch.version]
 path = "container_manager/__init__.py"
 
