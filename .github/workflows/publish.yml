@@ -54,7 +54,7 @@ jobs:
     - build
     - test
     runs-on: ubuntu-latest
-    environment: pypi  # Use GitHub environment for manual approval
+    # environment: pypi  # Temporarily disabled for initial publication
     permissions:
       id-token: write  # MANDATORY: needed for trusted publishing
     steps:
