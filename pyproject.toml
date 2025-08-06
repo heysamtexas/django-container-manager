@@ -10,10 +10,10 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
-    {name = "Sam Texas", email = "sam@example.com"},
+    {name = "Sam Texas", email = "dev@simplecto.com"},
 ]
 maintainers = [
-    {name = "Sam Texas", email = "sam@example.com"},
+    {name = "Sam Texas", email = "dev@simplecto.com"},
 ]
 keywords = [
     "django",
@@ -66,14 +66,12 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/samtexas/django-container-manager"
-Documentation = "https://github.com/samtexas/django-container-manager/tree/main/docs"
-Repository = "https://github.com/samtexas/django-container-manager.git"
-Issues = "https://github.com/samtexas/django-container-manager/issues"
-Changelog = "https://github.com/samtexas/django-container-manager/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/heysamtexas/django-container-manager"
+Documentation = "https://github.com/heysamtexas/django-container-manager/tree/main/docs"
+Repository = "https://github.com/heysamtexas/django-container-manager.git"
+Issues = "https://github.com/heysamtexas/django-container-manager/issues"
+Changelog = "https://github.com/heysamtexas/django-container-manager/blob/main/CHANGELOG.md"
 
-[project.scripts]
-django-container-manager = "container_manager.cli:main"
 
 [tool.hatch.version]
 path = "container_manager/__init__.py"
@@ -184,6 +182,7 @@ django_settings_module = "tests.settings"
 
 [dependency-groups]
 dev = [
+    "build>=1.3.0",
     "coverage>=7.10.0",
 ]
 
