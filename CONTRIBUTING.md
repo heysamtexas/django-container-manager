@@ -125,8 +125,23 @@ Recommended extensions:
 
 ### Development Workflow
 
-#### Pre-Commit Requirements (MANDATORY)
-Before any commit, run this exact sequence:
+#### ⚡ Quick Development (Recommended)
+
+**Vibe coding with Makefile automation:**
+
+```bash
+# Pre-commit check (all-in-one)
+make ready                               # Fixes formatting + runs tests
+
+# Individual commands
+make test                                # Run tests only
+make check                               # Quality checks only  
+make fix                                 # Fix formatting/linting
+make coverage                            # Test coverage report
+```
+
+#### Manual Pre-Commit Requirements (MANDATORY)
+If not using Makefile, run this exact sequence:
 ```bash
 1. uv run python manage.py test          # ALL tests must pass
 2. uv run ruff check .                   # Linting must pass  
@@ -435,11 +450,11 @@ This project includes comprehensive guidelines for LLM (Large Language Model) ag
 
 2. **Run full test suite**:
    ```bash
+   # Quick way (recommended)
+   make ready
+   
+   # Or manually
    uv run python manage.py test
-   ```
-
-3. **Check code style**:
-   ```bash
    uv run ruff check .
    uv run ruff format .
    ```
@@ -539,6 +554,56 @@ For security vulnerabilities:
 - Email maintainers directly (when available)
 - Provide detailed information privately
 - Allow time for fix before disclosure
+
+## 🚀 Release Management
+
+### For Maintainers
+
+**Automated releases with Makefile:**
+
+```bash
+# Quick patch release (1.0.3 → 1.0.4)
+make release-patch
+
+# Minor release (1.0.3 → 1.1.0)  
+make release-minor
+
+# Major release (1.0.3 → 2.0.0)
+make release-major
+```
+
+Each command automatically:
+- Fixes code formatting with `ruff`
+- Runs complete test suite
+- Bumps version in `__init__.py`
+- Creates git commit and tag
+- Pushes to GitHub
+- Creates GitHub release with generated notes
+- Triggers PyPI publication via GitHub Actions
+
+**Manual release process:**
+
+```bash
+# 1. Prepare release
+make ready                               # Test + format
+git add . && git commit -m "Prepare release"
+
+# 2. Update version manually in container_manager/__init__.py
+# 3. Create tag and release
+git tag v1.0.4
+git push origin main
+git push origin v1.0.4
+gh release create v1.0.4 --generate-notes
+```
+
+### Release Checklist
+
+- [ ] All tests passing (`make test`)
+- [ ] Code quality checks pass (`make check`)
+- [ ] `CHANGELOG.md` updated (optional, generated automatically)
+- [ ] Version number follows [semantic versioning](https://semver.org/)
+- [ ] GitHub Actions pipeline completes successfully
+- [ ] PyPI package published automatically
 
 ## Feature Requests
 
