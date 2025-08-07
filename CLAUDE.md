@@ -8,6 +8,31 @@ This is a Django application for full lifecycle management of Docker containers.
 
 ## Development Commands
 
+### ⚡ Vibe Coding Commands (Recommended)
+
+**Fast workflow with Makefile automation:**
+```bash
+# Quick development cycle
+make test                                # Fast test feedback
+make ready                               # Fix + test (pre-commit)
+make check                               # Quality checks only
+make fix                                 # Fix formatting/linting
+make coverage                            # Coverage report
+
+# Instant releases
+make release-patch                       # 1.0.3 → 1.0.4 (automated)
+make release-minor                       # 1.0.3 → 1.1.0 (automated)
+make release-major                       # 1.0.3 → 2.0.0 (automated)
+```
+
+**Each release command automatically:**
+- Runs `make ready` (fix + test)
+- Bumps version in `__init__.py`
+- Creates git commit with proper message format
+- Creates and pushes git tag
+- Creates GitHub release
+- Triggers PyPI publication via GitHub Actions
+
 ### Environment Setup
 ```bash
 # Initialize virtual environment and install dependencies
@@ -23,7 +48,9 @@ uv run python manage.py createsuperuser
 uv run python manage.py runserver
 ```
 
-### Code Quality
+### Manual Commands (Fallback)
+
+**Code Quality:**
 ```bash
 # Format code with ruff
 uv run ruff format .
@@ -35,7 +62,7 @@ uv run ruff check .
 uv run ruff check --fix .
 ```
 
-### Testing
+**Testing:**
 ```bash
 # Run all tests
 uv run python manage.py test
@@ -62,7 +89,12 @@ uv run python manage.py test container_manager
 - **Strongly prefer writing tests for the Django suite rather than doing inlines or shells**
 
 ### Pre-Commit Checklist
-**Required sequence before any commit:**
+**⚡ Fast way (recommended):**
+```bash
+make ready                               # Fix + test (all-in-one)
+```
+
+**Manual sequence (fallback):**
 ```bash
 1. uv run python manage.py test          # ALL tests must pass
 2. uv run ruff check .                   # Linting must pass  
@@ -360,6 +392,98 @@ def test_harvest_job_with_failed_execution_updates_exit_code(self):
 ### Version Control Best Practices
 - Remember to commit often as a means of checkpointing your progress. Do not be shy to rollback, branch, or use git to its fullest potential.
 - **Testing discipline must be as rigorous as code quality standards**
+
+## 🚀 Vibe Coding with Claude Code
+
+### Rapid Development Workflow
+
+**For Claude Code sessions, use this optimized workflow:**
+
+1. **Start coding** - Make changes to code, tests, or docs
+2. **Quick check:** `make ready` - Fixes formatting + runs tests automatically  
+3. **Commit changes:** Normal git workflow with descriptive messages
+4. **Ship when ready:** `make release-patch` - Complete automated release
+
+### Claude Code Specific Notes
+
+**Best Practices:**
+- Use `make test` for fast feedback during development iterations
+- Use `make ready` before any commit to ensure quality
+- Use `make release-patch` when feature/fix is complete for immediate PyPI publication
+- The entire release process (version bump, git operations, PyPI publishing) is fully automated
+
+**Automation Benefits:**
+- **Zero manual steps** for releases - just `make release-patch`
+- **Consistent code quality** - automated formatting and linting
+- **Immediate feedback** - tests run in <20 seconds typically
+- **Production deployment** - PyPI publication within minutes via GitHub Actions
+- **Complete traceability** - all releases tracked in GitHub with generated release notes
+
+**Claude Code Integration:**
+- Commands are designed to be simple and memorable for AI assistants
+- All common tasks have single-word make targets: `test`, `ready`, `fix`, `check`
+- Release automation eliminates multi-step manual processes
+- Error messages are clear and actionable for debugging
+
+**Typical Claude Session:**
+```bash
+# 1. Make code changes
+# 2. Test changes
+make ready
+
+# 3. Commit to git
+git add . && git commit -m "Add new feature"
+
+# 4. Release immediately (optional)
+make release-patch    # → Live on PyPI in ~5 minutes
+```
+
+**File Locations:**
+- **[Makefile](../Makefile)** - All automation commands
+- **[VIBE_CODING.md](../VIBE_CODING.md)** - User-facing quick reference
+- **[.github/workflows/publish.yml](../.github/workflows/publish.yml)** - PyPI trusted publishing
+
+### 🔒 PyPI Environment Protection
+
+**Security Context:**
+This repository uses GitHub Environment Protection for enhanced PyPI release security. The setup provides:
+
+- **Branch Protection**: Only `main` branch and `v*` tags can trigger releases
+- **Audit Logging**: Complete trail of who released what and when
+- **Access Control**: Environment-level permissions and review requirements
+- **Trusted Publishing**: OIDC-based authentication (no API keys stored)
+
+**For AI Agents:**
+- **Normal workflow unchanged**: `make release-patch` works exactly the same
+- **Transparent security**: Protection runs automatically in GitHub Actions
+- **Environment config**: Located at GitHub Settings → Environments → pypi
+- **Troubleshooting**: If release fails with "not allowed to deploy", check environment rules
+
+**Current Configuration:**
+```yaml
+# .github/workflows/publish.yml
+publish-to-pypi:
+  environment: pypi  # ← This enables protection
+  permissions:
+    id-token: write  # For trusted publishing
+```
+
+**Protection Rules Active:**
+- ✅ Deployment from `main` branch allowed
+- ✅ Deployment from `v*` tags allowed (v1.0.11, v1.2.3, etc.)
+- ✅ All releases logged in environment deployment history
+- ✅ No manual approval required (optimized for AI workflows)
+
+**Why This Matters:**
+Environment protection was temporarily disabled during initial PyPI setup but has been re-enabled to provide:
+1. **Security audit trail** for all production releases
+2. **Branch protection** preventing accidental releases from feature branches  
+3. **Future extensibility** for manual approvals if needed later
+
+**AI Agent Notes:**
+- This setup is **invisible** to your normal workflow - releases work the same
+- If you see environment-related errors, check the deployment branch policies
+- The security is designed to enhance, not interfere with, automated releases
 
 ## System Design Notes
 

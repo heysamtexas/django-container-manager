@@ -76,6 +76,20 @@ pip index versions django-container-manager
 - Trusted publishing (no API keys)
 - Automated quality gates
 
+## 🔒 Environment Protection
+
+**PyPI Release Security:**
+- GitHub environment protection active
+- Only `main` branch and `v*` tags allowed
+- Complete audit trail for all releases
+- No API keys - uses OIDC trusted publishing
+
+**For AI Agents:**
+- **Zero workflow changes** - `make release-patch` works the same
+- **Automatic security** - protection runs in GitHub Actions  
+- **Troubleshooting**: "not allowed to deploy" = check branch policies
+- **Transparent operation** - you won't notice it unless something breaks
+
 ## 📋 All Commands
 
 ```bash

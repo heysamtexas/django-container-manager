@@ -438,30 +438,72 @@ uv sync --extra dev
 pip install -e ".[dev]"
 ```
 
-### Running Tests
+### ⚡ Quick Development Commands
+
+**For vibe coding with Claude Code:**
+
+```bash
+# Run tests (fast feedback)
+make test
+
+# Quality check (before commits)
+make check
+
+# Fix formatting/linting
+make fix
+
+# Pre-commit check (fix + test)
+make ready
+
+# Test coverage report
+make coverage
+```
+
+### 🚀 Release Automation
+
+**One-command releases:**
+
+```bash
+# Quick patch release (1.0.3 → 1.0.4)
+make release-patch
+
+# Minor release (1.0.3 → 1.1.0) 
+make release-minor
+
+# Major release (1.0.3 → 2.0.0)
+make release-major
+```
+
+Each release automatically:
+- Fixes code formatting
+- Runs full test suite  
+- Bumps version number
+- Creates git commit and tag
+- Pushes to GitHub
+- Creates GitHub release
+- Triggers PyPI publication via GitHub Actions
+
+**Security:** Releases use GitHub environment protection for enhanced security and audit logging. See [CLAUDE.md](CLAUDE.md#-pypi-environment-protection) for full details.
+
+### Manual Development Commands
 
 ```bash
 # Run all tests
-python manage.py test
+uv run python manage.py test
 
 # Run with coverage
-pytest --cov=container_manager
+uv run coverage run --source=container_manager manage.py test
+uv run coverage report
 
-# Run specific test categories
-pytest -m unit  # Unit tests only
-pytest -m integration  # Integration tests only
-```
-
-### Code Quality
-
-```bash
 # Format and lint with ruff
 uv run ruff format .
 uv run ruff check .
 
-# Type checking
-uv run mypy container_manager
+# Build package
+uv run python -m build
 ```
+
+**See [VIBE_CODING.md](VIBE_CODING.md) for complete automation reference.**
 
 ## 📚 Documentation
 
