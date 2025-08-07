@@ -90,6 +90,9 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ github.token }}
       run: >-
-        gh release upload
-        '${{ github.ref_name }}' dist/**
+        gh release create
+        '${{ github.ref_name }}'
+        dist/**
+        --title "Django Container Manager ${{ github.ref_name }}"
+        --generate-notes
         --repo '${{ github.repository }}'

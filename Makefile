@@ -56,17 +56,12 @@ _release:
 	@echo "📝 Bumping version: $(CURRENT_VERSION) → $(NEW_VERSION)"
 	@sed -i '' 's/__version__ = ".*"/__version__ = "$(NEW_VERSION)"/' container_manager/__init__.py
 	@git add container_manager/__init__.py
-	@git commit -m "Bump version to $(NEW_VERSION)
-
-🚀 Generated with [Claude Code](https://claude.ai/code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>"
+	@git commit -m "Bump version to $(NEW_VERSION)" -m "" -m "🚀 Generated with [Claude Code](https://claude.ai/code)" -m "" -m "Co-Authored-By: Claude <noreply@anthropic.com>"
 	@git tag v$(NEW_VERSION)
 	@git push origin main
 	@git push origin v$(NEW_VERSION)
-	@gh release create v$(NEW_VERSION) --title "Django Container Manager v$(NEW_VERSION)" --generate-notes
-	@echo "🎉 Release v$(NEW_VERSION) created successfully!"
-	@echo "📦 PyPI publication will begin automatically via GitHub Actions"
+	@echo "🎉 Version v$(NEW_VERSION) tagged and pushed successfully!"
+	@echo "📦 GitHub Actions will create the release and publish to PyPI automatically"
 
 # 🧹 Clean build artifacts
 clean:
