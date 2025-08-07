@@ -680,6 +680,218 @@ class JobQueueManager:
         
         logger.info(f"Queue processing stopped after {stats['iterations']} iterations, launched {stats['jobs_launched']} jobs")
         return stats
+    
+    def process_queue_with_graceful_shutdown(self, max_concurrent=5, poll_interval=10, shutdown_timeout=30):
+        """
+        Process queue with comprehensive graceful shutdown handling.
+        
+        Args:
+            max_concurrent: Maximum concurrent jobs
+            poll_interval: Seconds between queue checks
+            shutdown_timeout: Timeout for graceful shutdown
+            
+        Returns:
+            dict: Processing statistics
+        """
+        from container_manager.signals import GracefulShutdown, JobCompletionTracker
+        
+        # Initialize shutdown handler and job tracker
+        shutdown_handler = GracefulShutdown(timeout=shutdown_timeout)
+        job_tracker = JobCompletionTracker()
+        
+        # Set up signal handlers with status callback
+        def status_callback():
+            metrics = self.get_worker_metrics()
+            tracking_stats = job_tracker.get_stats()
+            logger.info(f"Queue metrics: {metrics}, Job tracking: {tracking_stats}")
+            print(f"Status: Queue={metrics}, Jobs={tracking_stats}")  # For operators
+            
+        shutdown_handler.setup_signal_handlers(status_callback)
+        
+        logger.info(f"Starting graceful queue processor (max_concurrent={max_concurrent}, shutdown_timeout={shutdown_timeout}s)")
+        
+        stats = {
+            'iterations': 0,
+            'jobs_launched': 0,
+            'jobs_completed': 0,
+            'errors': [],
+            'shutdown_time': None,
+            'clean_shutdown': False,
+            'jobs_interrupted': 0
+        }
+        
+        try:
+            while not shutdown_handler.is_shutdown_requested():
+                stats['iterations'] += 1
+                
+                try:
+                    # Launch ready jobs with tracking
+                    result = self._launch_batch_with_tracking(
+                        max_concurrent=max_concurrent,
+                        job_tracker=job_tracker
+                    )
+                    
+                    stats['jobs_launched'] += result['launched']
+                    if result['errors']:
+                        stats['errors'].extend(result['errors'])
+                    
+                    # Log activity
+                    if result['launched'] > 0 or result['errors']:
+                        logger.info(
+                            f"Iteration {stats['iterations']}: "
+                            f"launched {result['launched']}, "
+                            f"errors {len(result['errors'])}, "
+                            f"running {job_tracker.get_running_count()}"
+                        )
+                
+                except Exception as e:
+                    error_msg = f"Error in iteration {stats['iterations']}: {str(e)}"
+                    logger.exception(error_msg)
+                    stats['errors'].append(error_msg)
+                
+                # Wait with early shutdown detection
+                shutdown_handler.wait_for_shutdown(poll_interval)
+                
+            # Shutdown requested - enter graceful shutdown phase
+            stats['shutdown_time'] = timezone.now()
+            logger.info("Graceful shutdown initiated")
+            
+            # Stop launching new jobs, wait for running jobs to complete
+            running_count = job_tracker.get_running_count()
+            if running_count > 0:
+                logger.info(f"Waiting for {running_count} running jobs to complete (timeout: {shutdown_timeout}s)...")
+                
+                completed = job_tracker.wait_for_completion(
+                    timeout=shutdown_timeout,
+                    poll_interval=1
+                )
+                
+                if completed:
+                    logger.info("All jobs completed successfully during shutdown")
+                    stats['clean_shutdown'] = True
+                else:
+                    running_jobs = job_tracker.get_running_jobs()
+                    logger.warning(f"Forced shutdown with {len(running_jobs)} jobs still running: {running_jobs}")
+                    stats['jobs_interrupted'] = len(running_jobs)
+            else:
+                logger.info("No running jobs, clean shutdown")
+                stats['clean_shutdown'] = True
+                
+        except KeyboardInterrupt:
+            logger.info("Queue processing interrupted by keyboard")
+            stats['shutdown_time'] = timezone.now()
+        except Exception as e:
+            logger.exception(f"Fatal error in graceful queue processing: {e}")
+            stats['errors'].append(f"Fatal error: {str(e)}")
+            
+        finally:
+            # Final cleanup and logging
+            final_tracking_stats = job_tracker.get_stats()
+            logger.info(f"Queue processor finished. Stats: {stats}, Job tracking: {final_tracking_stats}")
+            
+        return stats
+    
+    def _launch_batch_with_tracking(self, max_concurrent, job_tracker):
+        """
+        Launch jobs with completion tracking.
+        
+        Args:
+            max_concurrent: Maximum concurrent jobs
+            job_tracker: JobCompletionTracker instance
+            
+        Returns:
+            dict: Launch results
+        """
+        from container_manager.models import ContainerJob
+        
+        # Check available slots (account for jobs we're tracking)
+        running_count = job_tracker.get_running_count()
+        available_slots = max(0, max_concurrent - running_count)
+        
+        if available_slots == 0:
+            return {'launched': 0, 'errors': []}
+        
+        # Get ready jobs
+        ready_jobs = self.get_ready_jobs(limit=available_slots)
+        
+        launched_count = 0
+        errors = []
+        
+        for job in ready_jobs:
+            try:
+                # Add to tracker before launching
+                job_tracker.add_running_job(job.id)
+                
+                # Use existing launch method with retry logic
+                result = self.launch_job_with_retry(job)
+                
+                if result['success']:
+                    launched_count += 1
+                    logger.debug(f"Launched job {job.id} successfully")
+                    
+                    # Start monitoring for completion in background
+                    self._monitor_job_completion_background(job, job_tracker)
+                else:
+                    # Launch failed, remove from tracker
+                    job_tracker.mark_job_completed(job.id)
+                    error_msg = f"Job {job.id}: {result['error']}"
+                    errors.append(error_msg)
+                    logger.warning(error_msg)
+                    
+            except Exception as e:
+                # Launch error, remove from tracker
+                job_tracker.mark_job_completed(job.id)
+                error_msg = f"Job {job.id}: {str(e)}"
+                errors.append(error_msg)
+                logger.exception(f"Error launching job {job.id}")
+                
+        return {'launched': launched_count, 'errors': errors}
+        
+    def _monitor_job_completion_background(self, job, job_tracker):
+        """
+        Monitor job completion in background thread.
+        
+        Args:
+            job: ContainerJob instance
+            job_tracker: JobCompletionTracker instance
+        """
+        def monitor():
+            try:
+                logger.debug(f"Starting background monitoring for job {job.id}")
+                
+                # Poll job status until completion
+                max_checks = 1200  # 5 seconds * 1200 = 1 hour max
+                check_count = 0
+                
+                while check_count < max_checks:
+                    time.sleep(5)  # Check every 5 seconds
+                    check_count += 1
+                    
+                    try:
+                        job.refresh_from_db()
+                        
+                        if job.status in ['completed', 'failed', 'cancelled', 'timeout']:
+                            job_tracker.mark_job_completed(job.id)
+                            logger.debug(f"Job {job.id} completed with status: {job.status}")
+                            return
+                            
+                    except Exception as e:
+                        logger.error(f"Error refreshing job {job.id} status: {e}")
+                        # Continue monitoring, might be temporary DB issue
+                
+                # If we get here, job has been running too long
+                logger.warning(f"Job {job.id} monitoring timeout after {max_checks} checks, assuming completed")
+                job_tracker.mark_job_completed(job.id)
+                        
+            except Exception as e:
+                logger.error(f"Error in background monitoring for job {job.id}: {e}")
+                # Mark as completed to prevent hanging
+                job_tracker.mark_job_completed(job.id)
+                
+        # Start monitoring thread
+        monitor_thread = threading.Thread(target=monitor, daemon=True, name=f"JobMonitor-{job.id}")
+        monitor_thread.start()
+        logger.debug(f"Started background monitoring thread for job {job.id}")
 
 
 # Module-level instance for easy importing
