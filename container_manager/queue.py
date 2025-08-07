@@ -615,6 +615,71 @@ class JobQueueManager:
                 retry_count__gte=F('max_retries')
             ).count()
         }
+    
+    def process_queue_continuous(self, max_concurrent=5, poll_interval=10, shutdown_event=None):
+        """
+        Process queue continuously until shutdown event is set.
+        
+        Args:
+            max_concurrent: Maximum concurrent jobs to launch
+            poll_interval: Polling interval in seconds
+            shutdown_event: Threading event to signal shutdown
+            
+        Returns:
+            dict: Processing statistics
+        """
+        import time
+        
+        stats = {
+            'iterations': 0,
+            'jobs_launched': 0,
+            'errors': []
+        }
+        
+        logger.info(f"Starting continuous queue processing (max_concurrent={max_concurrent}, poll_interval={poll_interval})")
+        
+        try:
+            while not (shutdown_event and shutdown_event.is_set()):
+                try:
+                    # Process one batch
+                    result = self.launch_next_batch(max_concurrent=max_concurrent)
+                    
+                    stats['iterations'] += 1
+                    stats['jobs_launched'] += result['launched']
+                    
+                    if result['errors']:
+                        stats['errors'].extend(result['errors'])
+                    
+                    # Log progress if jobs were launched
+                    if result['launched'] > 0:
+                        logger.info(f"Launched {result['launched']} jobs (iteration {stats['iterations']})")
+                    
+                    # Check shutdown before sleeping
+                    if shutdown_event and shutdown_event.is_set():
+                        break
+                    
+                    # Sleep with interrupt checking
+                    for _ in range(poll_interval):
+                        if shutdown_event and shutdown_event.is_set():
+                            break
+                        time.sleep(1)
+                        
+                except Exception as e:
+                    error_msg = f"Error in queue processing iteration {stats['iterations']}: {str(e)}"
+                    logger.exception(error_msg)
+                    stats['errors'].append(error_msg)
+                    
+                    # Sleep longer after errors
+                    for _ in range(poll_interval * 2):
+                        if shutdown_event and shutdown_event.is_set():
+                            break
+                        time.sleep(1)
+                        
+        except KeyboardInterrupt:
+            logger.info("Queue processing interrupted by keyboard")
+        
+        logger.info(f"Queue processing stopped after {stats['iterations']} iterations, launched {stats['jobs_launched']} jobs")
+        return stats
 
 
 # Module-level instance for easy importing
