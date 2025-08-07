@@ -5,7 +5,7 @@ A Django app for container orchestration with multi-executor support.
 Supports Docker, Google Cloud Run, AWS Fargate, and custom executors.
 """
 
-__version__ = "1.0.6"
+__version__ = "1.0.7"
 __author__ = "Sam Texas"
 __email__ = "dev@simplecto.com"
 
