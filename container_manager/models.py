@@ -7,9 +7,13 @@ from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+from django.utils import timezone
 
 # Constants
-# (No constants currently defined)
+# Priority constants for queue management
+PRIORITY_HIGH = 80
+PRIORITY_NORMAL = 50  
+PRIORITY_LOW = 20
 
 
 class EnvironmentVariableTemplate(models.Model):
@@ -466,12 +470,14 @@ class ContainerJob(models.Model):
 
     STATUS_CHOICES: ClassVar = [
         ("pending", "Pending"),
-        ("launching", "Launching"),
+        ("queued", "Queued"),
+        ("launching", "Launching"), 
         ("running", "Running"),
         ("completed", "Completed"),
         ("failed", "Failed"),
         ("timeout", "Timeout"),
         ("cancelled", "Cancelled"),
+        ("retrying", "Retrying"),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -576,6 +582,60 @@ class ContainerJob(models.Model):
         blank=True, help_text="Stdout with timestamps and metadata stripped"
     )
 
+    # Queue State Fields (Queue Management System)
+    queued_at = models.DateTimeField(
+        null=True, blank=True, db_index=True,
+        help_text="When job was added to queue for execution"
+    )
+    
+    scheduled_for = models.DateTimeField(
+        null=True, blank=True, db_index=True,
+        help_text="When job should be launched (for scheduled execution)"
+    )
+    
+    launched_at = models.DateTimeField(
+        null=True, blank=True, db_index=True,
+        help_text="When job container was actually launched"
+    )
+    
+    retry_count = models.IntegerField(
+        default=0,
+        help_text="Number of launch attempts made"
+    )
+    
+    max_retries = models.IntegerField(
+        default=3,
+        help_text="Maximum launch attempts before giving up"
+    )
+    
+    priority = models.IntegerField(
+        default=50,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text="Job priority (0-100, higher numbers = higher priority)"
+    )
+    
+    # Retry information fields
+    last_error = models.TextField(
+        blank=True, null=True,
+        help_text="Last error message from failed launch attempt"
+    )
+    
+    last_error_at = models.DateTimeField(
+        blank=True, null=True,
+        help_text="When the last error occurred"
+    )
+    
+    retry_strategy = models.CharField(
+        max_length=50, blank=True, null=True,
+        choices=[
+            ('default', 'Default'),
+            ('aggressive', 'Aggressive'),
+            ('conservative', 'Conservative'),
+            ('high_priority', 'High Priority'),
+        ],
+        help_text="Retry strategy to use for this job"
+    )
+
     # Basic metadata
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -591,6 +651,7 @@ class ContainerJob(models.Model):
         verbose_name_plural = "Container Jobs"
         ordering: ClassVar = ["-created_at"]
         indexes: ClassVar = [
+            # Existing indexes
             models.Index(
                 fields=["status", "created_at"], name="cjob_status_created_idx"
             ),
@@ -599,6 +660,13 @@ class ContainerJob(models.Model):
             ),
             models.Index(fields=["docker_host", "status"], name="cjob_host_status_idx"),
             models.Index(fields=["status"], name="cjob_status_idx"),
+            
+            # Queue management indexes
+            models.Index(fields=["queued_at", "launched_at"], name="cjob_queue_launched_idx"),
+            models.Index(fields=["scheduled_for", "queued_at"], name="cjob_scheduled_queue_idx"),
+            models.Index(fields=["queued_at", "retry_count"], name="cjob_queue_retry_idx"),
+            models.Index(fields=["priority", "queued_at"], name="cjob_priority_queue_idx"),
+            models.Index(fields=["status", "queued_at"], name="cjob_status_queue_idx"),
         ]
 
     def __str__(self):
@@ -637,6 +705,115 @@ class ContainerJob(models.Model):
         if self.started_at and self.completed_at:
             return self.completed_at - self.started_at
         return None
+
+    @property
+    def is_queued(self):
+        """Job is queued for execution but not yet launched"""
+        return self.queued_at is not None and self.launched_at is None
+
+    @property
+    def is_ready_to_launch(self):
+        """Job is ready to launch (queued and scheduled time has passed)"""
+        if not self.is_queued:
+            return False
+        if self.scheduled_for and self.scheduled_for > timezone.now():
+            return False
+        if self.retry_count >= self.max_retries:
+            return False
+        return True
+
+    @property
+    def queue_status(self):
+        """Human-readable queue status"""
+        if not self.queued_at:
+            return 'not_queued'
+        elif not self.launched_at:
+            if self.scheduled_for and self.scheduled_for > timezone.now():
+                return 'scheduled'
+            elif self.retry_count >= self.max_retries:
+                return 'launch_failed'
+            else:
+                return 'queued'
+        else:
+            return 'launched'
+
+    # State Machine Validation
+    VALID_TRANSITIONS = {
+        'pending': ['queued', 'running', 'cancelled'],
+        'queued': ['running', 'failed', 'retrying', 'cancelled'],
+        'running': ['completed', 'failed', 'timeout', 'cancelled'],
+        'failed': ['retrying', 'cancelled'],
+        'retrying': ['queued', 'failed', 'cancelled'],
+        'completed': [],  # Terminal state
+        'timeout': [],    # Terminal state
+        'cancelled': [],  # Terminal state
+    }
+
+    def can_transition_to(self, new_status):
+        """Check if transition to new status is valid"""
+        valid_transitions = self.VALID_TRANSITIONS.get(self.status, [])
+        return new_status in valid_transitions
+
+    def transition_to(self, new_status, save=True):
+        """Safely transition to new status with validation"""
+        if not self.can_transition_to(new_status):
+            raise ValueError(
+                f"Invalid transition from {self.status} to {new_status}. "
+                f"Valid transitions: {self.VALID_TRANSITIONS.get(self.status, [])}"
+            )
+        
+        old_status = self.status
+        self.status = new_status
+        
+        # Update timestamps based on status
+        if new_status == 'running' and not self.launched_at:
+            self.launched_at = timezone.now()
+        elif new_status == 'completed' and not self.completed_at:
+            self.completed_at = timezone.now()
+        
+        if save:
+            update_fields = ['status']
+            # Add timestamp fields if they were updated
+            if new_status == 'running' and not self.launched_at:
+                update_fields.append('launched_at')
+            elif new_status == 'completed' and not self.completed_at:
+                update_fields.append('completed_at')
+            
+            self.save(update_fields=update_fields)
+        
+        return True
+
+    # Helper methods for common state transitions
+    def mark_as_queued(self, scheduled_for=None):
+        """Mark job as queued with proper state transition"""
+        self.transition_to('queued', save=False)
+        self.queued_at = timezone.now()
+        if scheduled_for:
+            self.scheduled_for = scheduled_for
+        self.save(update_fields=['status', 'queued_at', 'scheduled_for'])
+
+    def mark_as_running(self):
+        """Mark job as running with proper state transition"""
+        self.transition_to('running', save=False)
+        if not self.launched_at:
+            self.launched_at = timezone.now()
+        self.save(update_fields=['status', 'launched_at'])
+
+    def mark_as_completed(self):
+        """Mark job as completed with proper state transition"""
+        self.transition_to('completed', save=False)
+        if not self.completed_at:
+            self.completed_at = timezone.now()
+        self.save(update_fields=['status', 'completed_at'])
+
+    def mark_as_failed(self, should_retry=False):
+        """Mark job as failed, optionally setting up retry"""
+        if should_retry and self.retry_count < self.max_retries:
+            self.transition_to('retrying', save=False)
+            self.retry_count += 1
+            self.save(update_fields=['status', 'retry_count'])
+        else:
+            self.transition_to('failed')
 
     def get_execution_identifier(self) -> str:
         """
@@ -892,3 +1069,19 @@ class ContainerJob(models.Model):
         # Validate docker_image is provided
         if not self.docker_image:
             raise ValidationError("Docker image is required")
+
+    def save(self, *args, **kwargs):
+        """Override save to validate state transitions"""
+        if self.pk:  # Existing object - check for status changes
+            try:
+                old_obj = ContainerJob.objects.get(pk=self.pk)
+                if old_obj.status != self.status:
+                    # Validate transition
+                    if not old_obj.can_transition_to(self.status):
+                        raise ValueError(
+                            f"Invalid status transition: {old_obj.status} -> {self.status}"
+                        )
+            except ContainerJob.DoesNotExist:
+                pass  # New object, no validation needed
+        
+        super().save(*args, **kwargs)
