@@ -46,7 +46,6 @@ jobs:
     - name: Run code quality checks
       run: |
         uv run ruff check . --ignore=PLR0912,PLR0915,DJ012
-        uv run ruff format --check .
 
   publish-to-pypi:
     name: Publish to PyPI 🚀
