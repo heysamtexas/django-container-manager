@@ -234,3 +234,19 @@ fail_under = 75
 [tool.coverage.html]
 directory = "htmlcov"
 title = "Container Manager Coverage Report"
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+tag_format = "v$version"
+version_scheme = "pep440"
+version_provider = "scm"
+version_files = [
+    "container_manager/__init__.py:__version__"
+]
+update_changelog_on_bump = true
+major_version_zero = false
+
+[dependency-groups]
+dev = [
+    "commitizen>=4.8.3",
+]

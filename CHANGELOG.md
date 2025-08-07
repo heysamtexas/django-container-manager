@@ -42,8 +42,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Troubleshooting documentation
 - Contributing guidelines
 
-## [Unreleased]
+## v1.0.13 (2025-08-07)
 
-### Changed
-- Removed CLI entry point to focus on Django-native functionality
-- Cleaned up package structure for PyPI distribution
+## v1.0.12 (2025-08-07)
+
+## v1.0.11 (2025-08-07)
+
+## v1.0.10 (2025-08-07)
+
+## v1.0.9 (2025-08-07)
+
+## v1.0.8 (2025-08-07)
+
+## v1.0.7 (2025-08-07)
+
+## v1.0.6 (2025-08-07)
+
+## v1.0.5 (2025-08-07)
+
+## v1.0.4 (2025-08-07)
+
+## v1.0.3 (2025-08-07)
+
+## v1.0.1 (2025-08-06)
+
+## v1.0.0 (2025-08-06)
+
+### Feat
+
+- expand management command test coverage to 55%+ with comprehensive business logic testing
+- implement comprehensive code coverage infrastructure and management command testing
