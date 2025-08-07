@@ -12,7 +12,7 @@ from django.utils import timezone
 # Constants
 # Priority constants for queue management
 PRIORITY_HIGH = 80
-PRIORITY_NORMAL = 50  
+PRIORITY_NORMAL = 50
 PRIORITY_LOW = 20
 
 
@@ -471,7 +471,7 @@ class ContainerJob(models.Model):
     STATUS_CHOICES: ClassVar = [
         ("pending", "Pending"),
         ("queued", "Queued"),
-        ("launching", "Launching"), 
+        ("launching", "Launching"),
         ("running", "Running"),
         ("completed", "Completed"),
         ("failed", "Failed"),
@@ -587,44 +587,44 @@ class ContainerJob(models.Model):
         null=True, blank=True, db_index=True,
         help_text="When job was added to queue for execution"
     )
-    
+
     scheduled_for = models.DateTimeField(
         null=True, blank=True, db_index=True,
         help_text="When job should be launched (for scheduled execution)"
     )
-    
+
     launched_at = models.DateTimeField(
         null=True, blank=True, db_index=True,
         help_text="When job container was actually launched"
     )
-    
+
     retry_count = models.IntegerField(
         default=0,
         help_text="Number of launch attempts made"
     )
-    
+
     max_retries = models.IntegerField(
         default=3,
         help_text="Maximum launch attempts before giving up"
     )
-    
+
     priority = models.IntegerField(
         default=50,
         validators=[MinValueValidator(0), MaxValueValidator(100)],
         help_text="Job priority (0-100, higher numbers = higher priority)"
     )
-    
+
     # Retry information fields
     last_error = models.TextField(
         blank=True, null=True,
         help_text="Last error message from failed launch attempt"
     )
-    
+
     last_error_at = models.DateTimeField(
         blank=True, null=True,
         help_text="When the last error occurred"
     )
-    
+
     retry_strategy = models.CharField(
         max_length=50, blank=True, null=True,
         choices=[
@@ -660,7 +660,7 @@ class ContainerJob(models.Model):
             ),
             models.Index(fields=["docker_host", "status"], name="cjob_host_status_idx"),
             models.Index(fields=["status"], name="cjob_status_idx"),
-            
+
             # Queue management indexes
             models.Index(fields=["queued_at", "launched_at"], name="cjob_queue_launched_idx"),
             models.Index(fields=["scheduled_for", "queued_at"], name="cjob_scheduled_queue_idx"),
@@ -718,9 +718,7 @@ class ContainerJob(models.Model):
             return False
         if self.scheduled_for and self.scheduled_for > timezone.now():
             return False
-        if self.retry_count >= self.max_retries:
-            return False
-        return True
+        return not self.retry_count >= self.max_retries
 
     @property
     def queue_status(self):
@@ -762,16 +760,15 @@ class ContainerJob(models.Model):
                 f"Invalid transition from {self.status} to {new_status}. "
                 f"Valid transitions: {self.VALID_TRANSITIONS.get(self.status, [])}"
             )
-        
-        old_status = self.status
+
         self.status = new_status
-        
+
         # Update timestamps based on status
         if new_status == 'running' and not self.launched_at:
             self.launched_at = timezone.now()
         elif new_status == 'completed' and not self.completed_at:
             self.completed_at = timezone.now()
-        
+
         if save:
             update_fields = ['status']
             # Add timestamp fields if they were updated
@@ -779,9 +776,9 @@ class ContainerJob(models.Model):
                 update_fields.append('launched_at')
             elif new_status == 'completed' and not self.completed_at:
                 update_fields.append('completed_at')
-            
+
             self.save(update_fields=update_fields)
-        
+
         return True
 
     # Helper methods for common state transitions
@@ -1084,5 +1081,5 @@ class ContainerJob(models.Model):
                         )
             except ContainerJob.DoesNotExist:
                 pass  # New object, no validation needed
-        
+
         super().save(*args, **kwargs)

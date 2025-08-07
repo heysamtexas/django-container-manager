@@ -10,8 +10,8 @@ The command can run continuously or process once and exit.
 
 import logging
 import signal
-import time
 import threading
+import time
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
@@ -52,12 +52,12 @@ class Command(BaseCommand):
     Process container jobs using the intelligent queue system (default) or legacy processing.
 
     QUEUE MODE (Default):
-        Uses the queue management system for intelligent job processing with 
+        Uses the queue management system for intelligent job processing with
         priority handling, retry logic, and efficient resource utilization.
-        
+
         Features:
         - Priority-based job selection
-        - Automatic retry with exponential backoff  
+        - Automatic retry with exponential backoff
         - Concurrency control and resource management
         - Graceful shutdown handling
         - Real-time metrics and monitoring
@@ -75,7 +75,7 @@ class Command(BaseCommand):
 
     Legacy Mode Workflow:
         1. Query database for pending/running jobs
-        2. Check executor host availability 
+        2. Check executor host availability
         3. Launch jobs within resource limits
         4. Monitor and harvest completed jobs
         5. Update job status and logs
@@ -90,7 +90,7 @@ class Command(BaseCommand):
         1: Configuration or validation error
         2: Execution or processing error
     """
-    
+
     def create_parser(self, prog_name, subcommand, **kwargs):
         """Add usage examples to help output"""
         parser = super().create_parser(prog_name, subcommand, **kwargs)
@@ -108,7 +108,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         # Processing Mode (Queue mode is now default)
         parser.add_argument(
-            "--legacy-mode", 
+            "--legacy-mode",
             action="store_true",
             help=(
                 "⚠️  DEPRECATED: Run in legacy processing mode. "
@@ -118,7 +118,7 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             "--queue-mode",
-            action="store_true", 
+            action="store_true",
             help=(
                 "Run in queue processing mode (now the default). "
                 "Uses intelligent queue management with priority handling, "
@@ -126,7 +126,7 @@ class Command(BaseCommand):
                 "This flag is now optional since queue mode is the default."
             ),
         )
-        
+
         parser.add_argument(
             "--max-concurrent",
             type=int,
@@ -136,7 +136,7 @@ class Command(BaseCommand):
                 "Controls resource utilization and system load."
             ),
         )
-        
+
         parser.add_argument(
             "--once",
             action="store_true",
@@ -145,7 +145,7 @@ class Command(BaseCommand):
                 "Useful for testing, debugging, or scheduled execution."
             ),
         )
-        
+
         parser.add_argument(
             "--timeout",
             type=int,
@@ -155,7 +155,7 @@ class Command(BaseCommand):
                 "How long to wait for database locks in queue mode."
             ),
         )
-        
+
         parser.add_argument(
             "--shutdown-timeout",
             type=int,
@@ -165,16 +165,16 @@ class Command(BaseCommand):
                 "How long to wait for running jobs to complete during shutdown."
             ),
         )
-        
+
         parser.add_argument(
             "--graceful-shutdown",
-            action="store_true", 
+            action="store_true",
             help=(
                 "Use enhanced graceful shutdown with job completion tracking. "
                 "Recommended for production deployments with long-running jobs."
             ),
         )
-        
+
         # Shared Arguments
         parser.add_argument(
             "--poll-interval",
@@ -185,7 +185,7 @@ class Command(BaseCommand):
                 "How often to check for new jobs."
             ),
         )
-        
+
         # Legacy Mode Arguments (DEPRECATED - backward compatibility only)
         parser.add_argument(
             "--max-jobs",
@@ -245,7 +245,7 @@ class Command(BaseCommand):
                 "Queue mode processes all executor types intelligently."
             ),
         )
-        
+
         # Common Arguments
         parser.add_argument(
             "--dry-run",
@@ -255,7 +255,7 @@ class Command(BaseCommand):
                 "Works in both queue mode and legacy mode."
             ),
         )
-        
+
         parser.add_argument(
             "--verbose",
             action="store_true",
@@ -270,17 +270,17 @@ class Command(BaseCommand):
         # Set up logging level
         if options['verbose']:
             logging.getLogger('container_manager').setLevel(logging.DEBUG)
-            
+
         # Validate arguments
         self._validate_arguments(options)
-        
+
         # Set mode flag for signal handlers
         # Determine processing mode (queue mode is now default)
         use_legacy = options['legacy_mode']
         use_queue = not use_legacy  # Queue mode unless explicitly requested legacy
-        
+
         self.queue_mode = use_queue
-        
+
         # Show deprecation warnings
         if use_legacy:
             self.stdout.write(
@@ -289,24 +289,24 @@ class Command(BaseCommand):
                     "Please migrate to queue mode (default) for better performance and reliability."
                 )
             )
-        
+
         # Warn about deprecated arguments
         deprecated_args = {
             'host': '--host',
-            'single_run': '--single-run', 
+            'single_run': '--single-run',
             'cleanup': '--cleanup',
             'cleanup_hours': '--cleanup-hours',
             'use_factory': '--use-factory',
             'executor_type': '--executor-type',
             'max_jobs': '--max-jobs'
         }
-        
+
         for arg, flag in deprecated_args.items():
             if options.get(arg):
                 self.stdout.write(
                     self.style.WARNING(f"⚠️  DEPRECATED: {flag} is deprecated and may not work correctly.")
                 )
-        
+
         try:
             if use_queue:
                 self._setup_queue_signal_handlers()
@@ -325,9 +325,9 @@ class Command(BaseCommand):
         # Check for conflicting mode arguments
         if options['legacy_mode'] and options['queue_mode']:
             raise CommandError("Cannot specify both --legacy-mode and --queue-mode")
-        
+
         # Validate legacy mode conflicts (now using queue mode as default)
-        use_legacy = options['legacy_mode'] 
+        use_legacy = options['legacy_mode']
         if not use_legacy:  # Queue mode (default)
             conflicting_args = ['host', 'single_run', 'cleanup', 'use_factory', 'executor_type']
             for arg in conflicting_args:
@@ -339,23 +339,23 @@ class Command(BaseCommand):
                         )
                     )
                     options[arg] = None  # Disable the conflicting argument
-        
+
         # Validate ranges
         if options['max_concurrent'] < 1:
             raise CommandError("--max-concurrent must be at least 1")
-            
+
         if options['max_jobs'] < 1:
             raise CommandError("--max-jobs must be at least 1")
-            
+
         if options['poll_interval'] < 1:
             raise CommandError("--poll-interval must be at least 1")
-            
+
         if options['timeout'] < 1:
             raise CommandError("--timeout must be at least 1")
-            
+
         if options['shutdown_timeout'] < 1:
             raise CommandError("--shutdown-timeout must be at least 1")
-    
+
     def _setup_queue_signal_handlers(self):
         """Set up signal handlers for queue mode"""
         def shutdown_handler(signum, frame):
@@ -364,7 +364,7 @@ class Command(BaseCommand):
                 self.style.WARNING(f"Received {signal_name}, shutting down gracefully...")
             )
             self.shutdown_event.set()
-        
+
         def status_handler(signum, frame):
             """Handle SIGUSR1 for status reporting"""
             try:
@@ -372,14 +372,14 @@ class Command(BaseCommand):
                 self.stdout.write(f"Queue Status: {metrics}")
             except Exception as e:
                 self.stdout.write(f"Error getting queue status: {e}")
-        
+
         signal.signal(signal.SIGTERM, shutdown_handler)
         signal.signal(signal.SIGINT, shutdown_handler)
-        
+
         # Only set up SIGUSR1 on Unix systems
         if hasattr(signal, 'SIGUSR1'):
             signal.signal(signal.SIGUSR1, status_handler)
-    
+
     def _setup_legacy_signal_handlers(self):
         """Set up signal handlers for legacy mode (original behavior)"""
         def signal_handler(signum, frame):
@@ -392,7 +392,7 @@ class Command(BaseCommand):
 
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
-    
+
     def _handle_queue_mode(self, options):
         """Handle queue processing mode"""
         max_concurrent = options['max_concurrent']
@@ -402,7 +402,7 @@ class Command(BaseCommand):
         timeout = options['timeout']
         shutdown_timeout = options['shutdown_timeout']
         graceful_shutdown = options['graceful_shutdown']
-        
+
         mode_type = "graceful" if graceful_shutdown else "basic"
         self.stdout.write(
             self.style.SUCCESS(
@@ -410,24 +410,24 @@ class Command(BaseCommand):
                 f"poll_interval={poll_interval}s, once={once})"
             )
         )
-        
+
         if dry_run:
             self._dry_run_queue_mode(options)
             return
-            
+
         if once:
             # Single queue processing run
             result = queue_manager.launch_next_batch(
                 max_concurrent=max_concurrent,
                 timeout=timeout
             )
-            
+
             self.stdout.write(
                 self.style.SUCCESS(
                     f"Processed queue: launched {result['launched']} jobs"
                 )
             )
-            
+
             if result['errors']:
                 self.stdout.write(
                     self.style.WARNING(
@@ -436,7 +436,7 @@ class Command(BaseCommand):
                 )
                 for error in result['errors']:
                     self.stdout.write(f"  - {error}")
-                    
+
             return
         else:
             # Continuous queue processing - choose method based on graceful shutdown option
@@ -448,7 +448,7 @@ class Command(BaseCommand):
                         poll_interval=poll_interval,
                         shutdown_timeout=shutdown_timeout
                     )
-                    
+
                     self.stdout.write(
                         self.style.SUCCESS(
                             f"Graceful queue processor finished. "
@@ -456,7 +456,7 @@ class Command(BaseCommand):
                             f"launched {stats['jobs_launched']} jobs"
                         )
                     )
-                    
+
                     if stats['clean_shutdown']:
                         self.stdout.write(self.style.SUCCESS("Clean shutdown completed"))
                     elif stats.get('jobs_interrupted', 0) > 0:
@@ -472,7 +472,7 @@ class Command(BaseCommand):
                         poll_interval=poll_interval,
                         shutdown_event=self.shutdown_event
                     )
-                    
+
                     self.stdout.write(
                         self.style.SUCCESS(
                             f"Queue processor finished. "
@@ -480,7 +480,7 @@ class Command(BaseCommand):
                             f"launched {stats['jobs_launched']} jobs"
                         )
                     )
-                
+
                 # Report errors for both modes
                 if stats['errors']:
                     self.stdout.write(
@@ -488,11 +488,11 @@ class Command(BaseCommand):
                             f"Encountered {len(stats['errors'])} errors during processing"
                         )
                     )
-                
+
             except Exception as e:
                 logger.exception("Error in continuous queue processing")
                 raise CommandError(f"Queue processing failed: {e}")
-    
+
     def _handle_legacy_mode(self, options):
         """Handle legacy job processing mode (original behavior)"""
         config = self._parse_and_validate_options(options)
@@ -507,22 +507,22 @@ class Command(BaseCommand):
 
         # Run main processing loop
         processed_count, error_count = self._run_processing_loop(config)
-        
+
         self._display_completion_summary(processed_count, error_count)
-    
+
     def _dry_run_queue_mode(self, options):
         """Show what would be processed in queue mode without actually doing it"""
         metrics = queue_manager.get_worker_metrics()
-        
+
         self.stdout.write("Queue Status (dry run):")
         self.stdout.write(f"  Ready to launch now: {metrics['ready_now']}")
         self.stdout.write(f"  Scheduled for future: {metrics['scheduled_future']}")
         self.stdout.write(f"  Currently running: {metrics['running']}")
         self.stdout.write(f"  Launch failed: {metrics['launch_failed']}")
-        
+
         # Show next jobs that would be processed
         ready_jobs = queue_manager.get_ready_jobs(limit=options['max_concurrent'])
-        
+
         if ready_jobs:
             self.stdout.write(f"\nNext {len(ready_jobs)} job(s) that would be launched:")
             for job in ready_jobs:
@@ -536,7 +536,7 @@ class Command(BaseCommand):
                 )
         else:
             self.stdout.write("\nNo jobs ready for launch")
-    
+
     def _dry_run_legacy_mode(self, config):
         """Show what would be processed in legacy mode"""
         # Get pending jobs using legacy logic
@@ -551,18 +551,18 @@ class Command(BaseCommand):
 
         queryset = queryset.filter(docker_host__is_active=True)
         pending_jobs = list(queryset[:config.get("max_jobs", 10)])
-        
+
         self.stdout.write(f"Legacy Mode - Would process {len(pending_jobs)} pending jobs:")
         for job in pending_jobs:
             self.stdout.write(
                 f"  - Job {job.id}: {job.name or 'unnamed'} on {job.docker_host.name}"
             )
-            
+
         # Also show running jobs that would be monitored
         running_jobs = ContainerJob.objects.filter(status="running")
         if config.get("host_filter"):
             running_jobs = running_jobs.filter(docker_host__name=config["host_filter"])
-        
+
         running_count = running_jobs.count()
         self.stdout.write(f"\nWould monitor {running_count} running jobs")
 
@@ -1064,7 +1064,7 @@ class Command(BaseCommand):
                 # If not running, transition through running first
                 job.transition_to('running', save=True)
                 job.transition_to('timeout', save=True)
-            
+
             # Update completion time
             job.completed_at = timezone.now()
             job.save(update_fields=['completed_at'])
@@ -1078,7 +1078,7 @@ class Command(BaseCommand):
             with transaction.atomic():
                 # Use proper state transitions based on current status
                 original_status = job.status
-                
+
                 if job.status == 'pending':
                     # pending -> running -> failed (required transition path)
                     job.transition_to('running', save=True)  # Save intermediate step

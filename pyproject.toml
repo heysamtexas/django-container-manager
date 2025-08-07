@@ -51,6 +51,7 @@ dependencies = [
     "docker>=6.0.0",
     "psutil>=5.9.0",
     "google-cloud-logging>=3.12.1",
+    "coverage>=7.10.0",
 ]
 
 [project.optional-dependencies]

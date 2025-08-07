@@ -163,10 +163,10 @@ class JobManagementService:
 
             # Get appropriate executor
             executor = self.executor_factory.get_executor(job.docker_host)
-            
+
             # Launch job using executor
             success, result = executor.launch_job(job)
-            
+
             if success:
                 # result is execution_id
                 logger.info(f"Successfully launched job {job.id} with execution_id: {result}")
@@ -183,7 +183,7 @@ class JobManagementService:
                 }
 
         except Exception as e:
-            error_msg = f"Unexpected error launching job {job.id}: {str(e)}"
+            error_msg = f"Unexpected error launching job {job.id}: {e!s}"
             logger.exception(error_msg)
             return {
                 'success': False,
@@ -220,10 +220,10 @@ class JobManagementService:
 
             # Get appropriate executor
             executor = self.executor_factory.get_executor(job.docker_host)
-            
+
             # Check status using executor
             status = executor.check_status(job.get_execution_identifier())
-            
+
             return {
                 'status': status,
                 'execution_id': job.get_execution_identifier(),
@@ -231,7 +231,7 @@ class JobManagementService:
             }
 
         except Exception as e:
-            error_msg = f"Error checking status for job {job.id}: {str(e)}"
+            error_msg = f"Error checking status for job {job.id}: {e!s}"
             logger.exception(error_msg)
             return {
                 'status': 'not-found',
@@ -270,10 +270,10 @@ class JobManagementService:
 
             # Get appropriate executor
             executor = self.executor_factory.get_executor(job.docker_host)
-            
+
             # Harvest job results using executor
             success = executor.harvest_job(job)
-            
+
             if success:
                 logger.info(f"Successfully harvested results for job {job.id}")
                 return {
@@ -292,7 +292,7 @@ class JobManagementService:
                 }
 
         except Exception as e:
-            error_msg = f"Error harvesting results for job {job.id}: {str(e)}"
+            error_msg = f"Error harvesting results for job {job.id}: {e!s}"
             logger.exception(error_msg)
             return {
                 'success': False,
@@ -328,10 +328,10 @@ class JobManagementService:
 
             # Get appropriate executor
             executor = self.executor_factory.get_executor(job.docker_host)
-            
+
             # Cleanup using executor
             success = executor.cleanup(job.get_execution_identifier())
-            
+
             if success:
                 logger.debug(f"Successfully cleaned up execution resources for job {job.id}")
                 return {
@@ -346,7 +346,7 @@ class JobManagementService:
                 }
 
         except Exception as e:
-            error_msg = f"Error cleaning up job {job.id}: {str(e)}"
+            error_msg = f"Error cleaning up job {job.id}: {e!s}"
             logger.exception(error_msg)
             return {
                 'success': False,
@@ -452,19 +452,19 @@ job_validator = JobValidationService(_default_factory)
 def launch_job(job: "ContainerJob") -> dict[str, any]:
     """
     Module-level convenience function for launching jobs.
-    
+
     This provides a simple import path for the queue manager and other
     components that need to launch jobs.
-    
+
     Args:
         job: ContainerJob instance to launch
-        
+
     Returns:
         dict: Launch result with 'success', 'execution_id', and 'error' keys
-        
+
     Example:
         from container_manager.services import launch_job
-        
+
         result = launch_job(job)
         if result['success']:
             job.set_execution_identifier(result['execution_id'])
@@ -478,10 +478,10 @@ def launch_job(job: "ContainerJob") -> dict[str, any]:
 def check_job_status(job: "ContainerJob") -> dict[str, any]:
     """
     Module-level convenience function for checking job status.
-    
+
     Args:
         job: ContainerJob instance to check
-        
+
     Returns:
         dict: Status result with 'status', 'execution_id', and 'error' keys
     """
@@ -491,10 +491,10 @@ def check_job_status(job: "ContainerJob") -> dict[str, any]:
 def harvest_job_results(job: "ContainerJob") -> dict[str, any]:
     """
     Module-level convenience function for harvesting job results.
-    
+
     Args:
         job: ContainerJob instance to harvest
-        
+
     Returns:
         dict: Harvest result with 'success', 'status', 'logs_collected', and 'error' keys
     """
@@ -504,10 +504,10 @@ def harvest_job_results(job: "ContainerJob") -> dict[str, any]:
 def cleanup_job_execution(job: "ContainerJob") -> dict[str, any]:
     """
     Module-level convenience function for cleaning up job execution resources.
-    
+
     Args:
         job: ContainerJob instance to cleanup
-        
+
     Returns:
         dict: Cleanup result with 'success' and 'error' keys
     """
