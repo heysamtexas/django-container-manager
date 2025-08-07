@@ -22,7 +22,9 @@ class ErrorType(Enum):
 class ErrorClassifier:
     """Classifies errors to determine retry strategy"""
 
-    TRANSIENT_PATTERNS = [
+    from typing import ClassVar
+
+    TRANSIENT_PATTERNS: ClassVar[list[str]] = [
         # Docker daemon issues
         r'connection.*refused',
         r'docker.*daemon.*not.*running',
@@ -44,7 +46,7 @@ class ErrorClassifier:
         r'cannot allocate memory'
     ]
 
-    PERMANENT_PATTERNS = [
+    PERMANENT_PATTERNS: ClassVar[list[str]] = [
         # Image issues
         r'image.*not found',
         r'no such image',

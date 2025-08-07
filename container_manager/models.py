@@ -736,7 +736,9 @@ class ContainerJob(models.Model):
             return 'launched'
 
     # State Machine Validation
-    VALID_TRANSITIONS = {
+    from typing import ClassVar
+
+    VALID_TRANSITIONS: ClassVar[dict[str, list[str]]] = {
         'pending': ['queued', 'launching', 'running', 'cancelled'],
         'queued': ['launching', 'running', 'failed', 'retrying', 'cancelled'],
         'launching': ['running', 'failed', 'cancelled'],
@@ -1073,12 +1075,11 @@ class ContainerJob(models.Model):
         if self.pk:  # Existing object - check for status changes
             try:
                 old_obj = ContainerJob.objects.get(pk=self.pk)
-                if old_obj.status != self.status:
+                if old_obj.status != self.status and not old_obj.can_transition_to(self.status):
                     # Validate transition
-                    if not old_obj.can_transition_to(self.status):
-                        raise ValueError(
-                            f"Invalid status transition: {old_obj.status} -> {self.status}"
-                        )
+                    raise ValueError(
+                        f"Invalid status transition: {old_obj.status} -> {self.status}"
+                    )
             except ContainerJob.DoesNotExist:
                 pass  # New object, no validation needed
 

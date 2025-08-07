@@ -318,7 +318,7 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING("Interrupted by user"))
         except Exception as e:
             logger.exception(f"Command failed: {e}")
-            raise CommandError(f"Command failed: {e}")
+            raise CommandError(f"Command failed: {e}") from e
 
     def _validate_arguments(self, options):
         """Validate command arguments"""
@@ -491,7 +491,7 @@ class Command(BaseCommand):
 
             except Exception as e:
                 logger.exception("Error in continuous queue processing")
-                raise CommandError(f"Queue processing failed: {e}")
+                raise CommandError(f"Queue processing failed: {e}") from e
 
     def _handle_legacy_mode(self, options):
         """Handle legacy job processing mode (original behavior)"""
