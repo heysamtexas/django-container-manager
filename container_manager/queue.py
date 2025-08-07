@@ -110,14 +110,14 @@ class JobQueueManager:
                         'error': f"Job {job.id} no longer ready to launch"
                     }
                 
-                # Import here to avoid circular imports
-                # Note: We'll implement the actual job service integration later
-                # For now, this is a placeholder that always succeeds
-                result = self._mock_launch_job(job)
+                # Use the actual job service to launch the job
+                from container_manager.services import launch_job
+                
+                result = launch_job(job)
                 
                 if result.get('success', False):
-                    # Mark as running
-                    job.mark_as_running()
+                    # Job service has already handled status transitions and execution_id
+                    # No need to call mark_as_running() again since executor already did it
                     logger.info(f"Successfully launched job {job.id}")
                     return {'success': True}
                 else:
@@ -140,14 +140,8 @@ class JobQueueManager:
             
             return {'success': False, 'error': error_msg}
     
-    def _mock_launch_job(self, job):
-        """
-        Mock job launch for testing purposes.
-        
-        This will be replaced with actual job service integration.
-        """
-        # For now, always succeed to test the queue system
-        return {'success': True}
+    # Removed _mock_launch_job - now using actual job service integration
+    
     
     def get_queue_stats(self):
         """
@@ -271,12 +265,13 @@ class JobQueueManager:
                 # Get retry strategy for this job
                 strategy = self._get_retry_strategy(job)
                 
-                # Mock job execution for now (will be replaced with actual job service)
-                result = self._mock_launch_job_with_failure_simulation(job)
+                # Use the actual job service to launch the job
+                from container_manager.services import launch_job
+                
+                result = launch_job(job)
                 
                 if result.get('success', False):
-                    # Launch successful
-                    job.mark_as_running()
+                    # Launch successful - job service has already handled status and execution_id
                     logger.info(f"Successfully launched job {job.id}")
                     return {'success': True, 'retry_scheduled': False}
                 else:
@@ -387,31 +382,7 @@ class JobQueueManager:
         
         return RETRY_STRATEGIES.get(strategy_name, RETRY_STRATEGIES['default'])
     
-    def _mock_launch_job_with_failure_simulation(self, job):
-        """
-        Mock job launch with occasional failures for testing retry logic.
-        """
-        import random
-        
-        # Simulate different types of failures occasionally
-        failure_chance = 0.3  # 30% chance of failure for testing
-        
-        if random.random() < failure_chance:
-            # Simulate different types of errors
-            error_types = [
-                "Connection refused to Docker daemon",  # Transient
-                "Image not found: nonexistent:latest",   # Permanent
-                "Network timeout occurred",              # Transient
-                "Resource temporarily unavailable",      # Transient
-                "Permission denied",                     # Permanent
-            ]
-            
-            error = random.choice(error_types)
-            logger.debug(f"Simulating failure for job {job.id}: {error}")
-            return {'success': False, 'error': error}
-        
-        # Success case
-        return {'success': True}
+    # Removed _mock_launch_job_with_failure_simulation - now using actual job service integration
     
     def retry_failed_job(self, job, reset_count=False):
         """

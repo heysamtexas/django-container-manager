@@ -138,11 +138,8 @@ class DockerExecutor(ContainerExecutor):
             client = self._get_client(job.docker_host)
             container = client.containers.get(execution_id)
 
-            # Get logs with timeout
-            from ..defaults import get_container_manager_setting
-
-            logs_timeout = get_container_manager_setting("DOCKER_LOGS_TIMEOUT", 30)
-            logs = container.logs(timestamps=True, stderr=True, timeout=logs_timeout)
+            # Get logs (timeout parameter not supported in docker-py 7.x)
+            logs = container.logs(timestamps=True, stderr=True)
             logs_str = (
                 logs.decode("utf-8", errors="replace")
                 if isinstance(logs, bytes)

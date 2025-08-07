@@ -175,3 +175,14 @@ class JobCompletionTracker:
                 'completed': len(self.completed_jobs),
                 'total_tracked': len(self.running_jobs) + len(self.completed_jobs)
             }
+            
+    def clear(self):
+        """Clear all tracked jobs (useful for testing)"""
+        with self.lock:
+            self.running_jobs.clear()
+            self.completed_jobs.clear()
+
+
+# Global instances for use across the application
+graceful_shutdown = GracefulShutdown()
+job_completion_tracker = JobCompletionTracker()

@@ -1,0 +1,53 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+    &rsaquo; <a href="{% url 'admin:container_manager_containerjob_changelist' %}">Container Jobs</a>
+    &rsaquo; Queue Statistics
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>{{ title }}</h1>
+
+<div class="stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin: 20px 0;">
+    
+    <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #007bff;">
+        <h3>Queue Status</h3>
+        <p><strong>Ready to Launch:</strong> {{ stats.ready_now }}</p>
+        <p><strong>Scheduled:</strong> {{ stats.scheduled_future }}</p>
+        <p><strong>High Priority:</strong> {{ stats.high_priority_queued }}</p>
+        <p><strong>Launch Failed:</strong> {{ stats.launch_failed }}</p>
+    </div>
+    
+    <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #28a745;">
+        <h3>Execution Status</h3>
+        <p><strong>Currently Running:</strong> {{ stats.running }}</p>
+        <p><strong>Completed Today:</strong> {{ stats.completed_today }}</p>
+        <p><strong>Failed Today:</strong> {{ stats.failed_today }}</p>
+    </div>
+    
+    <div class="stat-card" style="background: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #17a2b8;">
+        <h3>Total Metrics</h3>
+        <p><strong>Total Jobs:</strong> {{ stats.total_jobs }}</p>
+        <p><strong>Queue Depth:</strong> {{ stats.queue_depth }}</p>
+    </div>
+    
+</div>
+
+<div class="submit-row">
+    <a href="{% url 'admin:container_manager_containerjob_changelist' %}" class="default">Back to Jobs</a>
+    <button onclick="location.reload()" class="default">Refresh Stats</button>
+</div>
+
+<script>
+// Auto-refresh every 30 seconds
+setTimeout(() => {
+    location.reload();
+}, 30000);
+</script>
+{% endblock %}

@@ -127,6 +127,232 @@ class JobManagementService:
             logger.exception(f"Failed to prepare job {job.id} for launch")
             return False, [f"Preparation failed: {e}"]
 
+    def launch_job(self, job: "ContainerJob") -> dict[str, any]:
+        """
+        Launch a job using the appropriate executor.
+
+        This is the unified interface for job launching that replaces
+        mock methods in the queue system.
+
+        Args:
+            job: ContainerJob instance to launch
+
+        Returns:
+            dict: {
+                'success': bool,
+                'execution_id': str (if successful),
+                'error': str (if failed)
+            }
+
+        Example:
+            result = job_service.launch_job(job)
+            if result['success']:
+                job.set_execution_identifier(result['execution_id'])
+                job.mark_as_running()
+            else:
+                logger.error(f"Launch failed: {result['error']}")
+        """
+        try:
+            # Prepare job for launch (validation, etc.)
+            success, errors = self.prepare_job_for_launch(job)
+            if not success:
+                return {
+                    'success': False,
+                    'error': f"Job preparation failed: {'; '.join(errors)}"
+                }
+
+            # Get appropriate executor
+            executor = self.executor_factory.get_executor(job.docker_host)
+            
+            # Launch job using executor
+            success, result = executor.launch_job(job)
+            
+            if success:
+                # result is execution_id
+                logger.info(f"Successfully launched job {job.id} with execution_id: {result}")
+                return {
+                    'success': True,
+                    'execution_id': result
+                }
+            else:
+                # result is error message
+                logger.error(f"Failed to launch job {job.id}: {result}")
+                return {
+                    'success': False,
+                    'error': result
+                }
+
+        except Exception as e:
+            error_msg = f"Unexpected error launching job {job.id}: {str(e)}"
+            logger.exception(error_msg)
+            return {
+                'success': False,
+                'error': error_msg
+            }
+
+    def check_job_status(self, job: "ContainerJob") -> dict[str, any]:
+        """
+        Check the status of a running job.
+
+        Args:
+            job: ContainerJob instance to check
+
+        Returns:
+            dict: {
+                'status': str,  # 'running', 'exited', 'failed', 'not-found'
+                'execution_id': str,
+                'error': str (if applicable)
+            }
+
+        Example:
+            result = job_service.check_job_status(job)
+            if result['status'] == 'exited':
+                # Job completed, harvest results
+                harvest_result = job_service.harvest_job_results(job)
+        """
+        try:
+            if not job.get_execution_identifier():
+                return {
+                    'status': 'not-found',
+                    'execution_id': None,
+                    'error': 'No execution identifier found'
+                }
+
+            # Get appropriate executor
+            executor = self.executor_factory.get_executor(job.docker_host)
+            
+            # Check status using executor
+            status = executor.check_status(job.get_execution_identifier())
+            
+            return {
+                'status': status,
+                'execution_id': job.get_execution_identifier(),
+                'error': None
+            }
+
+        except Exception as e:
+            error_msg = f"Error checking status for job {job.id}: {str(e)}"
+            logger.exception(error_msg)
+            return {
+                'status': 'not-found',
+                'execution_id': job.get_execution_identifier(),
+                'error': error_msg
+            }
+
+    def harvest_job_results(self, job: "ContainerJob") -> dict[str, any]:
+        """
+        Harvest results from a completed job.
+
+        Args:
+            job: ContainerJob instance to harvest
+
+        Returns:
+            dict: {
+                'success': bool,
+                'status': str,  # Final job status
+                'logs_collected': bool,
+                'error': str (if applicable)
+            }
+
+        Example:
+            result = job_service.harvest_job_results(job)
+            if result['success']:
+                logger.info(f"Job {job.id} harvested successfully")
+        """
+        try:
+            if not job.get_execution_identifier():
+                return {
+                    'success': False,
+                    'status': 'unknown',
+                    'logs_collected': False,
+                    'error': 'No execution identifier found'
+                }
+
+            # Get appropriate executor
+            executor = self.executor_factory.get_executor(job.docker_host)
+            
+            # Harvest job results using executor
+            success = executor.harvest_job(job)
+            
+            if success:
+                logger.info(f"Successfully harvested results for job {job.id}")
+                return {
+                    'success': True,
+                    'status': job.status,
+                    'logs_collected': True,
+                    'error': None
+                }
+            else:
+                logger.warning(f"Failed to harvest results for job {job.id}")
+                return {
+                    'success': False,
+                    'status': job.status,
+                    'logs_collected': False,
+                    'error': 'Harvesting failed'
+                }
+
+        except Exception as e:
+            error_msg = f"Error harvesting results for job {job.id}: {str(e)}"
+            logger.exception(error_msg)
+            return {
+                'success': False,
+                'status': 'unknown',
+                'logs_collected': False,
+                'error': error_msg
+            }
+
+    def cleanup_job_execution(self, job: "ContainerJob") -> dict[str, any]:
+        """
+        Clean up execution resources for a job.
+
+        Args:
+            job: ContainerJob instance to cleanup
+
+        Returns:
+            dict: {
+                'success': bool,
+                'error': str (if applicable)
+            }
+
+        Example:
+            result = job_service.cleanup_job_execution(job)
+            if not result['success']:
+                logger.warning(f"Cleanup failed: {result['error']}")
+        """
+        try:
+            if not job.get_execution_identifier():
+                return {
+                    'success': True,  # Nothing to cleanup
+                    'error': None
+                }
+
+            # Get appropriate executor
+            executor = self.executor_factory.get_executor(job.docker_host)
+            
+            # Cleanup using executor
+            success = executor.cleanup(job.get_execution_identifier())
+            
+            if success:
+                logger.debug(f"Successfully cleaned up execution resources for job {job.id}")
+                return {
+                    'success': True,
+                    'error': None
+                }
+            else:
+                logger.warning(f"Failed to cleanup execution resources for job {job.id}")
+                return {
+                    'success': False,
+                    'error': 'Cleanup failed'
+                }
+
+        except Exception as e:
+            error_msg = f"Error cleaning up job {job.id}: {str(e)}"
+            logger.exception(error_msg)
+            return {
+                'success': False,
+                'error': error_msg
+            }
+
     def get_host_display_info(self, host: "ExecutorHost") -> dict[str, str]:
         """
         Get host display information using executor polymorphism.
@@ -220,3 +446,69 @@ class JobValidationService:
 _default_factory = ExecutorFactory()
 job_service = JobManagementService(_default_factory)
 job_validator = JobValidationService(_default_factory)
+
+
+# Module-level convenience functions for easy import
+def launch_job(job: "ContainerJob") -> dict[str, any]:
+    """
+    Module-level convenience function for launching jobs.
+    
+    This provides a simple import path for the queue manager and other
+    components that need to launch jobs.
+    
+    Args:
+        job: ContainerJob instance to launch
+        
+    Returns:
+        dict: Launch result with 'success', 'execution_id', and 'error' keys
+        
+    Example:
+        from container_manager.services import launch_job
+        
+        result = launch_job(job)
+        if result['success']:
+            job.set_execution_identifier(result['execution_id'])
+            job.mark_as_running()
+        else:
+            logger.error(f"Launch failed: {result['error']}")
+    """
+    return job_service.launch_job(job)
+
+
+def check_job_status(job: "ContainerJob") -> dict[str, any]:
+    """
+    Module-level convenience function for checking job status.
+    
+    Args:
+        job: ContainerJob instance to check
+        
+    Returns:
+        dict: Status result with 'status', 'execution_id', and 'error' keys
+    """
+    return job_service.check_job_status(job)
+
+
+def harvest_job_results(job: "ContainerJob") -> dict[str, any]:
+    """
+    Module-level convenience function for harvesting job results.
+    
+    Args:
+        job: ContainerJob instance to harvest
+        
+    Returns:
+        dict: Harvest result with 'success', 'status', 'logs_collected', and 'error' keys
+    """
+    return job_service.harvest_job_results(job)
+
+
+def cleanup_job_execution(job: "ContainerJob") -> dict[str, any]:
+    """
+    Module-level convenience function for cleaning up job execution resources.
+    
+    Args:
+        job: ContainerJob instance to cleanup
+        
+    Returns:
+        dict: Cleanup result with 'success' and 'error' keys
+    """
+    return job_service.cleanup_job_execution(job)

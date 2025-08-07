@@ -739,8 +739,9 @@ class ContainerJob(models.Model):
 
     # State Machine Validation
     VALID_TRANSITIONS = {
-        'pending': ['queued', 'running', 'cancelled'],
-        'queued': ['running', 'failed', 'retrying', 'cancelled'],
+        'pending': ['queued', 'launching', 'running', 'cancelled'],
+        'queued': ['launching', 'running', 'failed', 'retrying', 'cancelled'],
+        'launching': ['running', 'failed', 'cancelled'],
         'running': ['completed', 'failed', 'timeout', 'cancelled'],
         'failed': ['retrying', 'cancelled'],
         'retrying': ['queued', 'failed', 'cancelled'],

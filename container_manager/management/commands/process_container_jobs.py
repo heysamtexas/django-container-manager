@@ -30,17 +30,17 @@ logger = logging.getLogger(__name__)
 EXAMPLES = """
 Examples:
 
-Queue Mode (recommended):
-  %(prog)s --queue-mode                             # Continuous queue processing
-  %(prog)s --queue-mode --once                      # Process queue once and exit
-  %(prog)s --queue-mode --max-concurrent=10 --poll-interval=5
-  %(prog)s --queue-mode --dry-run                   # See what would be processed
+Queue Mode (default - recommended):
+  %(prog)s                                          # Continuous queue processing (NEW DEFAULT)
+  %(prog)s --once                                   # Process queue once and exit
+  %(prog)s --max-concurrent=10 --poll-interval=5   # Custom concurrency and polling
+  %(prog)s --dry-run                                # See what would be processed
+  %(prog)s --graceful-shutdown                      # Enhanced shutdown handling
 
-Legacy Mode (existing behavior):
-  %(prog)s                                          # Process running jobs (default)
-  %(prog)s --single-run                            # Process all pending jobs once
-  %(prog)s --host=production-docker                # Process jobs for specific host
-  %(prog)s --max-jobs=5 --poll-interval=10         # Custom limits and polling
+Legacy Mode (deprecated):
+  %(prog)s --legacy-mode                            # ⚠️  DEPRECATED: Use legacy processing
+  %(prog)s --legacy-mode --single-run               # ⚠️  DEPRECATED: Process pending jobs once
+  %(prog)s --legacy-mode --host=docker-host         # ⚠️  DEPRECATED: Process specific host
 
 Operational:
   kill -USR1 <pid>                                  # Get queue status (queue mode)
@@ -49,9 +49,9 @@ Operational:
 
 class Command(BaseCommand):
     help = """
-    Process container jobs using either queue mode or legacy direct processing.
+    Process container jobs using the intelligent queue system (default) or legacy processing.
 
-    QUEUE MODE (Recommended):
+    QUEUE MODE (Default):
         Uses the queue management system for intelligent job processing with 
         priority handling, retry logic, and efficient resource utilization.
         
@@ -62,9 +62,9 @@ class Command(BaseCommand):
         - Graceful shutdown handling
         - Real-time metrics and monitoring
 
-    LEGACY MODE (Backward Compatibility):
-        Traditional direct job processing maintaining existing behavior.
-        Suitable for specific job processing needs or migration scenarios.
+    LEGACY MODE (⚠️  Deprecated):
+        Traditional direct job processing maintained for backward compatibility only.
+        This mode will be removed in a future version. Please migrate to queue mode.
 
     Queue Mode Workflow:
         1. Fetch ready jobs from queue (priority ordered)
@@ -106,14 +106,24 @@ class Command(BaseCommand):
 
 
     def add_arguments(self, parser):
-        # Queue Mode Arguments
+        # Processing Mode (Queue mode is now default)
         parser.add_argument(
-            "--queue-mode",
+            "--legacy-mode", 
             action="store_true",
             help=(
-                "Run in queue processing mode (recommended). "
+                "⚠️  DEPRECATED: Run in legacy processing mode. "
+                "This mode is deprecated and will be removed in a future version. "
+                "Use queue mode (default) instead for better performance and reliability."
+            ),
+        )
+        parser.add_argument(
+            "--queue-mode",
+            action="store_true", 
+            help=(
+                "Run in queue processing mode (now the default). "
                 "Uses intelligent queue management with priority handling, "
-                "retry logic, and efficient resource utilization."
+                "retry logic, and efficient resource utilization. "
+                "This flag is now optional since queue mode is the default."
             ),
         )
         
@@ -165,51 +175,49 @@ class Command(BaseCommand):
             ),
         )
         
-        # Legacy Mode Arguments (backward compatibility)
+        # Shared Arguments
         parser.add_argument(
             "--poll-interval",
             type=int,
             default=10,
             help=(
                 "Polling interval in seconds (default: 10). "
-                "For queue mode: how often to check for new jobs. "
-                "For legacy mode: how often to check running jobs."
+                "How often to check for new jobs."
             ),
         )
+        
+        # Legacy Mode Arguments (DEPRECATED - backward compatibility only)
         parser.add_argument(
             "--max-jobs",
             type=int,
             default=10,
             help=(
-                "Maximum number of concurrent jobs in legacy mode (default: 10). "
-                "Consider host resources when setting this value. "
-                "Use --max-concurrent for queue mode."
+                "⚠️  DEPRECATED: Maximum concurrent jobs in legacy mode (default: 10). "
+                "Use --max-concurrent instead (works in both modes)."
             ),
         )
         parser.add_argument(
             "--host",
             type=str,
             help=(
-                "Only process jobs for the specified executor host (legacy mode). "
-                "Use host name as configured in ExecutorHost model. "
-                "Not applicable in queue mode."
+                "⚠️  DEPRECATED: Only process jobs for specific executor host (legacy mode only). "
+                "This option will be removed. Queue mode processes all hosts intelligently."
             ),
         )
         parser.add_argument(
             "--single-run",
             action="store_true",
             help=(
-                "Process jobs once and exit in legacy mode (don't run continuously). "
-                "Use --once for queue mode equivalent."
+                "⚠️  DEPRECATED: Process jobs once and exit in legacy mode. "
+                "Use --once instead (works in both modes)."
             ),
         )
         parser.add_argument(
             "--cleanup",
             action="store_true",
             help=(
-                "Run cleanup of old containers before processing jobs (legacy mode). "
-                "WARNING: Currently disabled due to service refactoring. "
-                "Use cleanup_containers command separately."
+                "⚠️  DEPRECATED: Run cleanup of old containers (legacy mode only). "
+                "WARNING: Currently disabled. Use cleanup_containers command separately."
             ),
         )
         parser.add_argument(
@@ -217,26 +225,24 @@ class Command(BaseCommand):
             type=int,
             default=24,
             help=(
-                "Hours after which to cleanup old containers (default: 24). "
-                "Only used with --cleanup flag. Currently non-functional."
+                "⚠️  DEPRECATED: Hours for cleanup threshold (default: 24). "
+                "Only used with deprecated --cleanup flag."
             ),
         )
         parser.add_argument(
             "--use-factory",
             action="store_true",
             help=(
-                "Use ExecutorFactory for intelligent job routing (legacy mode). "
-                "Default: auto-detect from settings. "
-                "Enable for multi-executor environments."
+                "⚠️  DEPRECATED: Use ExecutorFactory for job routing (legacy mode only). "
+                "Queue mode always uses intelligent routing."
             ),
         )
         parser.add_argument(
             "--executor-type",
             type=str,
             help=(
-                "Force specific executor type (docker, cloudrun, fargate, mock). "
-                "Jobs will only run on hosts matching this type. "
-                "Applies to legacy mode only."
+                "⚠️  DEPRECATED: Force specific executor type (legacy mode only). "
+                "Queue mode processes all executor types intelligently."
             ),
         )
         
@@ -269,10 +275,40 @@ class Command(BaseCommand):
         self._validate_arguments(options)
         
         # Set mode flag for signal handlers
-        self.queue_mode = options['queue_mode']
+        # Determine processing mode (queue mode is now default)
+        use_legacy = options['legacy_mode']
+        use_queue = not use_legacy  # Queue mode unless explicitly requested legacy
+        
+        self.queue_mode = use_queue
+        
+        # Show deprecation warnings
+        if use_legacy:
+            self.stdout.write(
+                self.style.WARNING(
+                    "⚠️  DEPRECATED: Legacy mode is deprecated and will be removed in a future version. "
+                    "Please migrate to queue mode (default) for better performance and reliability."
+                )
+            )
+        
+        # Warn about deprecated arguments
+        deprecated_args = {
+            'host': '--host',
+            'single_run': '--single-run', 
+            'cleanup': '--cleanup',
+            'cleanup_hours': '--cleanup-hours',
+            'use_factory': '--use-factory',
+            'executor_type': '--executor-type',
+            'max_jobs': '--max-jobs'
+        }
+        
+        for arg, flag in deprecated_args.items():
+            if options.get(arg):
+                self.stdout.write(
+                    self.style.WARNING(f"⚠️  DEPRECATED: {flag} is deprecated and may not work correctly.")
+                )
         
         try:
-            if options['queue_mode']:
+            if use_queue:
                 self._setup_queue_signal_handlers()
                 self._handle_queue_mode(options)
             else:
@@ -286,12 +322,23 @@ class Command(BaseCommand):
 
     def _validate_arguments(self, options):
         """Validate command arguments"""
-        # Validate queue mode conflicts
-        if options['queue_mode']:
+        # Check for conflicting mode arguments
+        if options['legacy_mode'] and options['queue_mode']:
+            raise CommandError("Cannot specify both --legacy-mode and --queue-mode")
+        
+        # Validate legacy mode conflicts (now using queue mode as default)
+        use_legacy = options['legacy_mode'] 
+        if not use_legacy:  # Queue mode (default)
             conflicting_args = ['host', 'single_run', 'cleanup', 'use_factory', 'executor_type']
             for arg in conflicting_args:
                 if options.get(arg):
-                    raise CommandError(f"Cannot use --{arg.replace('_', '-')} with --queue-mode")
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f"⚠️  Warning: {arg.replace('_', '-')} is a legacy-mode argument but queue mode is active. "
+                            f"This argument will be ignored. Use --legacy-mode if you need legacy features."
+                        )
+                    )
+                    options[arg] = None  # Disable the conflicting argument
         
         # Validate ranges
         if options['max_concurrent'] < 1:
@@ -1010,28 +1057,58 @@ class Command(BaseCommand):
             except Exception as e:
                 logger.warning(f"Failed to cleanup timed out job {job.id}: {e}")
 
-            # Mark as timed out
-            job.status = "timeout"
+            # Mark as timed out using proper state transitions
+            if job.status == 'running':
+                job.transition_to('timeout', save=True)
+            else:
+                # If not running, transition through running first
+                job.transition_to('running', save=True)
+                job.transition_to('timeout', save=True)
+            
+            # Update completion time
             job.completed_at = timezone.now()
-            job.save()
+            job.save(update_fields=['completed_at'])
 
         except Exception:
             logger.exception(f"Error handling timeout for job {job.id}")
 
     def mark_job_failed(self, job: ContainerJob, error_message: str):
-        """Mark a job as failed with error message"""
+        """Mark a job as failed with error message using proper state transitions"""
         try:
             with transaction.atomic():
-                job.status = "failed"
-                job.completed_at = timezone.now()
-                job.save()
+                # Use proper state transitions based on current status
+                original_status = job.status
+                
+                if job.status == 'pending':
+                    # pending -> running -> failed (required transition path)
+                    job.transition_to('running', save=True)  # Save intermediate step
+                    job.transition_to('failed', save=True)   # Save final state
+                elif job.status in ['queued', 'launching', 'running', 'retrying']:
+                    # These can transition directly to failed
+                    job.transition_to('failed', save=True)
+                elif job.status == 'failed':
+                    # Already failed, nothing to do for status
+                    pass
+                else:
+                    # For other statuses, log warning but don't change status
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f"Cannot mark job {job.id} as failed from status '{job.status}'"
+                        )
+                    )
+                    return
+
+                # Update completion time if we changed status to failed
+                if original_status != 'failed' and job.status == 'failed':
+                    job.completed_at = timezone.now()
+                    job.save(update_fields=['completed_at'])
 
                 # Set error message on job directly
                 if job.docker_log:
                     job.docker_log += f"\nERROR: {error_message}"
                 else:
                     job.docker_log = f"ERROR: {error_message}"
-                job.save()
+                job.save(update_fields=['docker_log'])
 
         except Exception:
             logger.exception(f"Failed to mark job {job.id} as failed")

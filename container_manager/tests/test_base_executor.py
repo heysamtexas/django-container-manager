@@ -149,10 +149,12 @@ class ContainerExecutorBaseTest(TestCase):
         self.assertEqual(errors, ["Job is None"])
 
     def test_validate_job_for_execution_no_template(self):
-        """Test execution validation with no template."""
+        """Test execution validation with no template (should pass since templates are optional)."""
         self.job.template = None  # Set directly as attribute
         errors = self.executor.validate_job_for_execution(self.job)
-        self.assertIn("Job must have a template", errors)
+        # Templates are optional, so no errors should be present for missing template
+        template_errors = [e for e in errors if 'template' in e.lower()]
+        self.assertEqual([], template_errors)
 
     def test_validate_job_for_execution_no_docker_host(self):
         """Test execution validation with no docker_host."""
@@ -261,7 +263,7 @@ class ContainerExecutorSubclassTest(TestCase):
             docker_image="python:3.11",
             command="python script.py",
             name="test-job",
-            status="running",
+            status="pending",  # Changed from "running" to valid status for launch
             docker_host=self.host,
             created_by=self.user,
             exit_code=0,
@@ -441,7 +443,7 @@ class ContainerExecutorSubclassTest(TestCase):
                 "type_name": "Custom Cloud Executor",
                 "id_label": "Task ID",
                 "id_value": "task-456",
-                "status_detail": "Cloud Status: RUNNING",
+                "status_detail": "Cloud Status: PENDING",  # Updated to match new job status
             }
 
             self.assertEqual(display, expected)

@@ -1,0 +1,72 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+    &rsaquo; <a href="{% url 'admin:container_manager_containerjob_changelist' %}">Container Jobs</a>
+    &rsaquo; <a href="{% url 'admin:container_manager_containerjob_change' job.id %}">Job {{ job.id }}</a>
+    &rsaquo; Logs
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>{{ title }}</h1>
+
+<div class="job-info">
+    <h2>Job Information</h2>
+    <p><strong>ID:</strong> {{ job.id }}</p>
+    <p><strong>Name:</strong> {{ job.name|default:"Unnamed Job" }}</p>
+    <p><strong>Status:</strong> {{ job.status }}</p>
+    <p><strong>Command:</strong> <code>{{ job.command }}</code></p>
+    {% if job.launched_at %}
+    <p><strong>Launched:</strong> {{ job.launched_at }}</p>
+    {% endif %}
+    {% if job.completed_at %}
+    <p><strong>Completed:</strong> {{ job.completed_at }}</p>
+    {% endif %}
+</div>
+
+<div class="job-logs">
+    <h2>Execution Logs</h2>
+    <div style="display: flex; gap: 20px; margin-bottom: 10px;">
+        <button onclick="showLog('stdout')" class="button" id="stdout-btn" style="background: #417690;">STDOUT</button>
+        <button onclick="showLog('stderr')" class="button" id="stderr-btn">STDERR</button>
+        <button onclick="showLog('docker')" class="button" id="docker-btn">DOCKER</button>
+    </div>
+    
+    <pre id="stdout-log" class="log-content" style="background: #f8f9fa; padding: 15px; border: 1px solid #dee2e6; border-radius: 4px; max-height: 500px; overflow-y: auto; font-family: 'Courier New', monospace; display: block;">{{ logs.stdout|default:"No stdout logs available" }}</pre>
+    
+    <pre id="stderr-log" class="log-content" style="background: #f8f9fa; padding: 15px; border: 1px solid #dee2e6; border-radius: 4px; max-height: 500px; overflow-y: auto; font-family: 'Courier New', monospace; display: none;">{{ logs.stderr|default:"No stderr logs available" }}</pre>
+    
+    <pre id="docker-log" class="log-content" style="background: #f8f9fa; padding: 15px; border: 1px solid #dee2e6; border-radius: 4px; max-height: 500px; overflow-y: auto; font-family: 'Courier New', monospace; display: none;">{{ logs.docker|default:"No docker logs available" }}</pre>
+</div>
+
+<div class="submit-row">
+    <a href="{% url 'admin:container_manager_containerjob_change' job.id %}" class="default">Back to Job</a>
+    <button onclick="window.print()" class="default">Print Logs</button>
+</div>
+
+<script>
+function showLog(logType) {
+    // Hide all logs
+    document.querySelectorAll('.log-content').forEach(log => log.style.display = 'none');
+    document.querySelectorAll('button[id$="-btn"]').forEach(btn => {
+        btn.style.background = '';
+        btn.style.color = '';
+    });
+    
+    // Show selected log
+    document.getElementById(logType + '-log').style.display = 'block';
+    document.getElementById(logType + '-btn').style.background = '#417690';
+    document.getElementById(logType + '-btn').style.color = 'white';
+}
+
+// Initialize with stdout visible
+document.addEventListener('DOMContentLoaded', () => {
+    showLog('stdout');
+});
+</script>
+{% endblock %}
