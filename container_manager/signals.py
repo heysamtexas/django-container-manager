@@ -23,10 +23,10 @@ class GracefulShutdown:
         self.timeout = timeout
         self.start_time = None
         self.stats = {
-            'shutdown_initiated': None,
-            'jobs_completed_during_shutdown': 0,
-            'jobs_interrupted': 0,
-            'clean_exit': False
+            "shutdown_initiated": None,
+            "jobs_completed_during_shutdown": 0,
+            "jobs_interrupted": 0,
+            "clean_exit": False,
         }
 
     def setup_signal_handlers(self, status_callback=None):
@@ -36,11 +36,12 @@ class GracefulShutdown:
         Args:
             status_callback: Function to call for status reporting
         """
+
         def shutdown_handler(signum, frame):
             signal_name = signal.Signals(signum).name
             logger.info(f"Received {signal_name}, initiating graceful shutdown...")
 
-            self.stats['shutdown_initiated'] = timezone.now()
+            self.stats["shutdown_initiated"] = timezone.now()
             self.start_time = time.time()
             self.shutdown_event.set()
 
@@ -58,11 +59,13 @@ class GracefulShutdown:
         signal.signal(signal.SIGINT, shutdown_handler)
 
         # Status reporting signal (only available on Unix systems)
-        if hasattr(signal, 'SIGUSR1'):
+        if hasattr(signal, "SIGUSR1"):
             signal.signal(signal.SIGUSR1, status_handler)
             logger.info("Signal handlers configured (TERM/INT=shutdown, USR1=status)")
         else:
-            logger.info("Signal handlers configured (TERM/INT=shutdown, USR1=not available)")
+            logger.info(
+                "Signal handlers configured (TERM/INT=shutdown, USR1=not available)"
+            )
 
     def is_shutdown_requested(self):
         """Check if shutdown has been requested"""
@@ -101,6 +104,7 @@ class GracefulShutdown:
         """Default status reporting"""
         try:
             from container_manager.queue import queue_manager
+
             metrics = queue_manager.get_worker_metrics()
             logger.info(f"Queue status: {metrics}")
             print(f"Queue metrics: {metrics}")  # Also print to stdout for operators
@@ -171,9 +175,9 @@ class JobCompletionTracker:
         """Get completion tracking statistics"""
         with self.lock:
             return {
-                'running': len(self.running_jobs),
-                'completed': len(self.completed_jobs),
-                'total_tracked': len(self.running_jobs) + len(self.completed_jobs)
+                "running": len(self.running_jobs),
+                "completed": len(self.completed_jobs),
+                "total_tracked": len(self.running_jobs) + len(self.completed_jobs),
             }
 
     def clear(self):

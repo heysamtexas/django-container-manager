@@ -84,16 +84,22 @@ class ExecutorHostAdmin(admin.ModelAdmin):
 
             # Actually test the connection by checking health status
             health = executor.get_health_status()
-            if health.get('healthy', False):
+            if health.get("healthy", False):
                 return format_html('<span style="color: green;">●</span> Connected')
             else:
-                error_msg = health.get('error', 'Unknown error')[:50]  # Truncate long errors
-                return format_html('<span style="color: red;">●</span> Failed: {}', error_msg)
+                error_msg = health.get("error", "Unknown error")[
+                    :50
+                ]  # Truncate long errors
+                return format_html(
+                    '<span style="color: red;">●</span> Failed: {}', error_msg
+                )
 
         except ExecutorConnectionError:
             return format_html('<span style="color: red;">●</span> Connection Failed')
         except Exception as e:
-            return format_html('<span style="color: red;">●</span> Error: {}', str(e)[:50])
+            return format_html(
+                '<span style="color: red;">●</span> Error: {}', str(e)[:50]
+            )
 
     connection_status.short_description = "Status"
 
@@ -102,19 +108,23 @@ class ExecutorHostAdmin(admin.ModelAdmin):
         provider = ExecutorProvider()
         for host in queryset:
             try:
-                executor = provider.get_executor(host)  # Check if executor can be created
+                executor = provider.get_executor(
+                    host
+                )  # Check if executor can be created
 
                 # Actually test the connection
                 health = executor.get_health_status()
-                if health.get('healthy', False):
-                    response_time = health.get('response_time', 0)
+                if health.get("healthy", False):
+                    response_time = health.get("response_time", 0)
                     messages.success(
                         request,
-                        f"Connection to {host.name} successful (response: {response_time:.3f}s)"
+                        f"Connection to {host.name} successful (response: {response_time:.3f}s)",
                     )
                 else:
-                    error_msg = health.get('error', 'Unknown error')
-                    messages.error(request, f"Connection to {host.name} failed: {error_msg}")
+                    error_msg = health.get("error", "Unknown error")
+                    messages.error(
+                        request, f"Connection to {host.name} failed: {error_msg}"
+                    )
 
             except ExecutorConnectionError as e:
                 messages.error(request, f"Connection to {host.name} failed: {e}")
@@ -196,43 +206,44 @@ class EnvironmentVariableTemplateAdmin(admin.ModelAdmin):
 
 class QueueStatusFilter(admin.SimpleListFilter):
     """Custom filter for queue status"""
-    title = 'Queue Status'
-    parameter_name = 'queue_status'
+
+    title = "Queue Status"
+    parameter_name = "queue_status"
 
     def lookups(self, request, model_admin):
         return [
-            ('not_queued', 'Not Queued'),
-            ('queued', 'Queued (Ready)'),
-            ('scheduled', 'Scheduled (Future)'),
-            ('launched', 'Launched'),
-            ('launch_failed', 'Launch Failed'),
+            ("not_queued", "Not Queued"),
+            ("queued", "Queued (Ready)"),
+            ("scheduled", "Scheduled (Future)"),
+            ("launched", "Launched"),
+            ("launch_failed", "Launch Failed"),
         ]
 
     def queryset(self, request, queryset):
-        if self.value() == 'not_queued':
+        if self.value() == "not_queued":
             return queryset.filter(queued_at__isnull=True)
-        elif self.value() == 'queued':
+        elif self.value() == "queued":
             return queryset.filter(
                 queued_at__isnull=False,
                 launched_at__isnull=True,
-                retry_count__lt=models.F('max_retries')
+                retry_count__lt=models.F("max_retries"),
             ).filter(
-                models.Q(scheduled_for__isnull=True) |
-                models.Q(scheduled_for__lte=timezone.now())
+                models.Q(scheduled_for__isnull=True)
+                | models.Q(scheduled_for__lte=timezone.now())
             )
-        elif self.value() == 'scheduled':
+        elif self.value() == "scheduled":
             return queryset.filter(
                 scheduled_for__isnull=False,
                 scheduled_for__gt=timezone.now(),
-                launched_at__isnull=True
+                launched_at__isnull=True,
             )
-        elif self.value() == 'launched':
+        elif self.value() == "launched":
             return queryset.filter(launched_at__isnull=False)
-        elif self.value() == 'launch_failed':
+        elif self.value() == "launch_failed":
             return queryset.filter(
                 queued_at__isnull=False,
                 launched_at__isnull=True,
-                retry_count__gte=models.F('max_retries')
+                retry_count__gte=models.F("max_retries"),
             )
         return queryset
 
@@ -261,7 +272,7 @@ class ContainerJobAdmin(admin.ModelAdmin):
         "created_at",
         "queued_at",
         "launched_at",
-        "retry_count"
+        "retry_count",
     )
     search_fields = (
         "id",
@@ -309,7 +320,7 @@ class ContainerJobAdmin(admin.ModelAdmin):
                     "max_retries",
                     "retry_strategy",
                     "last_error",
-                    "last_error_at"
+                    "last_error_at",
                 ),
                 "classes": ("collapse",),
             },
@@ -370,7 +381,10 @@ class ContainerJobAdmin(admin.ModelAdmin):
         ),
         (
             "Timestamps",
-            {"fields": ("created_by", "created_at", "updated_at"), "classes": ("collapse",)},
+            {
+                "fields": ("created_by", "created_at", "updated_at"),
+                "classes": ("collapse",),
+            },
         ),
     )
 
@@ -425,109 +439,121 @@ class ContainerJobAdmin(admin.ModelAdmin):
 
         # Define colors and icons for different statuses
         status_config = {
-            'not_queued': {'color': '#6c757d', 'icon': '○', 'label': 'Not Queued'},
-            'queued': {'color': '#007bff', 'icon': '⏳', 'label': 'Queued'},
-            'scheduled': {'color': '#fd7e14', 'icon': '📅', 'label': 'Scheduled'},
-            'launched': {'color': '#28a745', 'icon': '🚀', 'label': 'Launched'},
-            'launch_failed': {'color': '#dc3545', 'icon': '❌', 'label': 'Launch Failed'}
+            "not_queued": {"color": "#6c757d", "icon": "○", "label": "Not Queued"},
+            "queued": {"color": "#007bff", "icon": "⏳", "label": "Queued"},
+            "scheduled": {"color": "#fd7e14", "icon": "📅", "label": "Scheduled"},
+            "launched": {"color": "#28a745", "icon": "🚀", "label": "Launched"},
+            "launch_failed": {
+                "color": "#dc3545",
+                "icon": "❌",
+                "label": "Launch Failed",
+            },
         }
 
-        config = status_config.get(status, {'color': '#6c757d', 'icon': '?', 'label': status.title()})
+        config = status_config.get(
+            status, {"color": "#6c757d", "icon": "?", "label": status.title()}
+        )
 
         return format_html(
             '<span style="color: {}; font-weight: bold;">{} {}</span>',
-            config['color'],
-            config['icon'],
-            config['label']
+            config["color"],
+            config["icon"],
+            config["label"],
         )
-    queue_status_display.short_description = 'Queue Status'
-    queue_status_display.admin_order_field = 'queued_at'
+
+    queue_status_display.short_description = "Queue Status"
+    queue_status_display.admin_order_field = "queued_at"
 
     def execution_status_display(self, obj):
         """Display container execution status"""
-        status = obj.status or 'not_started'
+        status = obj.status or "not_started"
 
         status_config = {
-            'pending': {'color': '#6c757d', 'icon': '⏸'},
-            'queued': {'color': '#007bff', 'icon': '📋'},
-            'retrying': {'color': '#fd7e14', 'icon': '🔄'},
-            'running': {'color': '#17a2b8', 'icon': '▶️'},
-            'completed': {'color': '#28a745', 'icon': '✅'},
-            'failed': {'color': '#dc3545', 'icon': '💥'},
-            'cancelled': {'color': '#6f42c1', 'icon': '⏹'},
-            'timeout': {'color': '#dc3545', 'icon': '⏰'},
-            'not_started': {'color': '#6c757d', 'icon': '○'}
+            "pending": {"color": "#6c757d", "icon": "⏸"},
+            "queued": {"color": "#007bff", "icon": "📋"},
+            "retrying": {"color": "#fd7e14", "icon": "🔄"},
+            "running": {"color": "#17a2b8", "icon": "▶️"},
+            "completed": {"color": "#28a745", "icon": "✅"},
+            "failed": {"color": "#dc3545", "icon": "💥"},
+            "cancelled": {"color": "#6f42c1", "icon": "⏹"},
+            "timeout": {"color": "#dc3545", "icon": "⏰"},
+            "not_started": {"color": "#6c757d", "icon": "○"},
         }
 
-        config = status_config.get(status, {'color': '#6c757d', 'icon': '?'})
+        config = status_config.get(status, {"color": "#6c757d", "icon": "?"})
 
         return format_html(
             '<span style="color: {};">{} {}</span>',
-            config['color'],
-            config['icon'],
-            status.replace('_', ' ').title()
+            config["color"],
+            config["icon"],
+            status.replace("_", " ").title(),
         )
-    execution_status_display.short_description = 'Execution Status'
-    execution_status_display.admin_order_field = 'status'
+
+    execution_status_display.short_description = "Execution Status"
+    execution_status_display.admin_order_field = "status"
 
     def priority_display(self, obj):
         """Display priority with visual indicator"""
         priority = obj.priority
 
         if priority >= 80:
-            color = '#dc3545'  # High priority - red
-            indicator = '🔥'
+            color = "#dc3545"  # High priority - red
+            indicator = "🔥"
         elif priority >= 60:
-            color = '#fd7e14'  # Medium-high priority - orange
-            indicator = '⬆️'
+            color = "#fd7e14"  # Medium-high priority - orange
+            indicator = "⬆️"
         elif priority >= 40:
-            color = '#28a745'  # Normal priority - green
-            indicator = '➡️'
+            color = "#28a745"  # Normal priority - green
+            indicator = "➡️"
         else:
-            color = '#6c757d'  # Low priority - gray
-            indicator = '⬇️'
+            color = "#6c757d"  # Low priority - gray
+            indicator = "⬇️"
 
         return format_html(
             '<span style="color: {}; font-weight: bold;">{} {}</span>',
             color,
             indicator,
-            priority
+            priority,
         )
-    priority_display.short_description = 'Priority'
-    priority_display.admin_order_field = 'priority'
+
+    priority_display.short_description = "Priority"
+    priority_display.admin_order_field = "priority"
 
     def created_at_short(self, obj):
         """Short format for created timestamp"""
         if obj.created_at:
             if timezone.now().date() == obj.created_at.date():
-                return obj.created_at.strftime('%H:%M:%S')
+                return obj.created_at.strftime("%H:%M:%S")
             else:
-                return obj.created_at.strftime('%m/%d %H:%M')
-        return '-'
-    created_at_short.short_description = 'Created'
-    created_at_short.admin_order_field = 'created_at'
+                return obj.created_at.strftime("%m/%d %H:%M")
+        return "-"
+
+    created_at_short.short_description = "Created"
+    created_at_short.admin_order_field = "created_at"
 
     def queued_at_short(self, obj):
         """Short format for queued timestamp"""
         if obj.queued_at:
             if timezone.now().date() == obj.queued_at.date():
-                return obj.queued_at.strftime('%H:%M:%S')
+                return obj.queued_at.strftime("%H:%M:%S")
             else:
-                return obj.queued_at.strftime('%m/%d %H:%M')
-        return '-'
-    queued_at_short.short_description = 'Queued'
-    queued_at_short.admin_order_field = 'queued_at'
+                return obj.queued_at.strftime("%m/%d %H:%M")
+        return "-"
+
+    queued_at_short.short_description = "Queued"
+    queued_at_short.admin_order_field = "queued_at"
 
     def launched_at_short(self, obj):
         """Short format for launched timestamp"""
         if obj.launched_at:
             if timezone.now().date() == obj.launched_at.date():
-                return obj.launched_at.strftime('%H:%M:%S')
+                return obj.launched_at.strftime("%H:%M:%S")
             else:
-                return obj.launched_at.strftime('%m/%d %H:%M')
-        return '-'
-    launched_at_short.short_description = 'Launched'
-    launched_at_short.admin_order_field = 'launched_at'
+                return obj.launched_at.strftime("%m/%d %H:%M")
+        return "-"
+
+    launched_at_short.short_description = "Launched"
+    launched_at_short.admin_order_field = "launched_at"
 
     def queue_status_detail(self, obj):
         """Detailed queue status information"""
@@ -537,37 +563,58 @@ class ContainerJobAdmin(admin.ModelAdmin):
         details = []
 
         # Basic queue info
-        details.append(f"<strong>Status:</strong> {obj.queue_status.replace('_', ' ').title()}")
+        details.append(
+            f"<strong>Status:</strong> {obj.queue_status.replace('_', ' ').title()}"
+        )
         details.append(f"<strong>Priority:</strong> {obj.priority}")
 
         # Timing information
         if obj.queued_at:
-            details.append(f"<strong>Queued:</strong> {obj.queued_at.strftime('%Y-%m-%d %H:%M:%S')}")
+            details.append(
+                f"<strong>Queued:</strong> {obj.queued_at.strftime('%Y-%m-%d %H:%M:%S')}"
+            )
 
         if obj.scheduled_for:
             if obj.scheduled_for > timezone.now():
                 time_diff = obj.scheduled_for - timezone.now()
-                details.append(f"<strong>Scheduled for:</strong> {obj.scheduled_for.strftime('%Y-%m-%d %H:%M:%S')} (in {time_diff})")
+                details.append(
+                    f"<strong>Scheduled for:</strong> {obj.scheduled_for.strftime('%Y-%m-%d %H:%M:%S')} (in {time_diff})"
+                )
             else:
-                details.append(f"<strong>Was scheduled for:</strong> {obj.scheduled_for.strftime('%Y-%m-%d %H:%M:%S')} (overdue)")
+                details.append(
+                    f"<strong>Was scheduled for:</strong> {obj.scheduled_for.strftime('%Y-%m-%d %H:%M:%S')} (overdue)"
+                )
 
         if obj.launched_at:
-            details.append(f"<strong>Launched:</strong> {obj.launched_at.strftime('%Y-%m-%d %H:%M:%S')}")
+            details.append(
+                f"<strong>Launched:</strong> {obj.launched_at.strftime('%Y-%m-%d %H:%M:%S')}"
+            )
 
         # Retry information
         if obj.retry_count > 0:
-            details.append(f"<strong>Retry attempts:</strong> {obj.retry_count}/{obj.max_retries}")
+            details.append(
+                f"<strong>Retry attempts:</strong> {obj.retry_count}/{obj.max_retries}"
+            )
 
         if obj.last_error and obj.last_error_at:
-            details.append(f"<strong>Last error:</strong> {obj.last_error_at.strftime('%Y-%m-%d %H:%M:%S')}")
-            details.append(f"<strong>Error message:</strong> {obj.last_error[:100]}{'...' if len(obj.last_error) > 100 else ''}")
+            details.append(
+                f"<strong>Last error:</strong> {obj.last_error_at.strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+            details.append(
+                f"<strong>Error message:</strong> {obj.last_error[:100]}{'...' if len(obj.last_error) > 100 else ''}"
+            )
 
-        return format_html('<br>'.join(details))
-    queue_status_detail.short_description = 'Queue Details'
+        return format_html("<br>".join(details))
+
+    queue_status_detail.short_description = "Queue Details"
 
     def get_queryset(self, request):
         """Optimize queryset for admin list view"""
-        return super().get_queryset(request).select_related('docker_host', 'environment_template')
+        return (
+            super()
+            .get_queryset(request)
+            .select_related("docker_host", "environment_template")
+        )
 
     def executor_metadata_display(self, obj):
         """Display executor metadata in readable format"""
@@ -596,24 +643,24 @@ class ContainerJobAdmin(admin.ModelAdmin):
             ),
             # Queue management AJAX endpoints
             path(
-                '<int:job_id>/dequeue/',
+                "<int:job_id>/dequeue/",
                 self.admin_site.admin_view(self.dequeue_job_view),
-                name='container_manager_containerjob_dequeue'
+                name="container_manager_containerjob_dequeue",
             ),
             path(
-                '<int:job_id>/requeue/',
+                "<int:job_id>/requeue/",
                 self.admin_site.admin_view(self.requeue_job_view),
-                name='container_manager_containerjob_requeue'
+                name="container_manager_containerjob_requeue",
             ),
             path(
-                '<int:job_id>/cancel/',
+                "<int:job_id>/cancel/",
                 self.admin_site.admin_view(self.cancel_job_view),
-                name='container_manager_containerjob_cancel'
+                name="container_manager_containerjob_cancel",
             ),
             path(
-                'queue-stats/',
+                "queue-stats/",
                 self.admin_site.admin_view(self.queue_stats_view),
-                name='container_manager_containerjob_queue_stats'
+                name="container_manager_containerjob_queue_stats",
             ),
         ]
         return custom_urls + urls
@@ -622,7 +669,7 @@ class ContainerJobAdmin(admin.ModelAdmin):
         """View job logs"""
         job = get_object_or_404(ContainerJob, pk=object_id)
 
-        if not request.user.has_perm('container_manager.view_containerjob'):
+        if not request.user.has_perm("container_manager.view_containerjob"):
             raise PermissionDenied
 
         logs = {
@@ -637,7 +684,7 @@ class ContainerJobAdmin(admin.ModelAdmin):
             "title": f"Logs for Job {job.id}",
         }
 
-        return render(request, 'admin/container_manager/job_logs.html', context)
+        return render(request, "admin/container_manager/job_logs.html", context)
 
     def dashboard_view(self, request):
         """Multi-executor dashboard view"""
@@ -678,7 +725,7 @@ class ContainerJobAdmin(admin.ModelAdmin):
 
     def queue_selected_jobs(self, request, queryset):
         """Queue selected jobs for execution"""
-        if not request.user.has_perm('container_manager.change_containerjob'):
+        if not request.user.has_perm("container_manager.change_containerjob"):
             raise PermissionDenied
 
         queued_count = 0
@@ -690,8 +737,10 @@ class ContainerJobAdmin(admin.ModelAdmin):
                 if job.is_queued:
                     continue  # Skip already queued jobs
 
-                if job.status in ['completed', 'cancelled']:
-                    errors.append(f"Job {job.id} ({job.name or 'Unnamed'}): Cannot queue {job.status} job")
+                if job.status in ["completed", "cancelled"]:
+                    errors.append(
+                        f"Job {job.id} ({job.name or 'Unnamed'}): Cannot queue {job.status} job"
+                    )
                     error_count += 1
                     continue
 
@@ -707,20 +756,20 @@ class ContainerJobAdmin(admin.ModelAdmin):
 
         # Provide user feedback
         if queued_count > 0:
-            messages.success(request, f'Successfully queued {queued_count} job(s)')
+            messages.success(request, f"Successfully queued {queued_count} job(s)")
 
         if error_count > 0:
-            messages.warning(request, f'{error_count} job(s) could not be queued')
+            messages.warning(request, f"{error_count} job(s) could not be queued")
             for error in errors[:5]:  # Show max 5 errors
                 messages.error(request, error)
             if len(errors) > 5:
-                messages.error(request, f'... and {len(errors) - 5} more errors')
+                messages.error(request, f"... and {len(errors) - 5} more errors")
 
-    queue_selected_jobs.short_description = '📤 Queue selected jobs for execution'
+    queue_selected_jobs.short_description = "📤 Queue selected jobs for execution"
 
     def dequeue_selected_jobs(self, request, queryset):
         """Remove selected jobs from queue"""
-        if not request.user.has_perm('container_manager.change_containerjob'):
+        if not request.user.has_perm("container_manager.change_containerjob"):
             raise PermissionDenied
 
         dequeued_count = 0
@@ -740,26 +789,28 @@ class ContainerJobAdmin(admin.ModelAdmin):
                 logger.error(f"Error dequeuing job {job.id}: {e}")
 
         if dequeued_count > 0:
-            messages.success(request, f'Successfully removed {dequeued_count} job(s) from queue')
+            messages.success(
+                request, f"Successfully removed {dequeued_count} job(s) from queue"
+            )
         else:
-            messages.info(request, 'No queued jobs found in selection')
+            messages.info(request, "No queued jobs found in selection")
 
         if error_count > 0:
-            messages.warning(request, f'{error_count} job(s) could not be dequeued')
+            messages.warning(request, f"{error_count} job(s) could not be dequeued")
             for error in errors[:3]:
                 messages.error(request, error)
 
-    dequeue_selected_jobs.short_description = '📥 Remove selected jobs from queue'
+    dequeue_selected_jobs.short_description = "📥 Remove selected jobs from queue"
 
     def retry_failed_jobs(self, request, queryset):
         """Retry selected failed jobs"""
-        if not request.user.has_perm('container_manager.change_containerjob'):
+        if not request.user.has_perm("container_manager.change_containerjob"):
             raise PermissionDenied
 
         retried_count = 0
         error_count = 0
 
-        for job in queryset.filter(status__in=['failed', 'retrying']):
+        for job in queryset.filter(status__in=["failed", "retrying"]):
             try:
                 queue_manager.retry_failed_job(job, reset_count=True)
                 retried_count += 1
@@ -772,47 +823,55 @@ class ContainerJobAdmin(admin.ModelAdmin):
                 messages.error(request, f"Job {job.id}: {e!s}")
 
         if retried_count > 0:
-            messages.success(request, f'Successfully queued {retried_count} job(s) for retry')
+            messages.success(
+                request, f"Successfully queued {retried_count} job(s) for retry"
+            )
         else:
-            messages.info(request, 'No failed jobs found in selection')
+            messages.info(request, "No failed jobs found in selection")
 
         if error_count > 0:
-            messages.warning(request, f'{error_count} job(s) could not be retried')
+            messages.warning(request, f"{error_count} job(s) could not be retried")
 
-    retry_failed_jobs.short_description = '🔄 Retry selected failed jobs'
+    retry_failed_jobs.short_description = "🔄 Retry selected failed jobs"
 
     def set_high_priority(self, request, queryset):
         """Set selected jobs to high priority"""
-        if not request.user.has_perm('container_manager.change_containerjob'):
+        if not request.user.has_perm("container_manager.change_containerjob"):
             raise PermissionDenied
 
         updated = queryset.update(priority=80)
-        messages.success(request, f'Set {updated} job(s) to high priority')
-        logger.info(f"Admin user {request.user.username} set {updated} jobs to high priority")
+        messages.success(request, f"Set {updated} job(s) to high priority")
+        logger.info(
+            f"Admin user {request.user.username} set {updated} jobs to high priority"
+        )
 
-    set_high_priority.short_description = '🔥 Set high priority (80)'
+    set_high_priority.short_description = "🔥 Set high priority (80)"
 
     def set_normal_priority(self, request, queryset):
         """Set selected jobs to normal priority"""
-        if not request.user.has_perm('container_manager.change_containerjob'):
+        if not request.user.has_perm("container_manager.change_containerjob"):
             raise PermissionDenied
 
         updated = queryset.update(priority=50)
-        messages.success(request, f'Set {updated} job(s) to normal priority')
-        logger.info(f"Admin user {request.user.username} set {updated} jobs to normal priority")
+        messages.success(request, f"Set {updated} job(s) to normal priority")
+        logger.info(
+            f"Admin user {request.user.username} set {updated} jobs to normal priority"
+        )
 
-    set_normal_priority.short_description = '➡️ Set normal priority (50)'
+    set_normal_priority.short_description = "➡️ Set normal priority (50)"
 
     def set_low_priority(self, request, queryset):
         """Set selected jobs to low priority"""
-        if not request.user.has_perm('container_manager.change_containerjob'):
+        if not request.user.has_perm("container_manager.change_containerjob"):
             raise PermissionDenied
 
         updated = queryset.update(priority=20)
-        messages.success(request, f'Set {updated} job(s) to low priority')
-        logger.info(f"Admin user {request.user.username} set {updated} jobs to low priority")
+        messages.success(request, f"Set {updated} job(s) to low priority")
+        logger.info(
+            f"Admin user {request.user.username} set {updated} jobs to low priority"
+        )
 
-    set_low_priority.short_description = '⬇️ Set low priority (20)'
+    set_low_priority.short_description = "⬇️ Set low priority (20)"
 
     def create_job(self, request, queryset):
         """Create new jobs based on selected jobs"""
@@ -1087,132 +1146,138 @@ class ContainerJobAdmin(admin.ModelAdmin):
     @method_decorator(csrf_protect)
     def dequeue_job_view(self, request, job_id):
         """AJAX endpoint to dequeue a single job"""
-        if request.method != 'POST':
-            return JsonResponse({'success': False, 'error': 'Method not allowed'}, status=405)
+        if request.method != "POST":
+            return JsonResponse(
+                {"success": False, "error": "Method not allowed"}, status=405
+            )
 
         try:
-            if not request.user.has_perm('container_manager.change_containerjob'):
-                return JsonResponse({'success': False, 'error': 'Permission denied'})
+            if not request.user.has_perm("container_manager.change_containerjob"):
+                return JsonResponse({"success": False, "error": "Permission denied"})
 
             job = get_object_or_404(ContainerJob, id=job_id)
 
             if not job.is_queued:
-                return JsonResponse({'success': False, 'error': 'Job is not queued'})
+                return JsonResponse({"success": False, "error": "Job is not queued"})
 
             queue_manager.dequeue_job(job)
 
-            logger.info(f"Admin user {request.user.username} dequeued job {job.id} via AJAX")
+            logger.info(
+                f"Admin user {request.user.username} dequeued job {job.id} via AJAX"
+            )
 
-            return JsonResponse({
-                'success': True,
-                'message': f'Job {job.id} removed from queue'
-            })
+            return JsonResponse(
+                {"success": True, "message": f"Job {job.id} removed from queue"}
+            )
 
         except Exception as e:
             logger.error(f"Error dequeuing job {job_id}: {e}")
-            return JsonResponse({'success': False, 'error': str(e)})
+            return JsonResponse({"success": False, "error": str(e)})
 
     @method_decorator(require_POST)
     @method_decorator(csrf_protect)
     def requeue_job_view(self, request, job_id):
         """AJAX endpoint to requeue a single job"""
         try:
-            if not request.user.has_perm('container_manager.change_containerjob'):
-                return JsonResponse({'success': False, 'error': 'Permission denied'})
+            if not request.user.has_perm("container_manager.change_containerjob"):
+                return JsonResponse({"success": False, "error": "Permission denied"})
 
             job = get_object_or_404(ContainerJob, id=job_id)
 
             if job.is_queued:
-                return JsonResponse({'success': False, 'error': 'Job is already queued'})
+                return JsonResponse(
+                    {"success": False, "error": "Job is already queued"}
+                )
 
-            if job.status in ['completed', 'cancelled']:
-                return JsonResponse({'success': False, 'error': f'Cannot queue {job.status} job'})
+            if job.status in ["completed", "cancelled"]:
+                return JsonResponse(
+                    {"success": False, "error": f"Cannot queue {job.status} job"}
+                )
 
             queue_manager.queue_job(job)
 
-            logger.info(f"Admin user {request.user.username} requeued job {job.id} via AJAX")
+            logger.info(
+                f"Admin user {request.user.username} requeued job {job.id} via AJAX"
+            )
 
-            return JsonResponse({
-                'success': True,
-                'message': f'Job {job.id} added to queue'
-            })
+            return JsonResponse(
+                {"success": True, "message": f"Job {job.id} added to queue"}
+            )
 
         except Exception as e:
             logger.error(f"Error requeuing job {job_id}: {e}")
-            return JsonResponse({'success': False, 'error': str(e)})
+            return JsonResponse({"success": False, "error": str(e)})
 
     @method_decorator(require_POST)
     @method_decorator(csrf_protect)
     def cancel_job_view(self, request, job_id):
         """AJAX endpoint to cancel a single job"""
         try:
-            if not request.user.has_perm('container_manager.change_containerjob'):
-                return JsonResponse({'success': False, 'error': 'Permission denied'})
+            if not request.user.has_perm("container_manager.change_containerjob"):
+                return JsonResponse({"success": False, "error": "Permission denied"})
 
             job = get_object_or_404(ContainerJob, id=job_id)
 
-            if job.status != 'running':
-                return JsonResponse({'success': False, 'error': 'Job is not running'})
+            if job.status != "running":
+                return JsonResponse({"success": False, "error": "Job is not running"})
 
             # For now, we'll mark the job as cancelled
             # In a real implementation, this would integrate with the job execution service
-            job.status = 'cancelled'
+            job.status = "cancelled"
             job.completed_at = timezone.now()
-            job.save(update_fields=['status', 'completed_at'])
+            job.save(update_fields=["status", "completed_at"])
 
-            logger.info(f"Admin user {request.user.username} cancelled job {job.id} via AJAX")
-            return JsonResponse({
-                'success': True,
-                'message': f'Job {job.id} cancelled'
-            })
+            logger.info(
+                f"Admin user {request.user.username} cancelled job {job.id} via AJAX"
+            )
+            return JsonResponse({"success": True, "message": f"Job {job.id} cancelled"})
 
         except Exception as e:
             logger.error(f"Error cancelling job {job_id}: {e}")
-            return JsonResponse({'success': False, 'error': str(e)})
+            return JsonResponse({"success": False, "error": str(e)})
 
     def queue_stats_view(self, request):
         """View queue statistics"""
-        if not request.user.has_perm('container_manager.view_containerjob'):
+        if not request.user.has_perm("container_manager.view_containerjob"):
             raise PermissionDenied
 
         try:
             stats = queue_manager.get_worker_metrics()
 
             # Add additional statistics
-            stats.update({
-                'total_jobs': ContainerJob.objects.count(),
-                'completed_today': ContainerJob.objects.filter(
-                    status='completed',
-                    completed_at__date=timezone.now().date()
-                ).count(),
-                'failed_today': ContainerJob.objects.filter(
-                    status='failed',
-                    completed_at__date=timezone.now().date()
-                ).count(),
-                'high_priority_queued': ContainerJob.objects.filter(
-                    queued_at__isnull=False,
-                    launched_at__isnull=True,
-                    priority__gte=70
-                ).count()
-            })
+            stats.update(
+                {
+                    "total_jobs": ContainerJob.objects.count(),
+                    "completed_today": ContainerJob.objects.filter(
+                        status="completed", completed_at__date=timezone.now().date()
+                    ).count(),
+                    "failed_today": ContainerJob.objects.filter(
+                        status="failed", completed_at__date=timezone.now().date()
+                    ).count(),
+                    "high_priority_queued": ContainerJob.objects.filter(
+                        queued_at__isnull=False,
+                        launched_at__isnull=True,
+                        priority__gte=70,
+                    ).count(),
+                }
+            )
 
-            if request.headers.get('Accept') == 'application/json':
+            if request.headers.get("Accept") == "application/json":
                 return JsonResponse(stats)
 
-            context = {
-                'stats': stats,
-                'title': 'Queue Statistics'
-            }
+            context = {"stats": stats, "title": "Queue Statistics"}
 
-            return render(request, 'admin/container_manager/queue_stats.html', context)
+            return render(request, "admin/container_manager/queue_stats.html", context)
 
         except Exception as e:
             logger.error(f"Error getting queue stats: {e}")
-            if request.headers.get('Accept') == 'application/json':
-                return JsonResponse({'error': str(e)}, status=500)
+            if request.headers.get("Accept") == "application/json":
+                return JsonResponse({"error": str(e)}, status=500)
             else:
-                messages.error(request, f'Error loading queue statistics: {e}')
-                return HttpResponseRedirect(reverse('admin:container_manager_containerjob_changelist'))
+                messages.error(request, f"Error loading queue statistics: {e}")
+                return HttpResponseRedirect(
+                    reverse("admin:container_manager_containerjob_changelist")
+                )
 
     def save_model(self, request, obj, form, change):
         if not change:  # Creating new object

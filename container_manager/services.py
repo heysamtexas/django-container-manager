@@ -157,8 +157,8 @@ class JobManagementService:
             success, errors = self.prepare_job_for_launch(job)
             if not success:
                 return {
-                    'success': False,
-                    'error': f"Job preparation failed: {'; '.join(errors)}"
+                    "success": False,
+                    "error": f"Job preparation failed: {'; '.join(errors)}",
                 }
 
             # Get appropriate executor
@@ -169,26 +169,19 @@ class JobManagementService:
 
             if success:
                 # result is execution_id
-                logger.info(f"Successfully launched job {job.id} with execution_id: {result}")
-                return {
-                    'success': True,
-                    'execution_id': result
-                }
+                logger.info(
+                    f"Successfully launched job {job.id} with execution_id: {result}"
+                )
+                return {"success": True, "execution_id": result}
             else:
                 # result is error message
                 logger.error(f"Failed to launch job {job.id}: {result}")
-                return {
-                    'success': False,
-                    'error': result
-                }
+                return {"success": False, "error": result}
 
         except Exception as e:
             error_msg = f"Unexpected error launching job {job.id}: {e!s}"
             logger.exception(error_msg)
-            return {
-                'success': False,
-                'error': error_msg
-            }
+            return {"success": False, "error": error_msg}
 
     def check_job_status(self, job: "ContainerJob") -> dict[str, any]:
         """
@@ -213,9 +206,9 @@ class JobManagementService:
         try:
             if not job.get_execution_identifier():
                 return {
-                    'status': 'not-found',
-                    'execution_id': None,
-                    'error': 'No execution identifier found'
+                    "status": "not-found",
+                    "execution_id": None,
+                    "error": "No execution identifier found",
                 }
 
             # Get appropriate executor
@@ -225,18 +218,18 @@ class JobManagementService:
             status = executor.check_status(job.get_execution_identifier())
 
             return {
-                'status': status,
-                'execution_id': job.get_execution_identifier(),
-                'error': None
+                "status": status,
+                "execution_id": job.get_execution_identifier(),
+                "error": None,
             }
 
         except Exception as e:
             error_msg = f"Error checking status for job {job.id}: {e!s}"
             logger.exception(error_msg)
             return {
-                'status': 'not-found',
-                'execution_id': job.get_execution_identifier(),
-                'error': error_msg
+                "status": "not-found",
+                "execution_id": job.get_execution_identifier(),
+                "error": error_msg,
             }
 
     def harvest_job_results(self, job: "ContainerJob") -> dict[str, any]:
@@ -262,10 +255,10 @@ class JobManagementService:
         try:
             if not job.get_execution_identifier():
                 return {
-                    'success': False,
-                    'status': 'unknown',
-                    'logs_collected': False,
-                    'error': 'No execution identifier found'
+                    "success": False,
+                    "status": "unknown",
+                    "logs_collected": False,
+                    "error": "No execution identifier found",
                 }
 
             # Get appropriate executor
@@ -277,28 +270,28 @@ class JobManagementService:
             if success:
                 logger.info(f"Successfully harvested results for job {job.id}")
                 return {
-                    'success': True,
-                    'status': job.status,
-                    'logs_collected': True,
-                    'error': None
+                    "success": True,
+                    "status": job.status,
+                    "logs_collected": True,
+                    "error": None,
                 }
             else:
                 logger.warning(f"Failed to harvest results for job {job.id}")
                 return {
-                    'success': False,
-                    'status': job.status,
-                    'logs_collected': False,
-                    'error': 'Harvesting failed'
+                    "success": False,
+                    "status": job.status,
+                    "logs_collected": False,
+                    "error": "Harvesting failed",
                 }
 
         except Exception as e:
             error_msg = f"Error harvesting results for job {job.id}: {e!s}"
             logger.exception(error_msg)
             return {
-                'success': False,
-                'status': 'unknown',
-                'logs_collected': False,
-                'error': error_msg
+                "success": False,
+                "status": "unknown",
+                "logs_collected": False,
+                "error": error_msg,
             }
 
     def cleanup_job_execution(self, job: "ContainerJob") -> dict[str, any]:
@@ -322,8 +315,8 @@ class JobManagementService:
         try:
             if not job.get_execution_identifier():
                 return {
-                    'success': True,  # Nothing to cleanup
-                    'error': None
+                    "success": True,  # Nothing to cleanup
+                    "error": None,
                 }
 
             # Get appropriate executor
@@ -333,25 +326,20 @@ class JobManagementService:
             success = executor.cleanup(job.get_execution_identifier())
 
             if success:
-                logger.debug(f"Successfully cleaned up execution resources for job {job.id}")
-                return {
-                    'success': True,
-                    'error': None
-                }
+                logger.debug(
+                    f"Successfully cleaned up execution resources for job {job.id}"
+                )
+                return {"success": True, "error": None}
             else:
-                logger.warning(f"Failed to cleanup execution resources for job {job.id}")
-                return {
-                    'success': False,
-                    'error': 'Cleanup failed'
-                }
+                logger.warning(
+                    f"Failed to cleanup execution resources for job {job.id}"
+                )
+                return {"success": False, "error": "Cleanup failed"}
 
         except Exception as e:
             error_msg = f"Error cleaning up job {job.id}: {e!s}"
             logger.exception(error_msg)
-            return {
-                'success': False,
-                'error': error_msg
-            }
+            return {"success": False, "error": error_msg}
 
     def get_host_display_info(self, host: "ExecutorHost") -> dict[str, str]:
         """

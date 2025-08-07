@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 class ErrorType(Enum):
     """Classification of errors for retry decision making"""
+
     TRANSIENT = "transient"
     PERMANENT = "permanent"
     UNKNOWN = "unknown"
@@ -26,42 +27,37 @@ class ErrorClassifier:
 
     TRANSIENT_PATTERNS: ClassVar[list[str]] = [
         # Docker daemon issues
-        r'connection.*refused',
-        r'docker.*daemon.*not.*running',
-        r'timeout.*connecting',
-
+        r"connection.*refused",
+        r"docker.*daemon.*not.*running",
+        r"timeout.*connecting",
         # Resource constraints
-        r'out of memory',
-        r'no space left',
-        r'resource temporarily unavailable',
-
+        r"out of memory",
+        r"no space left",
+        r"resource temporarily unavailable",
         # Network issues
-        r'network.*timeout',
-        r'connection.*reset',
-        r'temporary failure in name resolution',
-
+        r"network.*timeout",
+        r"connection.*reset",
+        r"temporary failure in name resolution",
         # System load
-        r'system overloaded',
-        r'too many open files',
-        r'cannot allocate memory'
+        r"system overloaded",
+        r"too many open files",
+        r"cannot allocate memory",
     ]
 
     PERMANENT_PATTERNS: ClassVar[list[str]] = [
         # Image issues
-        r'image.*not found',
-        r'no such image',
-        r'repository.*not found',
-
+        r"image.*not found",
+        r"no such image",
+        r"repository.*not found",
         # Configuration errors
-        r'invalid.*configuration',
-        r'permission denied',
-        r'access denied',
-        r'authorization.*failed',
-
+        r"invalid.*configuration",
+        r"permission denied",
+        r"access denied",
+        r"authorization.*failed",
         # Command issues
-        r'executable.*not found',
-        r'command.*not found',
-        r'invalid.*command'
+        r"executable.*not found",
+        r"command.*not found",
+        r"invalid.*command",
     ]
 
     @classmethod
@@ -97,7 +93,9 @@ class ErrorClassifier:
 class RetryStrategy:
     """Defines retry behavior for different error types"""
 
-    def __init__(self, max_attempts=3, base_delay=1.0, max_delay=300.0, backoff_factor=2.0):
+    def __init__(
+        self, max_attempts=3, base_delay=1.0, max_delay=300.0, backoff_factor=2.0
+    ):
         self.max_attempts = max_attempts
         self.base_delay = base_delay
         self.max_delay = max_delay
@@ -138,8 +136,8 @@ class RetryStrategy:
 
 # Predefined strategies for different scenarios
 RETRY_STRATEGIES = {
-    'default': RetryStrategy(max_attempts=3, base_delay=2.0, max_delay=60.0),
-    'aggressive': RetryStrategy(max_attempts=5, base_delay=1.0, max_delay=30.0),
-    'conservative': RetryStrategy(max_attempts=2, base_delay=5.0, max_delay=300.0),
-    'high_priority': RetryStrategy(max_attempts=5, base_delay=0.5, max_delay=15.0),
+    "default": RetryStrategy(max_attempts=3, base_delay=2.0, max_delay=60.0),
+    "aggressive": RetryStrategy(max_attempts=5, base_delay=1.0, max_delay=30.0),
+    "conservative": RetryStrategy(max_attempts=2, base_delay=5.0, max_delay=300.0),
+    "high_priority": RetryStrategy(max_attempts=5, base_delay=0.5, max_delay=15.0),
 }

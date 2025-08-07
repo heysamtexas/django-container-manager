@@ -584,56 +584,60 @@ class ContainerJob(models.Model):
 
     # Queue State Fields (Queue Management System)
     queued_at = models.DateTimeField(
-        null=True, blank=True, db_index=True,
-        help_text="When job was added to queue for execution"
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="When job was added to queue for execution",
     )
 
     scheduled_for = models.DateTimeField(
-        null=True, blank=True, db_index=True,
-        help_text="When job should be launched (for scheduled execution)"
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="When job should be launched (for scheduled execution)",
     )
 
     launched_at = models.DateTimeField(
-        null=True, blank=True, db_index=True,
-        help_text="When job container was actually launched"
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="When job container was actually launched",
     )
 
     retry_count = models.IntegerField(
-        default=0,
-        help_text="Number of launch attempts made"
+        default=0, help_text="Number of launch attempts made"
     )
 
     max_retries = models.IntegerField(
-        default=3,
-        help_text="Maximum launch attempts before giving up"
+        default=3, help_text="Maximum launch attempts before giving up"
     )
 
     priority = models.IntegerField(
         default=50,
         validators=[MinValueValidator(0), MaxValueValidator(100)],
-        help_text="Job priority (0-100, higher numbers = higher priority)"
+        help_text="Job priority (0-100, higher numbers = higher priority)",
     )
 
     # Retry information fields
     last_error = models.TextField(
-        blank=True, null=True,
-        help_text="Last error message from failed launch attempt"
+        blank=True, null=True, help_text="Last error message from failed launch attempt"
     )
 
     last_error_at = models.DateTimeField(
-        blank=True, null=True,
-        help_text="When the last error occurred"
+        blank=True, null=True, help_text="When the last error occurred"
     )
 
     retry_strategy = models.CharField(
-        max_length=50, blank=True, null=True,
+        max_length=50,
+        blank=True,
+        null=True,
         choices=[
-            ('default', 'Default'),
-            ('aggressive', 'Aggressive'),
-            ('conservative', 'Conservative'),
-            ('high_priority', 'High Priority'),
+            ("default", "Default"),
+            ("aggressive", "Aggressive"),
+            ("conservative", "Conservative"),
+            ("high_priority", "High Priority"),
         ],
-        help_text="Retry strategy to use for this job"
+        help_text="Retry strategy to use for this job",
     )
 
     # Basic metadata
@@ -660,12 +664,19 @@ class ContainerJob(models.Model):
             ),
             models.Index(fields=["docker_host", "status"], name="cjob_host_status_idx"),
             models.Index(fields=["status"], name="cjob_status_idx"),
-
             # Queue management indexes
-            models.Index(fields=["queued_at", "launched_at"], name="cjob_queue_launched_idx"),
-            models.Index(fields=["scheduled_for", "queued_at"], name="cjob_scheduled_queue_idx"),
-            models.Index(fields=["queued_at", "retry_count"], name="cjob_queue_retry_idx"),
-            models.Index(fields=["priority", "queued_at"], name="cjob_priority_queue_idx"),
+            models.Index(
+                fields=["queued_at", "launched_at"], name="cjob_queue_launched_idx"
+            ),
+            models.Index(
+                fields=["scheduled_for", "queued_at"], name="cjob_scheduled_queue_idx"
+            ),
+            models.Index(
+                fields=["queued_at", "retry_count"], name="cjob_queue_retry_idx"
+            ),
+            models.Index(
+                fields=["priority", "queued_at"], name="cjob_priority_queue_idx"
+            ),
             models.Index(fields=["status", "queued_at"], name="cjob_status_queue_idx"),
         ]
 
@@ -724,30 +735,30 @@ class ContainerJob(models.Model):
     def queue_status(self):
         """Human-readable queue status"""
         if not self.queued_at:
-            return 'not_queued'
+            return "not_queued"
         elif not self.launched_at:
             if self.scheduled_for and self.scheduled_for > timezone.now():
-                return 'scheduled'
+                return "scheduled"
             elif self.retry_count >= self.max_retries:
-                return 'launch_failed'
+                return "launch_failed"
             else:
-                return 'queued'
+                return "queued"
         else:
-            return 'launched'
+            return "launched"
 
     # State Machine Validation
     from typing import ClassVar
 
     VALID_TRANSITIONS: ClassVar[dict[str, list[str]]] = {
-        'pending': ['queued', 'launching', 'running', 'cancelled'],
-        'queued': ['launching', 'running', 'failed', 'retrying', 'cancelled'],
-        'launching': ['running', 'failed', 'cancelled'],
-        'running': ['completed', 'failed', 'timeout', 'cancelled'],
-        'failed': ['retrying', 'cancelled'],
-        'retrying': ['queued', 'failed', 'cancelled'],
-        'completed': [],  # Terminal state
-        'timeout': [],    # Terminal state
-        'cancelled': [],  # Terminal state
+        "pending": ["queued", "launching", "running", "cancelled"],
+        "queued": ["launching", "running", "failed", "retrying", "cancelled"],
+        "launching": ["running", "failed", "cancelled"],
+        "running": ["completed", "failed", "timeout", "cancelled"],
+        "failed": ["retrying", "cancelled"],
+        "retrying": ["queued", "failed", "cancelled"],
+        "completed": [],  # Terminal state
+        "timeout": [],  # Terminal state
+        "cancelled": [],  # Terminal state
     }
 
     def can_transition_to(self, new_status):
@@ -766,18 +777,18 @@ class ContainerJob(models.Model):
         self.status = new_status
 
         # Update timestamps based on status
-        if new_status == 'running' and not self.launched_at:
+        if new_status == "running" and not self.launched_at:
             self.launched_at = timezone.now()
-        elif new_status == 'completed' and not self.completed_at:
+        elif new_status == "completed" and not self.completed_at:
             self.completed_at = timezone.now()
 
         if save:
-            update_fields = ['status']
+            update_fields = ["status"]
             # Add timestamp fields if they were updated
-            if new_status == 'running' and not self.launched_at:
-                update_fields.append('launched_at')
-            elif new_status == 'completed' and not self.completed_at:
-                update_fields.append('completed_at')
+            if new_status == "running" and not self.launched_at:
+                update_fields.append("launched_at")
+            elif new_status == "completed" and not self.completed_at:
+                update_fields.append("completed_at")
 
             self.save(update_fields=update_fields)
 
@@ -786,34 +797,34 @@ class ContainerJob(models.Model):
     # Helper methods for common state transitions
     def mark_as_queued(self, scheduled_for=None):
         """Mark job as queued with proper state transition"""
-        self.transition_to('queued', save=False)
+        self.transition_to("queued", save=False)
         self.queued_at = timezone.now()
         if scheduled_for:
             self.scheduled_for = scheduled_for
-        self.save(update_fields=['status', 'queued_at', 'scheduled_for'])
+        self.save(update_fields=["status", "queued_at", "scheduled_for"])
 
     def mark_as_running(self):
         """Mark job as running with proper state transition"""
-        self.transition_to('running', save=False)
+        self.transition_to("running", save=False)
         if not self.launched_at:
             self.launched_at = timezone.now()
-        self.save(update_fields=['status', 'launched_at'])
+        self.save(update_fields=["status", "launched_at"])
 
     def mark_as_completed(self):
         """Mark job as completed with proper state transition"""
-        self.transition_to('completed', save=False)
+        self.transition_to("completed", save=False)
         if not self.completed_at:
             self.completed_at = timezone.now()
-        self.save(update_fields=['status', 'completed_at'])
+        self.save(update_fields=["status", "completed_at"])
 
     def mark_as_failed(self, should_retry=False):
         """Mark job as failed, optionally setting up retry"""
         if should_retry and self.retry_count < self.max_retries:
-            self.transition_to('retrying', save=False)
+            self.transition_to("retrying", save=False)
             self.retry_count += 1
-            self.save(update_fields=['status', 'retry_count'])
+            self.save(update_fields=["status", "retry_count"])
         else:
-            self.transition_to('failed')
+            self.transition_to("failed")
 
     def get_execution_identifier(self) -> str:
         """
@@ -1075,7 +1086,9 @@ class ContainerJob(models.Model):
         if self.pk:  # Existing object - check for status changes
             try:
                 old_obj = ContainerJob.objects.get(pk=self.pk)
-                if old_obj.status != self.status and not old_obj.can_transition_to(self.status):
+                if old_obj.status != self.status and not old_obj.can_transition_to(
+                    self.status
+                ):
                     # Validate transition
                     raise ValueError(
                         f"Invalid status transition: {old_obj.status} -> {self.status}"

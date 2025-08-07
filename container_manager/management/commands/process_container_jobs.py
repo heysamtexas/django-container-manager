@@ -47,6 +47,7 @@ Operational:
   kill -TERM <pid>                                  # Graceful shutdown
 """
 
+
 class Command(BaseCommand):
     help = """
     Process container jobs using the intelligent queue system (default) or legacy processing.
@@ -94,7 +95,7 @@ class Command(BaseCommand):
     def create_parser(self, prog_name, subcommand, **kwargs):
         """Add usage examples to help output"""
         parser = super().create_parser(prog_name, subcommand, **kwargs)
-        parser.epilog = EXAMPLES % {'prog': f'{prog_name} {subcommand}'}
+        parser.epilog = EXAMPLES % {"prog": f"{prog_name} {subcommand}"}
         return parser
 
     def __init__(self, *args, **kwargs):
@@ -103,7 +104,6 @@ class Command(BaseCommand):
         self.executor_factory = ExecutorFactory()
         self.shutdown_event = threading.Event()
         self.queue_mode = False
-
 
     def add_arguments(self, parser):
         # Processing Mode (Queue mode is now default)
@@ -268,15 +268,15 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         """Main command handler"""
         # Set up logging level
-        if options['verbose']:
-            logging.getLogger('container_manager').setLevel(logging.DEBUG)
+        if options["verbose"]:
+            logging.getLogger("container_manager").setLevel(logging.DEBUG)
 
         # Validate arguments
         self._validate_arguments(options)
 
         # Set mode flag for signal handlers
         # Determine processing mode (queue mode is now default)
-        use_legacy = options['legacy_mode']
+        use_legacy = options["legacy_mode"]
         use_queue = not use_legacy  # Queue mode unless explicitly requested legacy
 
         self.queue_mode = use_queue
@@ -292,19 +292,21 @@ class Command(BaseCommand):
 
         # Warn about deprecated arguments
         deprecated_args = {
-            'host': '--host',
-            'single_run': '--single-run',
-            'cleanup': '--cleanup',
-            'cleanup_hours': '--cleanup-hours',
-            'use_factory': '--use-factory',
-            'executor_type': '--executor-type',
-            'max_jobs': '--max-jobs'
+            "host": "--host",
+            "single_run": "--single-run",
+            "cleanup": "--cleanup",
+            "cleanup_hours": "--cleanup-hours",
+            "use_factory": "--use-factory",
+            "executor_type": "--executor-type",
+            "max_jobs": "--max-jobs",
         }
 
         for arg, flag in deprecated_args.items():
             if options.get(arg):
                 self.stdout.write(
-                    self.style.WARNING(f"⚠️  DEPRECATED: {flag} is deprecated and may not work correctly.")
+                    self.style.WARNING(
+                        f"⚠️  DEPRECATED: {flag} is deprecated and may not work correctly."
+                    )
                 )
 
         try:
@@ -323,13 +325,19 @@ class Command(BaseCommand):
     def _validate_arguments(self, options):
         """Validate command arguments"""
         # Check for conflicting mode arguments
-        if options['legacy_mode'] and options['queue_mode']:
+        if options["legacy_mode"] and options["queue_mode"]:
             raise CommandError("Cannot specify both --legacy-mode and --queue-mode")
 
         # Validate legacy mode conflicts (now using queue mode as default)
-        use_legacy = options['legacy_mode']
+        use_legacy = options["legacy_mode"]
         if not use_legacy:  # Queue mode (default)
-            conflicting_args = ['host', 'single_run', 'cleanup', 'use_factory', 'executor_type']
+            conflicting_args = [
+                "host",
+                "single_run",
+                "cleanup",
+                "use_factory",
+                "executor_type",
+            ]
             for arg in conflicting_args:
                 if options.get(arg):
                     self.stdout.write(
@@ -341,27 +349,30 @@ class Command(BaseCommand):
                     options[arg] = None  # Disable the conflicting argument
 
         # Validate ranges
-        if options['max_concurrent'] < 1:
+        if options["max_concurrent"] < 1:
             raise CommandError("--max-concurrent must be at least 1")
 
-        if options['max_jobs'] < 1:
+        if options["max_jobs"] < 1:
             raise CommandError("--max-jobs must be at least 1")
 
-        if options['poll_interval'] < 1:
+        if options["poll_interval"] < 1:
             raise CommandError("--poll-interval must be at least 1")
 
-        if options['timeout'] < 1:
+        if options["timeout"] < 1:
             raise CommandError("--timeout must be at least 1")
 
-        if options['shutdown_timeout'] < 1:
+        if options["shutdown_timeout"] < 1:
             raise CommandError("--shutdown-timeout must be at least 1")
 
     def _setup_queue_signal_handlers(self):
         """Set up signal handlers for queue mode"""
+
         def shutdown_handler(signum, frame):
             signal_name = signal.Signals(signum).name
             self.stdout.write(
-                self.style.WARNING(f"Received {signal_name}, shutting down gracefully...")
+                self.style.WARNING(
+                    f"Received {signal_name}, shutting down gracefully..."
+                )
             )
             self.shutdown_event.set()
 
@@ -377,11 +388,12 @@ class Command(BaseCommand):
         signal.signal(signal.SIGINT, shutdown_handler)
 
         # Only set up SIGUSR1 on Unix systems
-        if hasattr(signal, 'SIGUSR1'):
+        if hasattr(signal, "SIGUSR1"):
             signal.signal(signal.SIGUSR1, status_handler)
 
     def _setup_legacy_signal_handlers(self):
         """Set up signal handlers for legacy mode (original behavior)"""
+
         def signal_handler(signum, frame):
             self.stdout.write(
                 self.style.WARNING(
@@ -395,13 +407,13 @@ class Command(BaseCommand):
 
     def _handle_queue_mode(self, options):
         """Handle queue processing mode"""
-        max_concurrent = options['max_concurrent']
-        poll_interval = options['poll_interval']
-        once = options['once']
-        dry_run = options['dry_run']
-        timeout = options['timeout']
-        shutdown_timeout = options['shutdown_timeout']
-        graceful_shutdown = options['graceful_shutdown']
+        max_concurrent = options["max_concurrent"]
+        poll_interval = options["poll_interval"]
+        once = options["once"]
+        dry_run = options["dry_run"]
+        timeout = options["timeout"]
+        shutdown_timeout = options["shutdown_timeout"]
+        graceful_shutdown = options["graceful_shutdown"]
 
         mode_type = "graceful" if graceful_shutdown else "basic"
         self.stdout.write(
@@ -418,8 +430,7 @@ class Command(BaseCommand):
         if once:
             # Single queue processing run
             result = queue_manager.launch_next_batch(
-                max_concurrent=max_concurrent,
-                timeout=timeout
+                max_concurrent=max_concurrent, timeout=timeout
             )
 
             self.stdout.write(
@@ -428,13 +439,11 @@ class Command(BaseCommand):
                 )
             )
 
-            if result['errors']:
+            if result["errors"]:
                 self.stdout.write(
-                    self.style.WARNING(
-                        f"Encountered {len(result['errors'])} errors:"
-                    )
+                    self.style.WARNING(f"Encountered {len(result['errors'])} errors:")
                 )
-                for error in result['errors']:
+                for error in result["errors"]:
                     self.stdout.write(f"  - {error}")
 
             return
@@ -446,7 +455,7 @@ class Command(BaseCommand):
                     stats = queue_manager.process_queue_with_graceful_shutdown(
                         max_concurrent=max_concurrent,
                         poll_interval=poll_interval,
-                        shutdown_timeout=shutdown_timeout
+                        shutdown_timeout=shutdown_timeout,
                     )
 
                     self.stdout.write(
@@ -457,9 +466,11 @@ class Command(BaseCommand):
                         )
                     )
 
-                    if stats['clean_shutdown']:
-                        self.stdout.write(self.style.SUCCESS("Clean shutdown completed"))
-                    elif stats.get('jobs_interrupted', 0) > 0:
+                    if stats["clean_shutdown"]:
+                        self.stdout.write(
+                            self.style.SUCCESS("Clean shutdown completed")
+                        )
+                    elif stats.get("jobs_interrupted", 0) > 0:
                         self.stdout.write(
                             self.style.WARNING(
                                 f"Forced shutdown with {stats['jobs_interrupted']} jobs interrupted"
@@ -470,7 +481,7 @@ class Command(BaseCommand):
                     stats = queue_manager.process_queue_continuous(
                         max_concurrent=max_concurrent,
                         poll_interval=poll_interval,
-                        shutdown_event=self.shutdown_event
+                        shutdown_event=self.shutdown_event,
                     )
 
                     self.stdout.write(
@@ -482,7 +493,7 @@ class Command(BaseCommand):
                     )
 
                 # Report errors for both modes
-                if stats['errors']:
+                if stats["errors"]:
                     self.stdout.write(
                         self.style.WARNING(
                             f"Encountered {len(stats['errors'])} errors during processing"
@@ -501,7 +512,7 @@ class Command(BaseCommand):
         self._run_cleanup_if_requested(config)
         self._validate_host_filter(config.get("host_filter"))
 
-        if options['dry_run']:
+        if options["dry_run"]:
             self._dry_run_legacy_mode(config)
             return
 
@@ -521,14 +532,18 @@ class Command(BaseCommand):
         self.stdout.write(f"  Launch failed: {metrics['launch_failed']}")
 
         # Show next jobs that would be processed
-        ready_jobs = queue_manager.get_ready_jobs(limit=options['max_concurrent'])
+        ready_jobs = queue_manager.get_ready_jobs(limit=options["max_concurrent"])
 
         if ready_jobs:
-            self.stdout.write(f"\nNext {len(ready_jobs)} job(s) that would be launched:")
+            self.stdout.write(
+                f"\nNext {len(ready_jobs)} job(s) that would be launched:"
+            )
             for job in ready_jobs:
                 scheduled_str = ""
                 if job.scheduled_for:
-                    scheduled_str = f", scheduled={job.scheduled_for.strftime('%H:%M:%S')}"
+                    scheduled_str = (
+                        f", scheduled={job.scheduled_for.strftime('%H:%M:%S')}"
+                    )
                 self.stdout.write(
                     f"  - Job {job.id}: {job.name or 'unnamed'} "
                     f"(priority={job.priority}, "
@@ -550,9 +565,11 @@ class Command(BaseCommand):
             queryset = queryset.filter(docker_host__name=config["host_filter"])
 
         queryset = queryset.filter(docker_host__is_active=True)
-        pending_jobs = list(queryset[:config.get("max_jobs", 10)])
+        pending_jobs = list(queryset[: config.get("max_jobs", 10)])
 
-        self.stdout.write(f"Legacy Mode - Would process {len(pending_jobs)} pending jobs:")
+        self.stdout.write(
+            f"Legacy Mode - Would process {len(pending_jobs)} pending jobs:"
+        )
         for job in pending_jobs:
             self.stdout.write(
                 f"  - Job {job.id}: {job.name or 'unnamed'} on {job.docker_host.name}"
@@ -1058,16 +1075,16 @@ class Command(BaseCommand):
                 logger.warning(f"Failed to cleanup timed out job {job.id}: {e}")
 
             # Mark as timed out using proper state transitions
-            if job.status == 'running':
-                job.transition_to('timeout', save=True)
+            if job.status == "running":
+                job.transition_to("timeout", save=True)
             else:
                 # If not running, transition through running first
-                job.transition_to('running', save=True)
-                job.transition_to('timeout', save=True)
+                job.transition_to("running", save=True)
+                job.transition_to("timeout", save=True)
 
             # Update completion time
             job.completed_at = timezone.now()
-            job.save(update_fields=['completed_at'])
+            job.save(update_fields=["completed_at"])
 
         except Exception:
             logger.exception(f"Error handling timeout for job {job.id}")
@@ -1079,14 +1096,14 @@ class Command(BaseCommand):
                 # Use proper state transitions based on current status
                 original_status = job.status
 
-                if job.status == 'pending':
+                if job.status == "pending":
                     # pending -> running -> failed (required transition path)
-                    job.transition_to('running', save=True)  # Save intermediate step
-                    job.transition_to('failed', save=True)   # Save final state
-                elif job.status in ['queued', 'launching', 'running', 'retrying']:
+                    job.transition_to("running", save=True)  # Save intermediate step
+                    job.transition_to("failed", save=True)  # Save final state
+                elif job.status in ["queued", "launching", "running", "retrying"]:
                     # These can transition directly to failed
-                    job.transition_to('failed', save=True)
-                elif job.status == 'failed':
+                    job.transition_to("failed", save=True)
+                elif job.status == "failed":
                     # Already failed, nothing to do for status
                     pass
                 else:
@@ -1099,16 +1116,16 @@ class Command(BaseCommand):
                     return
 
                 # Update completion time if we changed status to failed
-                if original_status != 'failed' and job.status == 'failed':
+                if original_status != "failed" and job.status == "failed":
                     job.completed_at = timezone.now()
-                    job.save(update_fields=['completed_at'])
+                    job.save(update_fields=["completed_at"])
 
                 # Set error message on job directly
                 if job.docker_log:
                     job.docker_log += f"\nERROR: {error_message}"
                 else:
                     job.docker_log = f"ERROR: {error_message}"
-                job.save(update_fields=['docker_log'])
+                job.save(update_fields=["docker_log"])
 
         except Exception:
             logger.exception(f"Failed to mark job {job.id} as failed")

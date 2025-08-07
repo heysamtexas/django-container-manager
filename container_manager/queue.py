@@ -38,19 +38,21 @@ class JobQueueManager:
         if job.is_queued:
             raise ValueError(f"Job {job.id} is already queued")
 
-        if job.status in ['completed', 'cancelled']:
+        if job.status in ["completed", "cancelled"]:
             raise ValueError(f"Cannot queue {job.status} job {job.id}")
 
         # Set priority if provided
         if priority is not None:
             job.priority = priority
-            job.save(update_fields=['priority'])
+            job.save(update_fields=["priority"])
 
         # Queue the job using the model's helper method
         job.mark_as_queued(scheduled_for=schedule_for)
 
-        logger.info(f"Queued job {job.id} for execution" +
-                   (f" at {schedule_for}" if schedule_for else ""))
+        logger.info(
+            f"Queued job {job.id} for execution"
+            + (f" at {schedule_for}" if schedule_for else "")
+        )
         return job
 
     def get_ready_jobs(self, limit=None, exclude_ids=None):
@@ -66,19 +68,23 @@ class JobQueueManager:
         """
         from container_manager.models import ContainerJob
 
-        queryset = ContainerJob.objects.filter(
-            # Must be queued but not yet launched
-            queued_at__isnull=False,
-            launched_at__isnull=True,
-            # Must not have exceeded retry limit
-            retry_count__lt=F('max_retries')
-        ).filter(
-            # Either not scheduled or scheduled time has passed
-            Q(scheduled_for__isnull=True) |
-            Q(scheduled_for__lte=timezone.now())
-        ).order_by(
-            # Order by priority (descending), then FIFO
-            '-priority', 'queued_at'
+        queryset = (
+            ContainerJob.objects.filter(
+                # Must be queued but not yet launched
+                queued_at__isnull=False,
+                launched_at__isnull=True,
+                # Must not have exceeded retry limit
+                retry_count__lt=F("max_retries"),
+            )
+            .filter(
+                # Either not scheduled or scheduled time has passed
+                Q(scheduled_for__isnull=True) | Q(scheduled_for__lte=timezone.now())
+            )
+            .order_by(
+                # Order by priority (descending), then FIFO
+                "-priority",
+                "queued_at",
+            )
         )
 
         if exclude_ids:
@@ -107,8 +113,8 @@ class JobQueueManager:
                 # Verify job is still ready to launch
                 if not job.is_ready_to_launch:
                     return {
-                        'success': False,
-                        'error': f"Job {job.id} no longer ready to launch"
+                        "success": False,
+                        "error": f"Job {job.id} no longer ready to launch",
                     }
 
                 # Use the actual job service to launch the job
@@ -116,33 +122,32 @@ class JobQueueManager:
 
                 result = launch_job(job)
 
-                if result.get('success', False):
+                if result.get("success", False):
                     # Job service has already handled status transitions and execution_id
                     # No need to call mark_as_running() again since executor already did it
                     logger.info(f"Successfully launched job {job.id}")
-                    return {'success': True}
+                    return {"success": True}
                 else:
                     # Launch failed - increment retry count
                     job.retry_count += 1
-                    job.save(update_fields=['retry_count'])
+                    job.save(update_fields=["retry_count"])
 
                     error_msg = f"Failed to launch job {job.id} (attempt {job.retry_count}): {result.get('error', 'Unknown error')}"
                     logger.warning(error_msg)
 
-                    return {'success': False, 'error': error_msg}
+                    return {"success": False, "error": error_msg}
 
         except Exception as e:
             # Handle unexpected errors
             job.retry_count += 1
-            job.save(update_fields=['retry_count'])
+            job.save(update_fields=["retry_count"])
 
             error_msg = f"Error launching job {job.id}: {e!s}"
             logger.exception(error_msg)
 
-            return {'success': False, 'error': error_msg}
+            return {"success": False, "error": error_msg}
 
     # Removed _mock_launch_job - now using actual job service integration
-
 
     def get_queue_stats(self):
         """
@@ -154,28 +159,27 @@ class JobQueueManager:
         from container_manager.models import ContainerJob
 
         stats = {
-            'queued': ContainerJob.objects.filter(
+            "queued": ContainerJob.objects.filter(
                 queued_at__isnull=False,
                 launched_at__isnull=True,
-                retry_count__lt=F('max_retries')
-            ).filter(
+                retry_count__lt=F("max_retries"),
+            )
+            .filter(
                 # Exclude jobs scheduled for future
-                Q(scheduled_for__isnull=True) |
-                Q(scheduled_for__lte=timezone.now())
-            ).count(),
-            'scheduled': ContainerJob.objects.filter(
+                Q(scheduled_for__isnull=True) | Q(scheduled_for__lte=timezone.now())
+            )
+            .count(),
+            "scheduled": ContainerJob.objects.filter(
                 scheduled_for__isnull=False,
                 scheduled_for__gt=timezone.now(),
-                launched_at__isnull=True
+                launched_at__isnull=True,
             ).count(),
-            'running': ContainerJob.objects.filter(
-                status='running'
-            ).count(),
-            'launch_failed': ContainerJob.objects.filter(
+            "running": ContainerJob.objects.filter(status="running").count(),
+            "launch_failed": ContainerJob.objects.filter(
                 queued_at__isnull=False,
                 launched_at__isnull=True,
-                retry_count__gte=F('max_retries')
-            ).count()
+                retry_count__gte=F("max_retries"),
+            ).count(),
         }
 
         return stats
@@ -193,7 +197,7 @@ class JobQueueManager:
         job.queued_at = None
         job.scheduled_for = None
         job.retry_count = 0
-        job.save(update_fields=['queued_at', 'scheduled_for', 'retry_count'])
+        job.save(update_fields=["queued_at", "scheduled_for", "retry_count"])
 
         logger.info(f"Removed job {job.id} from queue")
 
@@ -214,12 +218,14 @@ class JobQueueManager:
         errors = []
 
         # Check current resource usage
-        running_jobs = ContainerJob.objects.filter(status='running').count()
+        running_jobs = ContainerJob.objects.filter(status="running").count()
         available_slots = max(0, max_concurrent - running_jobs)
 
         if available_slots == 0:
-            logger.debug(f"No available slots (running: {running_jobs}/{max_concurrent})")
-            return {'launched': 0, 'errors': []}
+            logger.debug(
+                f"No available slots (running: {running_jobs}/{max_concurrent})"
+            )
+            return {"launched": 0, "errors": []}
 
         logger.info(f"Attempting to launch up to {available_slots} jobs")
 
@@ -229,14 +235,16 @@ class JobQueueManager:
         # Launch jobs
         for job in ready_jobs:
             result = self.launch_job(job)
-            if result['success']:
+            if result["success"]:
                 launched_count += 1
-                logger.info(f"Launched job {job.id} ({launched_count}/{available_slots})")
+                logger.info(
+                    f"Launched job {job.id} ({launched_count}/{available_slots})"
+                )
             else:
                 errors.append(f"Job {job.id}: {result['error']}")
 
         logger.info(f"Launched {launched_count} jobs from queue")
-        return {'launched': launched_count, 'errors': errors}
+        return {"launched": launched_count, "errors": errors}
 
     def launch_job_with_retry(self, job):
         """
@@ -257,9 +265,9 @@ class JobQueueManager:
                 # Verify job is still ready to launch
                 if not job.is_ready_to_launch:
                     return {
-                        'success': False,
-                        'error': f"Job {job.id} no longer ready to launch",
-                        'retry_scheduled': False
+                        "success": False,
+                        "error": f"Job {job.id} no longer ready to launch",
+                        "retry_scheduled": False,
                     }
 
                 # Get retry strategy for this job
@@ -270,13 +278,15 @@ class JobQueueManager:
 
                 result = launch_job(job)
 
-                if result.get('success', False):
+                if result.get("success", False):
                     # Launch successful - job service has already handled status and execution_id
                     logger.info(f"Successfully launched job {job.id}")
-                    return {'success': True, 'retry_scheduled': False}
+                    return {"success": True, "retry_scheduled": False}
                 else:
                     # Launch failed - handle retry logic
-                    return self._handle_launch_failure(job, result.get('error', 'Unknown error'), strategy)
+                    return self._handle_launch_failure(
+                        job, result.get("error", "Unknown error"), strategy
+                    )
 
         except Exception as e:
             # Handle unexpected errors
@@ -311,7 +321,9 @@ class JobQueueManager:
         job.last_error_at = timezone.now()
 
         # Determine if we should retry (use job's max_retries, not strategy's max_attempts)
-        should_retry = (job.retry_count < job.max_retries) and strategy.should_retry(job.retry_count, error_type)
+        should_retry = (job.retry_count < job.max_retries) and strategy.should_retry(
+            job.retry_count, error_type
+        )
 
         if should_retry and error_type != ErrorType.PERMANENT:
             # Schedule retry
@@ -319,13 +331,18 @@ class JobQueueManager:
             job.scheduled_for = timezone.now() + timedelta(seconds=retry_delay)
 
             # Only transition to retrying if not already in retrying state
-            if job.status != 'retrying':
-                job.transition_to('retrying', save=False)
+            if job.status != "retrying":
+                job.transition_to("retrying", save=False)
 
-            job.save(update_fields=[
-                'retry_count', 'last_error', 'last_error_at',
-                'scheduled_for', 'status'
-            ])
+            job.save(
+                update_fields=[
+                    "retry_count",
+                    "last_error",
+                    "last_error_at",
+                    "scheduled_for",
+                    "status",
+                ]
+            )
 
             logger.warning(
                 f"Job {job.id} failed (attempt {job.retry_count}): {error_message}. "
@@ -333,30 +350,41 @@ class JobQueueManager:
             )
 
             return {
-                'success': False,
-                'error': error_message,
-                'retry_scheduled': True,
-                'retry_in_seconds': retry_delay
+                "success": False,
+                "error": error_message,
+                "retry_scheduled": True,
+                "retry_in_seconds": retry_delay,
             }
         else:
             # No more retries - mark as permanently failed
-            job.transition_to('failed', save=False)
+            job.transition_to("failed", save=False)
 
             # Remove from queue
             job.queued_at = None
 
-            job.save(update_fields=[
-                'retry_count', 'last_error', 'last_error_at',
-                'status', 'queued_at'
-            ])
+            job.save(
+                update_fields=[
+                    "retry_count",
+                    "last_error",
+                    "last_error_at",
+                    "status",
+                    "queued_at",
+                ]
+            )
 
-            reason = "permanent error" if error_type == ErrorType.PERMANENT else "retry limit exceeded"
-            logger.error(f"Job {job.id} permanently failed after {job.retry_count} attempts ({reason}): {error_message}")
+            reason = (
+                "permanent error"
+                if error_type == ErrorType.PERMANENT
+                else "retry limit exceeded"
+            )
+            logger.error(
+                f"Job {job.id} permanently failed after {job.retry_count} attempts ({reason}): {error_message}"
+            )
 
             return {
-                'success': False,
-                'error': f"Permanently failed: {error_message}",
-                'retry_scheduled': False
+                "success": False,
+                "error": f"Permanently failed: {error_message}",
+                "retry_scheduled": False,
             }
 
     def _get_retry_strategy(self, job):
@@ -372,15 +400,15 @@ class JobQueueManager:
         from container_manager.retry import RETRY_STRATEGIES
 
         # Check if job specifies a strategy
-        strategy_name = getattr(job, 'retry_strategy', None) or 'default'
+        strategy_name = getattr(job, "retry_strategy", None) or "default"
 
         # Priority-based strategy selection
         if job.priority >= 80:
-            strategy_name = 'high_priority'
+            strategy_name = "high_priority"
         elif job.priority <= 20:
-            strategy_name = 'conservative'
+            strategy_name = "conservative"
 
-        return RETRY_STRATEGIES.get(strategy_name, RETRY_STRATEGIES['default'])
+        return RETRY_STRATEGIES.get(strategy_name, RETRY_STRATEGIES["default"])
 
     # Removed _mock_launch_job_with_failure_simulation - now using actual job service integration
 
@@ -395,12 +423,12 @@ class JobQueueManager:
         Returns:
             bool: True if job was queued for retry
         """
-        if job.status not in ['failed', 'retrying']:
+        if job.status not in ["failed", "retrying"]:
             raise ValueError(f"Cannot retry job in status: {job.status}")
 
         # First transition to retrying state if coming from failed
-        if job.status == 'failed':
-            job.transition_to('retrying', save=True)
+        if job.status == "failed":
+            job.transition_to("retrying", save=True)
             # Refresh to avoid stale state in memory
             job.refresh_from_db()
 
@@ -413,11 +441,17 @@ class JobQueueManager:
         job.last_error = None
         job.last_error_at = None
 
-        job.transition_to('queued', save=False)
-        job.save(update_fields=[
-            'status', 'queued_at', 'scheduled_for', 'retry_count',
-            'last_error', 'last_error_at'
-        ])
+        job.transition_to("queued", save=False)
+        job.save(
+            update_fields=[
+                "status",
+                "queued_at",
+                "scheduled_for",
+                "retry_count",
+                "last_error",
+                "last_error_at",
+            ]
+        )
 
         logger.info(f"Manually retrying job {job.id} (retry_count={job.retry_count})")
         return True
@@ -434,12 +468,12 @@ class JobQueueManager:
         """
         from container_manager.models import ContainerJob
 
-        queryset = ContainerJob.objects.filter(status='failed')
+        queryset = ContainerJob.objects.filter(status="failed")
 
         if include_retrying:
-            queryset = queryset | ContainerJob.objects.filter(status='retrying')
+            queryset = queryset | ContainerJob.objects.filter(status="retrying")
 
-        return queryset.order_by('-last_error_at')
+        return queryset.order_by("-last_error_at")
 
     def _acquire_next_job(self, timeout_remaining=30):
         """
@@ -463,16 +497,22 @@ class JobQueueManager:
             try:
                 with transaction.atomic():
                     # Get the next ready job with row-level lock
-                    job = ContainerJob.objects.select_for_update(
-                        skip_locked=True  # Skip jobs locked by other processes
-                    ).filter(
-                        queued_at__isnull=False,
-                        launched_at__isnull=True,
-                        retry_count__lt=F('max_retries')
-                    ).filter(
-                        Q(scheduled_for__isnull=True) |
-                        Q(scheduled_for__lte=timezone.now())
-                    ).order_by('-priority', 'queued_at').first()
+                    job = (
+                        ContainerJob.objects.select_for_update(
+                            skip_locked=True  # Skip jobs locked by other processes
+                        )
+                        .filter(
+                            queued_at__isnull=False,
+                            launched_at__isnull=True,
+                            retry_count__lt=F("max_retries"),
+                        )
+                        .filter(
+                            Q(scheduled_for__isnull=True)
+                            | Q(scheduled_for__lte=timezone.now())
+                        )
+                        .order_by("-priority", "queued_at")
+                        .first()
+                    )
 
                     if job is None:
                         logger.debug("No jobs available for acquisition")
@@ -493,8 +533,10 @@ class JobQueueManager:
 
                 if "deadlock" in str(e).lower():
                     # Handle deadlock with exponential backoff
-                    backoff = min(2 ** attempt * 0.1, 1.0)  # Max 1 second backoff
-                    logger.warning(f"Deadlock detected on attempt {attempt}, backing off {backoff:.2f}s")
+                    backoff = min(2**attempt * 0.1, 1.0)  # Max 1 second backoff
+                    logger.warning(
+                        f"Deadlock detected on attempt {attempt}, backing off {backoff:.2f}s"
+                    )
                     time.sleep(backoff + random.uniform(0, 0.1))  # Add jitter
                 else:
                     logger.error(f"Error acquiring job (attempt {attempt}): {e}")
@@ -521,33 +563,39 @@ class JobQueueManager:
         errors = []
 
         # Check current resource usage
-        running_jobs = ContainerJob.objects.filter(status='running').count()
+        running_jobs = ContainerJob.objects.filter(status="running").count()
         available_slots = max(0, max_concurrent - running_jobs)
 
         if available_slots == 0:
-            logger.debug(f"No available slots (running: {running_jobs}/{max_concurrent})")
-            return {'launched': 0, 'errors': []}
+            logger.debug(
+                f"No available slots (running: {running_jobs}/{max_concurrent})"
+            )
+            return {"launched": 0, "errors": []}
 
         logger.info(f"Attempting to launch up to {available_slots} jobs")
 
         # Get candidate jobs with timeout
         start_time = time.time()
         while launched_count < available_slots and (time.time() - start_time) < timeout:
-            job = self._acquire_next_job(timeout_remaining=timeout - (time.time() - start_time))
+            job = self._acquire_next_job(
+                timeout_remaining=timeout - (time.time() - start_time)
+            )
 
             if job is None:
                 break  # No more jobs available
 
             # Attempt to launch the acquired job
             result = self.launch_job(job)
-            if result['success']:
+            if result["success"]:
                 launched_count += 1
-                logger.info(f"Launched job {job.id} ({launched_count}/{available_slots})")
+                logger.info(
+                    f"Launched job {job.id} ({launched_count}/{available_slots})"
+                )
             else:
                 errors.append(f"Job {job.id}: {result['error']}")
                 # Job launch failed, but we did acquire it, so it's handled
 
-        return {'launched': launched_count, 'errors': errors}
+        return {"launched": launched_count, "errors": errors}
 
     def get_worker_metrics(self):
         """
@@ -561,33 +609,34 @@ class JobQueueManager:
         now = timezone.now()
 
         return {
-            'queue_depth': ContainerJob.objects.filter(
+            "queue_depth": ContainerJob.objects.filter(
                 queued_at__isnull=False,
                 launched_at__isnull=True,
-                retry_count__lt=F('max_retries')
+                retry_count__lt=F("max_retries"),
             ).count(),
-            'ready_now': ContainerJob.objects.filter(
+            "ready_now": ContainerJob.objects.filter(
                 queued_at__isnull=False,
                 launched_at__isnull=True,
-                retry_count__lt=F('max_retries')
-            ).filter(
-                Q(scheduled_for__isnull=True) |
-                Q(scheduled_for__lte=now)
-            ).count(),
-            'scheduled_future': ContainerJob.objects.filter(
+                retry_count__lt=F("max_retries"),
+            )
+            .filter(Q(scheduled_for__isnull=True) | Q(scheduled_for__lte=now))
+            .count(),
+            "scheduled_future": ContainerJob.objects.filter(
                 scheduled_for__isnull=False,
                 scheduled_for__gt=now,
-                launched_at__isnull=True
+                launched_at__isnull=True,
             ).count(),
-            'running': ContainerJob.objects.filter(status='running').count(),
-            'launch_failed': ContainerJob.objects.filter(
+            "running": ContainerJob.objects.filter(status="running").count(),
+            "launch_failed": ContainerJob.objects.filter(
                 queued_at__isnull=False,
                 launched_at__isnull=True,
-                retry_count__gte=F('max_retries')
-            ).count()
+                retry_count__gte=F("max_retries"),
+            ).count(),
         }
 
-    def process_queue_continuous(self, max_concurrent=5, poll_interval=10, shutdown_event=None):
+    def process_queue_continuous(
+        self, max_concurrent=5, poll_interval=10, shutdown_event=None
+    ):
         """
         Process queue continuously until shutdown event is set.
 
@@ -601,13 +650,11 @@ class JobQueueManager:
         """
         import time
 
-        stats = {
-            'iterations': 0,
-            'jobs_launched': 0,
-            'errors': []
-        }
+        stats = {"iterations": 0, "jobs_launched": 0, "errors": []}
 
-        logger.info(f"Starting continuous queue processing (max_concurrent={max_concurrent}, poll_interval={poll_interval})")
+        logger.info(
+            f"Starting continuous queue processing (max_concurrent={max_concurrent}, poll_interval={poll_interval})"
+        )
 
         try:
             while not (shutdown_event and shutdown_event.is_set()):
@@ -615,15 +662,17 @@ class JobQueueManager:
                     # Process one batch
                     result = self.launch_next_batch(max_concurrent=max_concurrent)
 
-                    stats['iterations'] += 1
-                    stats['jobs_launched'] += result['launched']
+                    stats["iterations"] += 1
+                    stats["jobs_launched"] += result["launched"]
 
-                    if result['errors']:
-                        stats['errors'].extend(result['errors'])
+                    if result["errors"]:
+                        stats["errors"].extend(result["errors"])
 
                     # Log progress if jobs were launched
-                    if result['launched'] > 0:
-                        logger.info(f"Launched {result['launched']} jobs (iteration {stats['iterations']})")
+                    if result["launched"] > 0:
+                        logger.info(
+                            f"Launched {result['launched']} jobs (iteration {stats['iterations']})"
+                        )
 
                     # Check shutdown before sleeping
                     if shutdown_event and shutdown_event.is_set():
@@ -638,7 +687,7 @@ class JobQueueManager:
                 except Exception as e:
                     error_msg = f"Error in queue processing iteration {stats['iterations']}: {e!s}"
                     logger.exception(error_msg)
-                    stats['errors'].append(error_msg)
+                    stats["errors"].append(error_msg)
 
                     # Sleep longer after errors
                     for _ in range(poll_interval * 2):
@@ -649,10 +698,14 @@ class JobQueueManager:
         except KeyboardInterrupt:
             logger.info("Queue processing interrupted by keyboard")
 
-        logger.info(f"Queue processing stopped after {stats['iterations']} iterations, launched {stats['jobs_launched']} jobs")
+        logger.info(
+            f"Queue processing stopped after {stats['iterations']} iterations, launched {stats['jobs_launched']} jobs"
+        )
         return stats
 
-    def process_queue_with_graceful_shutdown(self, max_concurrent=5, poll_interval=10, shutdown_timeout=30):
+    def process_queue_with_graceful_shutdown(
+        self, max_concurrent=5, poll_interval=10, shutdown_timeout=30
+    ):
         """
         Process queue with comprehensive graceful shutdown handling.
 
@@ -679,35 +732,36 @@ class JobQueueManager:
 
         shutdown_handler.setup_signal_handlers(status_callback)
 
-        logger.info(f"Starting graceful queue processor (max_concurrent={max_concurrent}, shutdown_timeout={shutdown_timeout}s)")
+        logger.info(
+            f"Starting graceful queue processor (max_concurrent={max_concurrent}, shutdown_timeout={shutdown_timeout}s)"
+        )
 
         stats = {
-            'iterations': 0,
-            'jobs_launched': 0,
-            'jobs_completed': 0,
-            'errors': [],
-            'shutdown_time': None,
-            'clean_shutdown': False,
-            'jobs_interrupted': 0
+            "iterations": 0,
+            "jobs_launched": 0,
+            "jobs_completed": 0,
+            "errors": [],
+            "shutdown_time": None,
+            "clean_shutdown": False,
+            "jobs_interrupted": 0,
         }
 
         try:
             while not shutdown_handler.is_shutdown_requested():
-                stats['iterations'] += 1
+                stats["iterations"] += 1
 
                 try:
                     # Launch ready jobs with tracking
                     result = self._launch_batch_with_tracking(
-                        max_concurrent=max_concurrent,
-                        job_tracker=job_tracker
+                        max_concurrent=max_concurrent, job_tracker=job_tracker
                     )
 
-                    stats['jobs_launched'] += result['launched']
-                    if result['errors']:
-                        stats['errors'].extend(result['errors'])
+                    stats["jobs_launched"] += result["launched"]
+                    if result["errors"]:
+                        stats["errors"].extend(result["errors"])
 
                     # Log activity
-                    if result['launched'] > 0 or result['errors']:
+                    if result["launched"] > 0 or result["errors"]:
                         logger.info(
                             f"Iteration {stats['iterations']}: "
                             f"launched {result['launched']}, "
@@ -718,47 +772,52 @@ class JobQueueManager:
                 except Exception as e:
                     error_msg = f"Error in iteration {stats['iterations']}: {e!s}"
                     logger.exception(error_msg)
-                    stats['errors'].append(error_msg)
+                    stats["errors"].append(error_msg)
 
                 # Wait with early shutdown detection
                 shutdown_handler.wait_for_shutdown(poll_interval)
 
             # Shutdown requested - enter graceful shutdown phase
-            stats['shutdown_time'] = timezone.now()
+            stats["shutdown_time"] = timezone.now()
             logger.info("Graceful shutdown initiated")
 
             # Stop launching new jobs, wait for running jobs to complete
             running_count = job_tracker.get_running_count()
             if running_count > 0:
-                logger.info(f"Waiting for {running_count} running jobs to complete (timeout: {shutdown_timeout}s)...")
+                logger.info(
+                    f"Waiting for {running_count} running jobs to complete (timeout: {shutdown_timeout}s)..."
+                )
 
                 completed = job_tracker.wait_for_completion(
-                    timeout=shutdown_timeout,
-                    poll_interval=1
+                    timeout=shutdown_timeout, poll_interval=1
                 )
 
                 if completed:
                     logger.info("All jobs completed successfully during shutdown")
-                    stats['clean_shutdown'] = True
+                    stats["clean_shutdown"] = True
                 else:
                     running_jobs = job_tracker.get_running_jobs()
-                    logger.warning(f"Forced shutdown with {len(running_jobs)} jobs still running: {running_jobs}")
-                    stats['jobs_interrupted'] = len(running_jobs)
+                    logger.warning(
+                        f"Forced shutdown with {len(running_jobs)} jobs still running: {running_jobs}"
+                    )
+                    stats["jobs_interrupted"] = len(running_jobs)
             else:
                 logger.info("No running jobs, clean shutdown")
-                stats['clean_shutdown'] = True
+                stats["clean_shutdown"] = True
 
         except KeyboardInterrupt:
             logger.info("Queue processing interrupted by keyboard")
-            stats['shutdown_time'] = timezone.now()
+            stats["shutdown_time"] = timezone.now()
         except Exception as e:
             logger.exception(f"Fatal error in graceful queue processing: {e}")
-            stats['errors'].append(f"Fatal error: {e!s}")
+            stats["errors"].append(f"Fatal error: {e!s}")
 
         finally:
             # Final cleanup and logging
             final_tracking_stats = job_tracker.get_stats()
-            logger.info(f"Queue processor finished. Stats: {stats}, Job tracking: {final_tracking_stats}")
+            logger.info(
+                f"Queue processor finished. Stats: {stats}, Job tracking: {final_tracking_stats}"
+            )
 
         return stats
 
@@ -779,7 +838,7 @@ class JobQueueManager:
         available_slots = max(0, max_concurrent - running_count)
 
         if available_slots == 0:
-            return {'launched': 0, 'errors': []}
+            return {"launched": 0, "errors": []}
 
         # Get ready jobs
         ready_jobs = self.get_ready_jobs(limit=available_slots)
@@ -795,7 +854,7 @@ class JobQueueManager:
                 # Use existing launch method with retry logic
                 result = self.launch_job_with_retry(job)
 
-                if result['success']:
+                if result["success"]:
                     launched_count += 1
                     logger.debug(f"Launched job {job.id} successfully")
 
@@ -815,7 +874,7 @@ class JobQueueManager:
                 errors.append(error_msg)
                 logger.exception(f"Error launching job {job.id}")
 
-        return {'launched': launched_count, 'errors': errors}
+        return {"launched": launched_count, "errors": errors}
 
     def _monitor_job_completion_background(self, job, job_tracker):
         """
@@ -825,6 +884,7 @@ class JobQueueManager:
             job: ContainerJob instance
             job_tracker: JobCompletionTracker instance
         """
+
         def monitor():
             try:
                 logger.debug(f"Starting background monitoring for job {job.id}")
@@ -840,9 +900,16 @@ class JobQueueManager:
                     try:
                         job.refresh_from_db()
 
-                        if job.status in ['completed', 'failed', 'cancelled', 'timeout']:
+                        if job.status in [
+                            "completed",
+                            "failed",
+                            "cancelled",
+                            "timeout",
+                        ]:
                             job_tracker.mark_job_completed(job.id)
-                            logger.debug(f"Job {job.id} completed with status: {job.status}")
+                            logger.debug(
+                                f"Job {job.id} completed with status: {job.status}"
+                            )
                             return
 
                     except Exception as e:
@@ -850,7 +917,9 @@ class JobQueueManager:
                         # Continue monitoring, might be temporary DB issue
 
                 # If we get here, job has been running too long
-                logger.warning(f"Job {job.id} monitoring timeout after {max_checks} checks, assuming completed")
+                logger.warning(
+                    f"Job {job.id} monitoring timeout after {max_checks} checks, assuming completed"
+                )
                 job_tracker.mark_job_completed(job.id)
 
             except Exception as e:
@@ -860,7 +929,10 @@ class JobQueueManager:
 
         # Start monitoring thread
         import threading
-        monitor_thread = threading.Thread(target=monitor, daemon=True, name=f"JobMonitor-{job.id}")
+
+        monitor_thread = threading.Thread(
+            target=monitor, daemon=True, name=f"JobMonitor-{job.id}"
+        )
         monitor_thread.start()
         logger.debug(f"Started background monitoring thread for job {job.id}")
 

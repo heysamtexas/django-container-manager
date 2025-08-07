@@ -199,9 +199,11 @@ class ContainerExecutor(ABC):
             errors.append("Job must have a docker_host")
 
         # Check job status - only certain statuses are valid for launch
-        valid_launch_statuses = ['pending', 'created', 'queued', 'retrying']
-        if hasattr(job, 'status') and job.status not in valid_launch_statuses:
-            errors.append(f"Job status '{job.status}' is not valid for launch (must be one of: {', '.join(valid_launch_statuses)})")
+        valid_launch_statuses = ["pending", "created", "queued", "retrying"]
+        if hasattr(job, "status") and job.status not in valid_launch_statuses:
+            errors.append(
+                f"Job status '{job.status}' is not valid for launch (must be one of: {', '.join(valid_launch_statuses)})"
+            )
 
         # Executor type is now determined by docker_host.executor_type
         # No additional validation needed since docker_host is required and determines executor type
