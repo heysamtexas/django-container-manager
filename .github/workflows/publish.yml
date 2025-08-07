@@ -54,7 +54,7 @@ jobs:
     - build
     - test
     runs-on: ubuntu-latest
-    # environment: pypi  # Temporarily disabled for initial publication
+    environment: pypi  # Re-enabled: provides branch protection and audit logging
     permissions:
       id-token: write  # MANDATORY: needed for trusted publishing
     steps:
