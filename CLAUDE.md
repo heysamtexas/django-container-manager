@@ -246,6 +246,131 @@ def _process_data_by_type(self, data):
 5. **Split large functions** into focused helpers
 6. **Test thoroughly** after each refactoring step
 
+## Performance & Optimization Guidelines
+
+### Property Decoration Philosophy
+
+**Default Choice: Use `@property`**
+Prefer `@property` over `@cached_property` as the default decorator for computed attributes:
+
+```python
+# ✅ Preferred - Simple and predictable
+@property
+def full_name(self):
+    return f"{self.first_name} {self.last_name}".strip()
+
+@property  
+def parsed_output(self):
+    try:
+        return json.loads(self.clean_output)
+    except json.JSONDecodeError:
+        return self.clean_output
+```
+
+**When to Consider `@cached_property`:**
+Only use `@cached_property` when ALL these conditions are met:
+1. **Expensive operation** (database queries, complex calculations, file I/O)
+2. **Rarely changes** during object lifetime
+3. **Frequently accessed** (called multiple times per request/operation)
+4. **Willing to manage** cache invalidation complexity
+
+```python
+# ✅ Justified caching - expensive database aggregation
+@cached_property
+def total_order_value(self):
+    return self.orders.aggregate(
+        total=Sum('amount')
+    )['total'] or Decimal('0')
+```
+
+**Why `@property` is Usually Better:**
+- **No cache invalidation complexity** - always current data
+- **Simpler mental model** - no hidden state to track
+- **Memory efficient** - no instance attribute storage
+- **Debugging friendly** - no stale data surprises
+- **Thread safe** - no shared state concerns
+
+### Premature Optimization Principles
+
+**Core Philosophy: "Make it work first, optimize later"**
+
+**Optimization Decision Framework:**
+1. **Profile first** - Measure actual performance bottlenecks
+2. **Quantify benefit** - What specific improvement do you expect?
+3. **Consider complexity cost** - Is the added complexity justified?
+4. **Plan invalidation** - How will you handle stale cached data?
+
+**Red Flags for Premature Optimization:**
+- Adding `@cached_property` for simple string operations
+- Caching computed properties that might change frequently  
+- Complex cache invalidation logic without proven performance need
+- Optimizing before identifying actual bottlenecks
+
+**Optimization Hierarchy (in order of preference):**
+1. **Algorithm improvements** - Better logic, fewer operations
+2. **Database optimization** - Query efficiency, indexes, select_related
+3. **Django's cache framework** - For cross-request caching needs
+4. **Instance-level caching** - `@cached_property` as last resort
+
+### Django-Specific Optimization Patterns
+
+**Database Query Optimization (Preferred):**
+```python
+# ✅ Better - Optimize at database level
+class JobListView(ListView):
+    queryset = ContainerJob.objects.select_related('docker_host')
+    
+# ✅ Better - Use database aggregation
+def get_success_rate(self):
+    stats = self.jobs.aggregate(
+        total=Count('id'),
+        successful=Count('id', filter=Q(status='completed'))
+    )
+    return stats['successful'] / stats['total'] if stats['total'] > 0 else 0
+```
+
+**Template Performance:**
+```python
+# ❌ Avoid - Repeated property access in templates
+# Template: {{ job.expensive_calculation }} used 10+ times
+
+# ✅ Better - Calculate once in view
+def get_context_data(self, **kwargs):
+    context = super().get_context_data(**kwargs)
+    context['expensive_result'] = self.object.expensive_calculation
+    return context
+```
+
+**When to Use Django's Cache Framework:**
+```python
+# ✅ For cross-request caching needs
+from django.core.cache import cache
+
+def get_dashboard_stats(self):
+    cache_key = f'dashboard_stats_{self.user.id}'
+    stats = cache.get(cache_key)
+    if stats is None:
+        stats = self._calculate_dashboard_stats()
+        cache.set(cache_key, stats, timeout=300)  # 5 minutes
+    return stats
+```
+
+**Cache Invalidation Best Practices:**
+```python
+# If you must use @cached_property, plan invalidation
+def save(self, *args, **kwargs):
+    # Clear cached properties that depend on saved fields
+    if hasattr(self, '_cached_expensive_calc'):
+        delattr(self, '_cached_expensive_calc')
+    super().save(*args, **kwargs)
+```
+
+**Performance Guidelines:**
+- **Measure first** - Use Django Debug Toolbar to identify real bottlenecks
+- **Database wins** - Query optimization usually more effective than property caching  
+- **Cache at the right level** - Request-level > instance-level > micro-optimizations
+- **Keep it simple** - Readable code is maintainable code
+
 ## Advanced Testing & Development Guidelines
 
 ### Testing Strategy Framework (MANDATORY)
