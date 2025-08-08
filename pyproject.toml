@@ -130,6 +130,8 @@ ignore = [
     "DJ001",  # django model string representation
     "T201",   # print statements (useful for management commands)
     "PLR0913", # too many arguments (Django views often need many args)
+    "PLR0912", # too many branches (complex queue processing methods)
+    "PLR0915", # too many statements (complex queue processing methods)
     "SIM117", 
     "TRY003", # long exception messages (standard practice in this codebase)
     "PLR2004", # magic values (constants would be overkill for single-use values)

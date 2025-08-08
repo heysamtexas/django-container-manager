@@ -1,6 +1,5 @@
 import re
 import uuid
-from functools import cached_property
 from typing import ClassVar
 
 from django.contrib.auth.models import User
@@ -687,6 +686,23 @@ class ContainerJob(models.Model):
         display_name = self.name or "Unnamed Job"
         return f"{display_name} ({self.status}){executor_info}"
 
+    def save(self, *args, **kwargs):
+        """Override save to validate state transitions"""
+        if self.pk:  # Existing object - check for status changes
+            try:
+                old_obj = ContainerJob.objects.get(pk=self.pk)
+                if old_obj.status != self.status and not old_obj.can_transition_to(
+                    self.status
+                ):
+                    # Validate transition
+                    raise ValueError(
+                        f"Invalid status transition: {old_obj.status} -> {self.status}"
+                    )
+            except ContainerJob.DoesNotExist:
+                pass  # New object, no validation needed
+
+        super().save(*args, **kwargs)
+
     @property
     def duration(self):
         """
@@ -869,7 +885,7 @@ class ContainerJob(models.Model):
         """
         self.execution_id = execution_id
 
-    @cached_property
+    @property
     def clean_output_processed(self):
         """
         Get stdout with Docker timestamps and metadata stripped.
@@ -889,7 +905,7 @@ class ContainerJob(models.Model):
         """
         return self._strip_docker_timestamps(self.stdout_log)
 
-    @cached_property
+    @property
     def parsed_output(self):
         """
         Attempt to parse clean_output as JSON, fallback to string.
@@ -1031,6 +1047,7 @@ class ContainerJob(models.Model):
             if network.get("network_name")
         ]
 
+
     def can_use_executor(self, executor_type: str) -> bool:
         """
         Check if this job can run on the specified executor type.
@@ -1080,20 +1097,3 @@ class ContainerJob(models.Model):
         # Validate docker_image is provided
         if not self.docker_image:
             raise ValidationError("Docker image is required")
-
-    def save(self, *args, **kwargs):
-        """Override save to validate state transitions"""
-        if self.pk:  # Existing object - check for status changes
-            try:
-                old_obj = ContainerJob.objects.get(pk=self.pk)
-                if old_obj.status != self.status and not old_obj.can_transition_to(
-                    self.status
-                ):
-                    # Validate transition
-                    raise ValueError(
-                        f"Invalid status transition: {old_obj.status} -> {self.status}"
-                    )
-            except ContainerJob.DoesNotExist:
-                pass  # New object, no validation needed
-
-        super().save(*args, **kwargs)

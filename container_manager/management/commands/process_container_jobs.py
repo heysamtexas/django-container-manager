@@ -407,102 +407,102 @@ class Command(BaseCommand):
 
     def _handle_queue_mode(self, options):
         """Handle queue processing mode"""
-        max_concurrent = options["max_concurrent"]
-        poll_interval = options["poll_interval"]
-        once = options["once"]
-        dry_run = options["dry_run"]
-        timeout = options["timeout"]
-        shutdown_timeout = options["shutdown_timeout"]
-        graceful_shutdown = options["graceful_shutdown"]
-
-        mode_type = "graceful" if graceful_shutdown else "basic"
+        mode_type = "graceful" if options["graceful_shutdown"] else "basic"
         self.stdout.write(
             self.style.SUCCESS(
-                f"Starting queue processor ({mode_type} shutdown, max_concurrent={max_concurrent}, "
-                f"poll_interval={poll_interval}s, once={once})"
+                f"Starting queue processor ({mode_type} shutdown, max_concurrent={options['max_concurrent']}, "
+                f"poll_interval={options['poll_interval']}s, once={options['once']})"
             )
         )
 
-        if dry_run:
+        if options["dry_run"]:
             self._dry_run_queue_mode(options)
             return
 
-        if once:
-            # Single queue processing run
-            result = queue_manager.launch_next_batch(
-                max_concurrent=max_concurrent, timeout=timeout
-            )
-
-            self.stdout.write(
-                self.style.SUCCESS(
-                    f"Processed queue: launched {result['launched']} jobs"
-                )
-            )
-
-            if result["errors"]:
-                self.stdout.write(
-                    self.style.WARNING(f"Encountered {len(result['errors'])} errors:")
-                )
-                for error in result["errors"]:
-                    self.stdout.write(f"  - {error}")
-
-            return
+        if options["once"]:
+            self._handle_single_queue_run(options)
         else:
-            # Continuous queue processing - choose method based on graceful shutdown option
-            try:
-                if graceful_shutdown:
-                    # Use enhanced graceful shutdown with job completion tracking
-                    stats = queue_manager.process_queue_with_graceful_shutdown(
-                        max_concurrent=max_concurrent,
-                        poll_interval=poll_interval,
-                        shutdown_timeout=shutdown_timeout,
-                    )
+            self._handle_continuous_queue_processing(options)
 
-                    self.stdout.write(
-                        self.style.SUCCESS(
-                            f"Graceful queue processor finished. "
-                            f"Processed {stats['iterations']} iterations, "
-                            f"launched {stats['jobs_launched']} jobs"
-                        )
-                    )
+    def _handle_single_queue_run(self, options):
+        """Handle single queue processing run"""
+        result = queue_manager.launch_next_batch(
+            max_concurrent=options["max_concurrent"], timeout=options["timeout"]
+        )
 
-                    if stats["clean_shutdown"]:
-                        self.stdout.write(
-                            self.style.SUCCESS("Clean shutdown completed")
-                        )
-                    elif stats.get("jobs_interrupted", 0) > 0:
-                        self.stdout.write(
-                            self.style.WARNING(
-                                f"Forced shutdown with {stats['jobs_interrupted']} jobs interrupted"
-                            )
-                        )
-                else:
-                    # Use basic continuous processing
-                    stats = queue_manager.process_queue_continuous(
-                        max_concurrent=max_concurrent,
-                        poll_interval=poll_interval,
-                        shutdown_event=self.shutdown_event,
-                    )
+        self.stdout.write(
+            self.style.SUCCESS(f"Processed queue: launched {result['launched']} jobs")
+        )
 
-                    self.stdout.write(
-                        self.style.SUCCESS(
-                            f"Queue processor finished. "
-                            f"Processed {stats['iterations']} iterations, "
-                            f"launched {stats['jobs_launched']} jobs"
-                        )
-                    )
+        if result["errors"]:
+            self.stdout.write(
+                self.style.WARNING(f"Encountered {len(result['errors'])} errors:")
+            )
+            for error in result["errors"]:
+                self.stdout.write(f"  - {error}")
 
-                # Report errors for both modes
-                if stats["errors"]:
-                    self.stdout.write(
-                        self.style.WARNING(
-                            f"Encountered {len(stats['errors'])} errors during processing"
-                        )
-                    )
+    def _handle_continuous_queue_processing(self, options):
+        """Handle continuous queue processing with graceful or basic shutdown"""
+        try:
+            if options["graceful_shutdown"]:
+                self._handle_graceful_continuous_processing(options)
+            else:
+                self._handle_basic_continuous_processing(options)
+        except Exception as e:
+            self.stdout.write(
+                self.style.ERROR(f"Queue processing failed with exception: {e}")
+            )
+            logger.exception("Queue processing failed")
+            raise
 
-            except Exception as e:
-                logger.exception("Error in continuous queue processing")
-                raise CommandError(f"Queue processing failed: {e}") from e
+    def _handle_graceful_continuous_processing(self, options):
+        """Handle continuous processing with graceful shutdown"""
+        stats = queue_manager.process_queue_with_graceful_shutdown(
+            max_concurrent=options["max_concurrent"],
+            poll_interval=options["poll_interval"],
+            shutdown_timeout=options["shutdown_timeout"],
+        )
+
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Graceful queue processor finished. "
+                f"Processed {stats['iterations']} iterations, "
+                f"launched {stats['jobs_launched']} jobs"
+            )
+        )
+
+        if stats["clean_shutdown"]:
+            self.stdout.write(self.style.SUCCESS("Clean shutdown completed"))
+        elif stats.get("jobs_interrupted", 0) > 0:
+            self.stdout.write(
+                self.style.WARNING(
+                    f"Forced shutdown with {stats['jobs_interrupted']} jobs interrupted"
+                )
+            )
+
+    def _handle_basic_continuous_processing(self, options):
+        """Handle continuous processing with basic shutdown"""
+        stats = queue_manager.process_queue_continuous(
+            max_concurrent=options["max_concurrent"],
+            poll_interval=options["poll_interval"],
+            shutdown_event=self.shutdown_event,
+        )
+
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Queue processor finished. "
+                f"Processed {stats['iterations']} iterations, "
+                f"launched {stats['jobs_launched']} jobs"
+            )
+        )
+
+        # Report errors
+        if stats["errors"]:
+            self.stdout.write(
+                self.style.WARNING(
+                    f"Encountered {len(stats['errors'])} errors during processing"
+                )
+            )
 
     def _handle_legacy_mode(self, options):
         """Handle legacy job processing mode (original behavior)"""
